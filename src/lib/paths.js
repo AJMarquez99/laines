@@ -26,3 +26,6 @@ export function containerPaths(root) {
     claudeSettings: join(root, '.claude', 'settings.json'),
   };
 }
+
+// POSIX single-quoting for paths shown in copy-paste hints.
+export const shellQuote = (value) => `'${String(value).replace(/'/g, "'\\''")}'`;

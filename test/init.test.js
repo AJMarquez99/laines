@@ -27,6 +27,12 @@ describe('parseAgents', () => {
 });
 
 describe('runInit', () => {
+  it('shell-quotes the cd hint for a path with spaces and quotes', async () => {
+    const { root, deps } = setup();
+    const r = await runInit({ dir: "it's my lanes", remote: REMOTE }, deps);
+    expect(r.next[0]).toBe(`cd '${root}/it'\\''s my lanes'`);
+  });
+
   it('creates a complete container', async () => {
     const { root, deps } = setup();
     const r = await runInit({ dir: 'lanes', remote: REMOTE }, deps);

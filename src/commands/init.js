@@ -4,7 +4,7 @@ import { VERSION } from '../version.js';
 import { buildConfig } from '../config.js';
 import { InvalidInputError, LainesError } from '../lib/errors.js';
 import { writeJson } from '../lib/jsonfile.js';
-import { configDir, containerPaths } from '../lib/paths.js';
+import { configDir, containerPaths, shellQuote } from '../lib/paths.js';
 import { repoSlugFromRemote, uniqueId, validateId } from '../lib/ids.js';
 import { allocateBlock } from '../lib/ports.js';
 import { claimContainer, loadIndex, releaseContainer } from '../lib/machine-index.js';
@@ -110,7 +110,7 @@ function writeContainer({ path, entry, config, agents, deps }) {
 }
 
 const nextSteps = (path) => [
-  `cd ${path}`,
+  `cd ${shellQuote(path)}`,
   'Add setup hooks in .laines/hooks/ (post-create, pre-teardown, post-teardown), or let an agent build them: new containers use hook policy "notify".',
   'Create your first lane: laines create',
 ];
