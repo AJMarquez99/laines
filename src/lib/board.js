@@ -2,7 +2,7 @@ export const oneLine = (value) => String(value ?? '').replace(/[\r\n]+/g, ' ').r
 
 // Markers in user text must never be mistaken for board structure. oneLine() already keeps user
 // text from starting a line, so a leading "#" (e.g. "#123 fix") cannot become a heading.
-const safe = (value) => oneLine(value).replace(/<!--/g, '&lt;!--');
+export const safe = (value) => oneLine(value).replace(/<!--/g, '&lt;!--');
 
 export const fmtTs = (iso) => `${String(iso).slice(0, 16).replace('T', ' ')} UTC`;
 

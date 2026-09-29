@@ -73,10 +73,15 @@ describe('lanes store', () => {
     expect(state.activity).toHaveLength(10);
     expect(state.activity[0].text).toBe('e12');
     const archive = readFileSync(join(ctx.paths.ai, 'archive', '2026-09-29_board-log.md'), 'utf8');
+    const lines = archive.split('\n');
     expect(archive).toContain('# Board activity archive: app');
-    expect(archive).toContain('e1');
-    expect(archive).toContain('e2');
-    expect(archive).not.toContain('e3\n');
+    // Verify overflow entries are present and in newest-first order within the batch
+    const entryLines = lines.filter((l) => l.startsWith('- **'));
+    expect(entryLines).toContainEqual(expect.stringContaining('e2'));
+    expect(entryLines).toContainEqual(expect.stringContaining('e1'));
+    expect(entryLines.length).toBe(2);
+    // Verify e3 is not in the archive
+    expect(archive).not.toContain('e3');
   });
 
   it('serialises concurrent updates without losing any', async () => {
@@ -88,5 +93,29 @@ describe('lanes store', () => {
       return { state: s, result: null };
     })));
     expect(Object.keys(readLanes(ctx).lanes).sort()).toEqual(['lane_1', 'lane_2', 'lane_3', 'lane_4']);
+  });
+
+  it('rejects malformed activity entries and leaves state unchanged', async () => {
+    const root = tmp();
+    const ctx = ctxFor(root);
+    const deps = testDeps(root);
+    // Create initial state
+    await updateLanes(ctx, deps, (s) => {
+      s.lanes.lane_1 = lane(1);
+      return { state: s, result: 'created' };
+    });
+    const beforeLanes = readFileSync(ctx.paths.lanes, 'utf8');
+    const beforeBoard = readFileSync(ctx.paths.board, 'utf8');
+    const archivePath = join(ctx.paths.ai, 'archive', '2026-09-29_board-log.md');
+    const archiveExistedBefore = existsSync(archivePath);
+    // Try to update with malformed activity (missing `lane` key)
+    await expect(updateLanes(ctx, deps, (s) => {
+      return { state: s, result: null, activity: [{ ts: deps.now(), text: 'no lane key' }] };
+    })).rejects.toBeInstanceOf(MalformedConfigError);
+    // Verify state is unchanged
+    expect(readFileSync(ctx.paths.lanes, 'utf8')).toBe(beforeLanes);
+    expect(readFileSync(ctx.paths.board, 'utf8')).toBe(beforeBoard);
+    expect(existsSync(archivePath)).toBe(archiveExistedBefore);
+    expect(existsSync(ctx.paths.lock)).toBe(false);
   });
 });
