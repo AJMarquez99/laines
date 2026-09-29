@@ -5,9 +5,8 @@
 **Isolated parallel work lanes for coding agents.** One shared knowledge base, many independent
 clones of your project, each with its own local environment.
 
-> **Status: pre-release.** Container setup (`init`, `config get`, `doctor`) works today. Lanes,
-> hooks and the MCP server are being built. See [Roadmap](#roadmap). The package is not on npm
-> yet; install from source.
+> **Status: pre-release.** Containers and lanes work today. Hooks and the MCP server are being
+> built. See [Roadmap](#roadmap). The package is not on npm yet; install from source.
 
 ## Why
 
@@ -72,6 +71,14 @@ cd ~/work/myapp-lanes
 laines doctor --format table
 ```
 
+Create a lane, report its progress, and tear it down when it is merged:
+
+```bash
+laines create
+laines report lane_1 --status in-progress --task "add the export endpoint"
+laines teardown lane_1 --remove-dir
+```
+
 Preview without writing anything:
 
 ```bash
@@ -106,7 +113,16 @@ human-readable output.
 |---|---|
 | `laines init <dir> --remote <url>` | Create a container. Options: `--id <id>`, `--agents claude,codex,gemini`, `--branch <name>` (default `main`), `--dry-run`. |
 | `laines config get [key]` | Print the container's settings, or one dotted key such as `hooks.policy`. |
-| `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board and locks. `--prune` removes machine-index entries for containers that no longer exist. |
+| `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board, locks, every open lane, and how each agent reaches the lanes. `--prune` removes machine-index entries for containers that no longer exist. |
+| `laines create [name] [--branch <b>] [--dry-run]` | Create a lane: clone the repository, allocate ports, write the lane's env file, identity and deny rules, and print its brief. |
+| `laines list [--all]` | List open lanes (`--all` includes closed ones). |
+| `laines status [lane]` | Show one lane's state, task, branch and ports. |
+| `laines report [lane] --status <s> --task <t> --blocked <why> --note <n>` | Update a lane's status on the board. |
+| `laines brief [lane]` | Print a lane's brief (identity, ports, rules). |
+| `laines keep [lane] --reason <why>` | Mark a lane to be kept, so it is not torn down as finished. |
+| `laines release <lane>` | Release a kept lane. Human-only: the lane name is required and agents are denied it. |
+| `laines teardown <lane> [--remove-dir] [--force] [--dry-run]` | Close a lane. Human-only. Refuses while the lane has unpushed commits, uncommitted changes or a branch that exists nowhere else, unless `--force` (which never overrides `keep`); `--remove-dir` deletes the clone. |
+| `laines watch [file] [--interval <s>]` | Follow the board (or any file) and print new lines as they land. |
 
 Run commands from the container directory, or pass `--container <dir>`.
 

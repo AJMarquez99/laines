@@ -1,12 +1,46 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { loadConfig } from '../config.js';
 import { readJson } from '../lib/jsonfile.js';
 import { configDir, containerPaths } from '../lib/paths.js';
 import { indexFiles, loadIndex, pruneIndex } from '../lib/machine-index.js';
 import { containerDirFrom, resolveContainer } from '../lib/container.js';
 import { AGENT_FILES, LANES_BEGIN, denyRules } from '../lib/agent-files.js';
+import { readLanes } from '../lib/lanes-store.js';
+import { EXCLUDE_BEGIN, isTracked } from '../lib/lane-files.js';
 import { NotAContainerError } from '../lib/errors.js';
+
+function laneProblems(root, containerId, name, lane, agents, deps) {
+  const dir = join(root, lane.repos[0].path);
+  if (!existsSync(dir)) return ['clone missing'];
+  const problems = [];
+  const has = (rel) => existsSync(join(dir, rel));
+  let marker = null;
+  try {
+    marker = JSON.parse(readFileSync(join(dir, '.ai', '.lane.json'), 'utf8'));
+  } catch {}
+  if (!marker || marker.lane !== name || marker.containerId !== containerId) problems.push('lane marker .ai/.lane.json missing or wrong');
+  if (!has('.laines.env')) problems.push('.laines.env missing');
+  const exclude = deps.git(['rev-parse', '--git-path', 'info/exclude'], { cwd: dir });
+  const rel = exclude.stdout.trim();
+  const excludeFile = exclude.status === 0 ? (isAbsolute(rel) ? rel : join(dir, rel)) : null;
+  if (!excludeFile || !existsSync(excludeFile) || !readFileSync(excludeFile, 'utf8').includes(EXCLUDE_BEGIN)) {
+    problems.push('git exclude block missing (lane files may show in git status)');
+  }
+  if (agents.includes('claude') && !isTracked(deps, dir, '.claude/settings.local.json')) {
+    const deny = (() => {
+      try {
+        return JSON.parse(readFileSync(join(dir, '.claude', 'settings.local.json'), 'utf8'))?.permissions?.deny ?? [];
+      } catch {
+        return [];
+      }
+    })();
+    if (denyRules().some((r) => !deny.includes(r))) problems.push('Claude deny rules missing from .claude/settings.local.json');
+  }
+  const stray = ['knowledge', 'guidelines', 'lessons'].filter((f) => has(join('.ai', f)) && !isTracked(deps, dir, `.ai/${f}`));
+  if (stray.length) problems.push(`a full .ai/ layer was scaffolded in the lane (${stray.join(', ')}): dot-ai init/sync was run there; move anything useful to the container's .ai/ and delete them`);
+  return problems;
+}
 
 export async function runDoctor(opts, deps) {
   const indexDir = configDir(deps.env, deps.homedir());
@@ -83,6 +117,40 @@ export async function runDoctor(opts, deps) {
     if (existsSync(lock)) throw new Error(`machine-index lock held at ${lock}; if no laines command is running, remove it: rmdir '${lock}'`);
     return 'free';
   });
+  let lanesState = null;
+  check('lanes-state', () => {
+    lanesState = readLanes({ paths: p });
+    const open = Object.values(lanesState.lanes).filter((l) => l.state !== 'closed').length;
+    return `${open} open lane(s)`;
+  });
+  const agents = config ? config.agents : ['claude'];
+  const openLanes = Object.entries(lanesState?.lanes ?? {}).filter(([, l]) => l.state !== 'closed');
+  for (const [name, lane] of openLanes) {
+    check(`lane:${name}`, () => {
+      const problems = laneProblems(root, marker?.id, name, lane, agents, deps);
+      if (problems.length) throw new Error(problems.join('; '));
+      return 'ok';
+    });
+  }
+  // Informational: Claude reads the container CLAUDE.md from every lane; Codex and Gemini stop at
+  // the git root, so they rely on a lane-local file or on .ai/README.md.
+  const localFile = (d, file) => {
+    if (!existsSync(join(d, file))) return false;
+    try {
+      return !isTracked(deps, d, file);
+    } catch {
+      return false;
+    }
+  };
+  const reach = [];
+  if (agents.includes('claude')) reach.push('claude: container CLAUDE.md reaches every lane');
+  for (const [agent, file] of [['codex', 'AGENTS.md'], ['gemini', 'GEMINI.md']]) {
+    if (!agents.includes(agent)) continue;
+    const dirs = openLanes.map(([, l]) => join(root, l.repos[0].path)).filter((d) => existsSync(d));
+    const local = dirs.filter((d) => localFile(d, file)).length;
+    reach.push(`${agent}: ${local}/${dirs.length} lane(s) have ${file}; the rest rely on .ai/README.md`);
+  }
+  result.checks.push({ name: 'agent-reach', ok: true, detail: reach.join('; ') });
 
   result.container = { id: marker?.id ?? null, path: root };
   return result;

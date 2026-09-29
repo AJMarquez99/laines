@@ -1,23 +1,7 @@
-# M1 deferred findings (input for the M2 plan)
+# M1 deferred findings
 
-Review findings from M1 (foundation + container) that were judged safe to defer. Fold the
-"carry into M2" items into the M2 plan; the rest can stay deferred. Delete this note once M2's
-plan has absorbed it.
-
-## Carry into M2
-
-- **One container loader.** Replace the repeated `resolveContainer` + `containerPaths` +
-  `loadConfig` triplet with `loadContainer(opts, deps) → { root (realpath), paths, marker,
-  config }`. Resolve a relative `--container` against `deps.cwd()`, but don't call `deps.cwd()`
-  when the path is absolute (a deleted cwd would otherwise fail).
-- **Realpath-based walks in `init`.** The `.git` and container-nesting ancestor walks use the
-  lexical path, so a target reached through a symlink into a checkout is accepted. M2's
-  containment checks (lexical and realpath) should share one helper with `init`.
-- **Warnings in results.** Return `warnings: []` in command results, not only via `deps.warn`,
-  so the MCP server (M4) can surface them.
-- **`--container` on `init`.** It is registered by `withGlobals` but ignored; omit it for `init`.
-- **Git arguments.** `remote`/`defaultBranch` now reject a leading `-`; M2 must still pass `--`
-  before positional git arguments.
+Review findings from M1 (foundation + container) that were judged safe to defer. The items
+carried into M2 have been implemented.
 
 ## Stay deferred
 
