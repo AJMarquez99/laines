@@ -8,3 +8,4 @@ graduates into a plan, knowledge, a lesson, or a runbook, or is discarded.
 | File | Answers |
 |---|---|
 | [m1-deferred-findings.md](m1-deferred-findings.md) | M1 review findings that stay deferred (test gaps, lock and rollback edge cases, doc fixes for later milestones) |
+| [m2-carry-overs.md](m2-carry-overs.md) | M2 review findings that belong to the M3 (hooks), M4 (MCP) and M5 (release) plans |
