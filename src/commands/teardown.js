@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadContainer } from '../lib/container.js';
-import { readLanes, updateLanes } from '../lib/lanes-store.js';
+import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
 import { assertLaneDir, removeLaneDir } from '../lib/containment.js';
 import { untrackedEntries } from '../lib/lane-files.js';
 import { unpushedWork } from '../lib/lane-git.js';
@@ -34,7 +34,7 @@ export async function runTeardown(opts, deps) {
   if (!opts.lane) throw new InvalidInputError('Name the lane to tear down: `laines teardown <lane>`.');
   const ctx = loadContainer(opts, deps);
   const name = opts.lane;
-  const lane = readLanes(ctx).lanes[name];
+  const lane = getLane(readLanes(ctx), name);
   if (!lane) throw new InvalidInputError(`No lane named ${name}. See \`laines list --all\`.`);
   if (lane.kept) {
     throw new BlockedError(keptMessage(name, lane.kept));
@@ -54,13 +54,15 @@ export async function runTeardown(opts, deps) {
   const warnings = checks?.noUpstream ? [`branch ${checks.noUpstream} has no upstream`] : [];
 
   if (opts.dryRun) {
-    return { dryRun: true, lane: name, path: laneDir, blocked, removeDir: Boolean(opts.removeDir && real), forced: risky && Boolean(opts.force), checks, warnings };
+    return { dryRun: true, lane: name, path: laneDir, blocked, removedDir: Boolean(opts.removeDir && real), forced: risky && Boolean(opts.force), checks, warnings };
   }
   if (blocked) {
     throw new BlockedError([
       `Refusing to remove ${laneDir}:`,
       ...checks.problems.map((p) => `  - ${p}`),
-      `Push the work, or save it first: git -C ${laneDir} bundle create <file> --all --not --remotes`,
+      isRepo
+        ? `Push the work, or save it first: git -C ${laneDir} bundle create <file> --all --not --remotes`
+        : `Copy anything you need out of ${laneDir} first.`,
       'Nothing has been archived or deleted. Use --force only after confirming this work can be lost.',
     ].join('\n'));
   }
@@ -73,7 +75,7 @@ export async function runTeardown(opts, deps) {
     // Re-checked under the lock: a `keep` that landed during the git checks must win, and the
     // archive/delete happen only once the record is known to be closable.
     await updateLanes(ctx, deps, (state) => {
-      const l = state.lanes[name];
+      const l = getLane(state, name);
       if (!l) throw new InvalidInputError(`Lane ${name} no longer exists.`);
       if (l.kept) throw new BlockedError(keptMessage(name, l.kept));
       if (real) {
@@ -89,6 +91,10 @@ export async function runTeardown(opts, deps) {
       const note = archivedTo ? `plans archived to ${archivedTo}` : 'no plans to archive';
       return { state, result: null, activity: [{ ts: now, lane: name, text: `lane torn down; ${note}` }] };
     });
+  } else if (opts.removeDir && real) {
+    // Second phase of a two-step teardown: anything written since the close is archived too.
+    archivedTo = archivePlans(ctx, deps, real, name);
+    contextDeleted = deleteContext(deps, real);
   }
   const removedDir = opts.removeDir ? removeLaneDir(ctx.root, laneDir, lane.repos[0].path) : false;
   // M3: run the post-teardown hook here.

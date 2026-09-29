@@ -85,7 +85,7 @@ export function formatTeardown(r) {
   if (r.dryRun) {
     const lines = [`dry run: ${r.blocked ? 'teardown would be refused' : `would tear down ${r.lane}`}`];
     for (const p of r.checks?.problems ?? []) lines.push(`  - ${p}`);
-    if (r.removeDir) lines.push(`would remove ${r.path}`);
+    if (r.removedDir) lines.push(`would remove ${r.path}`);
     return lines.join('\n');
   }
   const lines = [`${r.lane} torn down`];

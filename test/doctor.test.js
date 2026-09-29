@@ -119,6 +119,15 @@ describe('doctor lane checks', () => {
     expect(byName['lane:lane_2'].detail).toContain('clone missing');
   });
 
+  it('flags a lane whose repository tracks .claude/settings.local.json', async () => {
+    const { deps, container } = await setupContainer({ files: { 'README.md': 'x\n', '.claude/settings.local.json': '{}\n' } });
+    await runCreate({ container }, deps);
+    const r = await runDoctor({ container }, deps);
+    const lane = r.checks.find((c) => c.name === 'lane:lane_1');
+    expect(lane.ok).toBe(false);
+    expect(lane.detail).toContain('.claude/settings.local.json is tracked by the repository: lane deny rules cannot be written');
+  });
+
   it('flags a lane whose clone is not a git repository', async () => {
     const { deps, container } = await setupContainer();
     const one = await runCreate({ container }, deps);

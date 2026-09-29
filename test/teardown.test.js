@@ -122,6 +122,8 @@ describe('teardown --remove-dir safety', () => {
     expect(err).toBeInstanceOf(BlockedError);
     expect(err.exitCode).toBe(3);
     expect(err.message).toContain('not a git repository');
+    expect(err.message).toContain(`Copy anything you need out of ${s.dir} first.`);
+    expect(err.message).not.toContain('bundle');
     expect(existsSync(s.dir)).toBe(true);
     const r = await runTeardown({ lane: 'lane_1', removeDir: true, force: true, container: s.container }, s.deps);
     expect(r).toMatchObject({ removedDir: true, forced: true });
@@ -170,10 +172,22 @@ describe('teardown --remove-dir safety', () => {
     const s = await lane();
     unsafe['uncommitted changes'](s.dir);
     const r = await runTeardown({ lane: 'lane_1', removeDir: true, dryRun: true, container: s.container }, s.deps);
-    expect(r).toMatchObject({ dryRun: true, blocked: true });
+    expect(r).toMatchObject({ dryRun: true, blocked: true, removedDir: true });
+    expect(r).not.toHaveProperty('removeDir');
     expect(r.checks.problems[0]).toContain('uncommitted');
     expect(existsSync(s.dir)).toBe(true);
     expect(state(s).state).toBe('active');
+  });
+
+  it('archives plans written after a lane was closed before removing its clone', async () => {
+    const s = await lane();
+    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    writeFileSync(join(s.dir, '.ai', 'plans', 'late.md'), 'late\n');
+    writeFileSync(join(s.dir, '.ai', 'context', 'late.md'), 'ctx\n');
+    const r = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps);
+    expect(r).toMatchObject({ removedDir: true, archivedTo: '.ai/archive/2026-09-29_lane_1-2', contextDeleted: true });
+    expect(readFileSync(join(s.container, '.ai', 'archive', '2026-09-29_lane_1-2', 'plans', 'late.md'), 'utf8')).toBe('late\n');
+    expect(existsSync(s.dir)).toBe(false);
   });
 
   it('refuses when the lane directory has been replaced by a symlink out of the container', async () => {

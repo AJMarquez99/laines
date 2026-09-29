@@ -5,6 +5,10 @@ import { withLock } from './lock.js';
 import { addActivity, emptyLanesState, parseLanesState } from './lanes-state.js';
 import { fmtTs, renderBoard, safe } from './board.js';
 
+// Lane names come from users: never let `constructor`, `__proto__` and friends resolve through
+// Object.prototype.
+export const getLane = (state, name) => (Object.hasOwn(state.lanes, name) ? state.lanes[name] : undefined);
+
 export const readLanes = (ctx) => parseLanesState(readJson(ctx.paths.lanes, { onMissing: emptyLanesState }), ctx.paths.lanes);
 
 export function writeBoard(ctx, state) {
@@ -24,7 +28,7 @@ function archiveOverflow(ctx, overflow, now) {
   mkdirSync(dirname(file), { recursive: true });
   const head = existsSync(file)
     ? ''
-    : `# Board activity archive: ${ctx.id}\n\n_Entries rolled off the board's Activity Log, newest first within each batch._\n\n`;
+    : `# Board activity archive: ${ctx.id}\n\n_Entries rolled off the board's Activity Log, oldest first._\n\n`;
   const lines = overflow.map((a) => `- **${fmtTs(a.ts)}** · ${a.lane ? `\`${a.lane}\`: ` : ''}${safe(a.text)}`);
   appendFileSync(file, `${head}${lines.join('\n')}\n`);
 }
@@ -41,7 +45,7 @@ export async function updateLanes(ctx, deps, mutate) {
     for (const entry of activity) {
       const r = addActivity(next, entry, ctx.config.board.logLimit);
       next = r.state;
-      allOverflow.push(...r.overflow);
+      allOverflow.push(...r.overflow.reverse());
     }
     // Validate the entire final state (including all activity entries) before writing anything.
     // This ensures malformed activity entries are caught and rejected without persisting.

@@ -28,7 +28,9 @@ function laneProblems(root, containerId, name, lane, agents, deps) {
   if (!existsSync(excludeFile) || !readFileSync(excludeFile, 'utf8').includes(EXCLUDE_BEGIN)) {
     problems.push('git exclude block missing (lane files may show in git status)');
   }
-  if (agents.includes('claude') && !isTracked(deps, dir, '.claude/settings.local.json')) {
+  const settingsTracked = agents.includes('claude') && isTracked(deps, dir, '.claude/settings.local.json');
+  if (settingsTracked) problems.push('.claude/settings.local.json is tracked by the repository: lane deny rules cannot be written');
+  if (agents.includes('claude') && !settingsTracked) {
     const deny = (() => {
       try {
         return JSON.parse(readFileSync(join(dir, '.claude', 'settings.local.json'), 'utf8'))?.permissions?.deny ?? [];

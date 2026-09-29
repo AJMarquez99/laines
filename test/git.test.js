@@ -17,6 +17,28 @@ describe('runGit', () => {
     expect(bad.stderr.length).toBeGreaterThan(0);
   });
 
+  it('runs tests without user or system git config', () => {
+    expect(process.env.GIT_CONFIG_GLOBAL).toBe('/dev/null');
+    expect(process.env.GIT_CONFIG_NOSYSTEM).toBe('1');
+  });
+
+  it('ignores GIT_DIR and friends from the environment', () => {
+    const repo = tmp();
+    gitIn(repo, 'init', '-q');
+    const saved = { ...process.env };
+    Object.assign(process.env, { GIT_DIR: join(repo, 'nope'), GIT_WORK_TREE: join(repo, 'nope'), GIT_INDEX_FILE: join(repo, 'nope'), GIT_NAMESPACE: 'x' });
+    try {
+      const r = runGit(['rev-parse', '--show-toplevel'], { cwd: repo });
+      expect(r.status).toBe(0);
+      expect(r.stdout.trim()).toBe(repo);
+    } finally {
+      for (const k of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_NAMESPACE']) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+    }
+  });
+
   it('never lets git prompt for credentials', () => {
     const r = runGit(['-c', 'alias.promptcheck=!printenv GIT_TERMINAL_PROMPT', 'promptcheck'], { cwd: tmp() });
     expect(r.stdout.trim()).toBe('0');

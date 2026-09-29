@@ -75,11 +75,9 @@ describe('lanes store', () => {
     const archive = readFileSync(join(ctx.paths.ai, 'archive', '2026-09-29_board-log.md'), 'utf8');
     const lines = archive.split('\n');
     expect(archive).toContain('# Board activity archive: app');
-    // Verify overflow entries are present and in newest-first order within the batch
+    expect(archive).toContain('oldest first');
     const entryLines = lines.filter((l) => l.startsWith('- **'));
-    expect(entryLines).toContainEqual(expect.stringContaining('e2'));
-    expect(entryLines).toContainEqual(expect.stringContaining('e1'));
-    expect(entryLines.length).toBe(2);
+    expect(entryLines).toEqual(['- **2026-09-29 12:00 UTC** · e1', '- **2026-09-29 12:01 UTC** · e2']);
     // Verify e3 is not in the archive
     expect(archive).not.toContain('e3');
   });

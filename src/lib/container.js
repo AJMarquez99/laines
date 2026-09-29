@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, parse, resolve } from 'node:path';
 import { loadConfig } from '../config.js';
 import { readJson } from './jsonfile.js';
 import { configDir, containerPaths } from './paths.js';
 import { loadIndex } from './machine-index.js';
-import { InvalidInputError, MalformedConfigError, NotAContainerError } from './errors.js';
+import { BlockedError, InvalidInputError, MalformedConfigError, NotAContainerError } from './errors.js';
 
 // No upward search: a command runs against the given directory or fails clearly.
 export function resolveContainer(dir) {
@@ -50,9 +50,14 @@ export function containerDirFrom(opts, deps) {
 
 export function loadContainer(opts, deps) {
   const root = resolveContainer(containerDirFrom(opts, deps));
+  // Spec §9.1: lane directories are deleted relative to the root, so never the filesystem root or home.
+  const home = deps.homedir();
+  if (root === parse(root).root || (existsSync(home) && root === realpathSync(home))) {
+    throw new BlockedError(`Refusing to operate on a container at ${root}.`);
+  }
   const paths = containerPaths(root);
   const marker = readJson(paths.marker);
-  if (!marker.id) throw new MalformedConfigError(paths.marker, 'no id');
+  if (!marker || typeof marker !== 'object' || !marker.id) throw new MalformedConfigError(paths.marker, 'no id');
   const config = loadConfig(paths.config);
   const indexDir = configDir(deps.env, deps.homedir());
   const entry = loadIndex(indexDir).containers.find((c) => c.path === root);

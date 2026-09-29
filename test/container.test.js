@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import {
   findRepoRoot, detectLane, containerDirFrom, loadContainer, laneFrom,
 } from '../src/lib/container.js';
-import { InvalidInputError, MalformedConfigError, NotAContainerError } from '../src/lib/errors.js';
+import { BlockedError, InvalidInputError, MalformedConfigError, NotAContainerError } from '../src/lib/errors.js';
 import { tmp, cleanupTmp, testDeps, setupContainer } from './helpers.js';
 
 afterEach(cleanupTmp);
@@ -77,6 +77,23 @@ describe('loadContainer and laneFrom', () => {
     expect(() => loadContainer({ container: root }, deps)).toThrow(NotAContainerError);
     writeFileSync(join(deps.env.LAINES_CONFIG_DIR, 'containers.json'), JSON.stringify({ version: 1, machine: { range: [20000, 29999], blockSize: 200 }, containers: [] }));
     expect(() => loadContainer({ container }, deps)).toThrow(MalformedConfigError);
+  });
+
+  it('refuses a container at the home directory itself', () => {
+    const root = tmp();
+    const home = join(root, 'home');
+    mkdirSync(join(home, '.laines'), { recursive: true });
+    writeFileSync(join(home, '.laines', 'container.json'), JSON.stringify({ id: 'app' }));
+    expect(() => loadContainer({ container: home }, testDeps(root))).toThrow(BlockedError);
+    expect(() => loadContainer({ container: home }, testDeps(root))).toThrow(`Refusing to operate on a container at ${home}.`);
+  });
+
+  it('refuses a container marker that is not an object with an id', () => {
+    for (const body of ['null', '[]', '"x"', '{}']) {
+      const c = fakeContainer(tmp());
+      writeFileSync(join(c, '.laines', 'container.json'), body);
+      expect(() => loadContainer({ container: c }, testDeps(c)), body).toThrow(MalformedConfigError);
+    }
   });
 
   it('laneFrom uses the name, else the lane the cwd is in', () => {

@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { detectLane, laneFrom, loadContainer } from '../lib/container.js';
-import { readLanes, updateLanes } from '../lib/lanes-store.js';
+import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
 import { laneId } from '../lib/ids.js';
 import { appendAudit } from '../lib/audit.js';
 import { InvalidInputError } from '../lib/errors.js';
@@ -15,7 +15,7 @@ function text(value, label) {
 }
 
 function openLane(state, name) {
-  const lane = state.lanes[name];
+  const lane = getLane(state, name);
   if (!lane) throw new InvalidInputError(`No lane named ${name}. See \`laines list\`.`);
   if (lane.state === 'closed') throw new InvalidInputError(`Lane ${name} is closed.`);
   return lane;
@@ -114,7 +114,7 @@ export async function runStatus(opts, deps) {
       .map(([n, l]) => summary(ctx, n, l));
     return { container: { id: ctx.id, path: ctx.root, portRange: ctx.portRange }, lanes, requests: state.requests };
   }
-  const l = state.lanes[name];
+  const l = getLane(state, name);
   if (!l) throw new InvalidInputError(`No lane named ${name}. See \`laines list\`.`);
   const path = join(ctx.root, l.repos[0].path);
   return {
