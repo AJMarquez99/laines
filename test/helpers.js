@@ -1,6 +1,9 @@
-import { mkdtempSync, rmSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { vi } from 'vitest';
+import { runGit } from '../src/lib/git.js';
 
 const made = [];
 
@@ -24,7 +27,61 @@ export function testDeps(root, overrides = {}) {
     runDotAi: () => {
       throw new Error('runDotAi not stubbed in this test');
     },
+    git: runGit,
+    busyPorts: async () => [],
     warn: () => {},
     ...overrides,
   };
+}
+
+// Git for fixtures: fixed identity, and no user/system config (signing, hooks) leaking into tests.
+const GIT_TEST_ENV = {
+  GIT_AUTHOR_NAME: 'Test',
+  GIT_AUTHOR_EMAIL: 'test@example.com',
+  GIT_COMMITTER_NAME: 'Test',
+  GIT_COMMITTER_EMAIL: 'test@example.com',
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_CONFIG_NOSYSTEM: '1',
+};
+
+export function gitIn(cwd, ...args) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...GIT_TEST_ENV } });
+}
+
+export function makeRemote(root, { files = { 'README.md': '# app\n' }, branches = [] } = {}) {
+  const remote = join(root, 'my-app.git');
+  gitIn(root, 'init', '-q', '--bare', '-b', 'main', remote);
+  const seed = join(root, 'seed');
+  gitIn(root, 'init', '-q', '-b', 'main', seed);
+  for (const [file, content] of Object.entries(files)) {
+    mkdirSync(dirname(join(seed, file)), { recursive: true });
+    writeFileSync(join(seed, file), content);
+  }
+  gitIn(seed, 'add', '-A');
+  gitIn(seed, 'commit', '-q', '-m', 'init');
+  gitIn(seed, 'push', '-q', remote, 'main');
+  for (const branch of branches) {
+    gitIn(seed, 'checkout', '-q', '-b', branch);
+    gitIn(seed, 'commit', '-q', '--allow-empty', '-m', branch);
+    gitIn(seed, 'push', '-q', remote, branch);
+    gitIn(seed, 'checkout', '-q', 'main');
+  }
+  return remote;
+}
+
+export async function runCli(args, deps) {
+  const { run } = await import('../src/cli.js');
+  const out = [];
+  const err = [];
+  const o = vi.spyOn(process.stdout, 'write').mockImplementation((s) => (out.push(String(s)), true));
+  const e = vi.spyOn(process.stderr, 'write').mockImplementation((s) => (err.push(String(s)), true));
+  process.exitCode = undefined;
+  try {
+    await run(['node', 'laines', ...args], deps);
+    return { code: process.exitCode ?? 0, stdout: out.join(''), stderr: err.join('') };
+  } finally {
+    o.mockRestore();
+    e.mockRestore();
+    process.exitCode = undefined;
+  }
 }

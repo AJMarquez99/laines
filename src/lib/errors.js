@@ -49,3 +49,11 @@ export class LockTimeoutError extends LainesError {
     this.lockDir = lockDir;
   }
 }
+
+export class GitError extends LainesError {
+  constructor(args, result) {
+    const why = (result.stderr || (result.error && result.error.message) || '').trim();
+    super(`git ${args[0]} failed (exit ${result.status ?? 'none'}):\n${why}`, EXIT_CODES.GENERIC);
+    this.args = args;
+  }
+}
