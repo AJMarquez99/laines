@@ -32,3 +32,15 @@ export function formatDoctor(r) {
 }
 
 export const formatBrief = (r) => r.text;
+
+export function formatCreate(r) {
+  const head = [
+    r.dryRun ? `dry run: would create ${r.lane} (${r.id})` : `lane ${r.lane} created`,
+    `path:    ${r.path}`,
+    `branch:  ${r.branch}`,
+    `ports:   ${r.ports[0]}–${r.ports[1]}`,
+  ];
+  if (r.dryRun) return [...head, `remote:  ${r.remote}`].join('\n');
+  const lines = [...head, ...r.warnings.map((w) => `warning: ${w}`), '', r.brief.text, 'next:', ...r.next.map((s) => `  ${s}`)];
+  return lines.join('\n');
+}

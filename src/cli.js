@@ -5,8 +5,9 @@ import { runInit } from './commands/init.js';
 import { runConfigGet } from './commands/config.js';
 import { runDoctor } from './commands/doctor.js';
 import { runBrief } from './commands/brief.js';
+import { runCreate } from './commands/create.js';
 import { EXIT_CODES, InvalidInputError, LainesError } from './lib/errors.js';
-import { printJson, formatInit, formatConfig, formatDoctor, formatBrief } from './lib/format.js';
+import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate } from './lib/format.js';
 
 // The single choke point: positionals → opts, global options, rendering, error → exit code.
 function handle(fn, { table, args } = {}, deps) {
@@ -77,6 +78,13 @@ export function buildProgram(deps = defaultDeps) {
     .description('Print the handoff for an agent working in a lane')
     .argument('[lane]', 'lane name (default: the lane you are in)')
     .action(handle(runBrief, { table: formatBrief, args: ['lane'] }, deps));
+
+  withGlobals(program.command('create'))
+    .description('Create a lane: an isolated clone with its own ports, env file and lane files')
+    .argument('[name]', 'lane name (default: the next free <lanePrefix><N>)')
+    .option('--branch <name>', 'branch to check out (default: the container default branch)')
+    .option('--dry-run', 'show what would be created without cloning or reserving anything')
+    .action(handle(runCreate, { table: formatCreate, args: ['name'] }, deps));
 
   return program;
 }
