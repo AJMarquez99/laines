@@ -1,0 +1,42 @@
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { buildConfig, loadConfig } from '../src/config.js';
+import { MalformedConfigError, NotAContainerError } from '../src/lib/errors.js';
+import { tmp, cleanupTmp } from './helpers.js';
+
+afterEach(cleanupTmp);
+
+describe('config', () => {
+  it('fills every default', () => {
+    const c = buildConfig({ repoName: 'app', remote: 'git@example.com:o/app.git', defaultBranch: 'main', agents: ['claude'] });
+    expect(c).toEqual({
+      repos: { app: { remote: 'git@example.com:o/app.git', defaultBranch: 'main' } },
+      lanePrefix: 'lane_',
+      maxLanes: 20,
+      ports: { stride: 10 },
+      hooks: { policy: 'notify', timeoutSec: 300, stableAfter: 3 },
+      teardown: { mcp: 'confirm' },
+      capabilities: { create: true, report: true, keep: true, teardown: true },
+      agents: ['claude'],
+      agentCmd: 'claude',
+      board: { logLimit: 200 },
+      locked: false,
+    });
+  });
+
+  it('loads a file, reporting a missing one as not-a-container and bad values as malformed', () => {
+    const root = tmp();
+    const file = join(root, '.laines', 'config.json');
+    expect(() => loadConfig(file)).toThrow(NotAContainerError);
+    mkdirSync(join(root, '.laines'));
+    writeFileSync(file, JSON.stringify({ repos: { app: { remote: 'x' } }, hooks: { policy: 'yolo' } }));
+    expect(() => loadConfig(file)).toThrow(/hooks\.policy/);
+    writeFileSync(file, JSON.stringify({ repos: { app: { remote: 'x' } }, typo: 1 }));
+    expect(() => loadConfig(file)).toThrow(MalformedConfigError);
+    writeFileSync(file, JSON.stringify({ repos: { a: { remote: 'x' }, b: { remote: 'y' } } }));
+    expect(() => loadConfig(file)).toThrow(/exactly one repo/);
+    writeFileSync(file, JSON.stringify({ repos: { app: { remote: 'x' } } }));
+    expect(loadConfig(file).hooks.policy).toBe('notify');
+  });
+});
