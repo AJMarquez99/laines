@@ -30,3 +30,5 @@ export function formatDoctor(r) {
   lines.push(r.ok ? 'status: ok' : 'status: problems found');
   return lines.join('\n');
 }
+
+export const formatBrief = (r) => r.text;

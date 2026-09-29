@@ -4,8 +4,9 @@ import { VERSION } from './version.js';
 import { runInit } from './commands/init.js';
 import { runConfigGet } from './commands/config.js';
 import { runDoctor } from './commands/doctor.js';
+import { runBrief } from './commands/brief.js';
 import { EXIT_CODES, InvalidInputError, LainesError } from './lib/errors.js';
-import { printJson, formatInit, formatConfig, formatDoctor } from './lib/format.js';
+import { printJson, formatInit, formatConfig, formatDoctor, formatBrief } from './lib/format.js';
 
 // The single choke point: positionals → opts, global options, rendering, error → exit code.
 function handle(fn, { table, args } = {}, deps) {
@@ -71,6 +72,11 @@ export function buildProgram(deps = defaultDeps) {
     .description('Check the container, its .ai/ layer, agent wiring and the machine index')
     .option('--prune', 'remove machine-index entries whose container no longer exists')
     .action(handle(runDoctor, { table: formatDoctor }, deps));
+
+  withGlobals(program.command('brief'))
+    .description('Print the handoff for an agent working in a lane')
+    .argument('[lane]', 'lane name (default: the lane you are in)')
+    .action(handle(runBrief, { table: formatBrief, args: ['lane'] }, deps));
 
   return program;
 }
