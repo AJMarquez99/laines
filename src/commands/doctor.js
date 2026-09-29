@@ -22,9 +22,10 @@ function laneProblems(root, containerId, name, lane, agents, deps) {
   if (!marker || marker.lane !== name || marker.containerId !== containerId) problems.push('lane marker .ai/.lane.json missing or wrong');
   if (!has('.laines.env')) problems.push('.laines.env missing');
   const exclude = deps.git(['rev-parse', '--git-path', 'info/exclude'], { cwd: dir });
+  if (exclude.status !== 0) return ['clone is not a git repository'];
   const rel = exclude.stdout.trim();
-  const excludeFile = exclude.status === 0 ? (isAbsolute(rel) ? rel : join(dir, rel)) : null;
-  if (!excludeFile || !existsSync(excludeFile) || !readFileSync(excludeFile, 'utf8').includes(EXCLUDE_BEGIN)) {
+  const excludeFile = isAbsolute(rel) ? rel : join(dir, rel);
+  if (!existsSync(excludeFile) || !readFileSync(excludeFile, 'utf8').includes(EXCLUDE_BEGIN)) {
     problems.push('git exclude block missing (lane files may show in git status)');
   }
   if (agents.includes('claude') && !isTracked(deps, dir, '.claude/settings.local.json')) {

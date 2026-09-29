@@ -118,4 +118,14 @@ describe('doctor lane checks', () => {
     expect(byName['lane:lane_1'].detail).toContain('dot-ai');
     expect(byName['lane:lane_2'].detail).toContain('clone missing');
   });
+
+  it('flags a lane whose clone is not a git repository', async () => {
+    const { deps, container } = await setupContainer();
+    const one = await runCreate({ container }, deps);
+    rmSync(join(one.path, '.git'), { recursive: true, force: true });
+    const r = await runDoctor({ container }, deps);
+    const lane = r.checks.find((c) => c.name === 'lane:lane_1');
+    expect(lane.ok).toBe(false);
+    expect(lane.detail).toContain('not a git repository');
+  });
 });

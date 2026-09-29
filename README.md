@@ -106,7 +106,7 @@ your home directory itself.
 
 ## Commands
 
-All commands print JSON by default. Add `--format table` (after the command name) for
+All commands print JSON by default, except `watch`, which streams new board lines. Add `--format table` (after the command name) for
 human-readable output.
 
 | Command | What it does |
@@ -116,12 +116,12 @@ human-readable output.
 | `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board, locks, every open lane, and how each agent reaches the lanes. `--prune` removes machine-index entries for containers that no longer exist. |
 | `laines create [name] [--branch <b>] [--dry-run]` | Create a lane: clone the repository, allocate ports, write the lane's env file, identity and deny rules, and print its brief. |
 | `laines list [--all]` | List open lanes (`--all` includes closed ones). |
-| `laines status [lane]` | Show one lane's state, task, branch and ports. |
-| `laines report [lane] --status <s> --task <t> --blocked <why> --note <n>` | Update a lane's status on the board. |
+| `laines status [lane]` | Show one lane's state, task, branch and ports. With no lane named and outside a lane, shows the container overview. |
+| `laines report [lane] [--status <s>] [--task <t>] [--blocked <why>] [--note <n>]` | Update a lane's status on the board; at least one option is required. `-` clears `--task` or `--blocked`. |
 | `laines brief [lane]` | Print a lane's brief (identity, ports, rules). |
 | `laines keep [lane] --reason <why>` | Mark a lane to be kept, so it is not torn down as finished. |
 | `laines release <lane>` | Release a kept lane. Human-only: the lane name is required and agents are denied it. |
-| `laines teardown <lane> [--remove-dir] [--force] [--dry-run]` | Close a lane. Human-only. Refuses while the lane has unpushed commits, uncommitted changes or a branch that exists nowhere else, unless `--force` (which never overrides `keep`); `--remove-dir` deletes the clone. |
+| `laines teardown <lane> [--remove-dir] [--force] [--dry-run]` | Close a lane (human-only): archive its plans, delete its context and mark it closed. Without `--remove-dir` the clone stays in place. With `--remove-dir`, teardown refuses when the lane has uncommitted changes, stash entries, commits that exist on no remote (any ref: branches, tags, backup refs, detached HEAD), or is not a git repository. `--force` overrides those but never `keep`. A branch with no upstream whose commits are on a remote is only a warning. |
 | `laines watch [file] [--interval <s>]` | Follow the board (or any file) and print new lines as they land. |
 
 Run commands from the container directory, or pass `--container <dir>`.
@@ -171,7 +171,7 @@ read the container's instructions too.
 | Milestone | Delivers | Status |
 |---|---|---|
 | **M1: Foundation** | `init`, `config get`, `doctor`, machine index, board, agent wiring | ✅ Done |
-| **M2: Lanes** | `create`, `list`, `status`, `report`, `brief`, `keep` / `release`, `teardown` with unpushed-work safety checks, `watch` | Next |
+| **M2: Lanes** | `create`, `list`, `status`, `report`, `brief`, `keep` / `release`, `teardown` with unpushed-work safety checks, `watch` | ✅ Done |
 | **M3: Hooks** | hook runner, checksum approval (`hooks status / approve / policy`), `refresh` | Planned |
 | **M4: MCP server** | `laines-mcp`, capabilities, locked mode, human confirmation for teardown over MCP | Planned |
 | **M5: Release** | CI on macOS and Linux, security documentation, npm package | Planned |
