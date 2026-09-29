@@ -1,0 +1,50 @@
+{
+  "name": "@ajmarquez99/laines",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "L.AI.nes: isolated parallel work lanes for coding agents. One shared .ai/ knowledge base, many independent clones, each with its own local environment.",
+  "bin": {
+    "laines": "./bin/laines.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "templates/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "author": "Alejandro Marquez",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AJMarquez99/laines.git"
+  },
+  "homepage": "https://github.com/AJMarquez99/laines#readme",
+  "bugs": {
+    "url": "https://github.com/AJMarquez99/laines/issues"
+  },
+  "keywords": ["ai", "agents", "claude", "parallel", "lanes", "git", "cli", "mcp"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint .",
+    "prepublishOnly": "npm run test:run"
+  },
+  "dependencies": {
+    "@ajmarquez99/dot-ai": "^1.1.1",
+    "commander": "^12.1.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.16.0",
+    "eslint": "^9.16.0",
+    "globals": "^15.13.0",
+    "vitest": "^4.1.8"
+  }
+}
