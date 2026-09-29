@@ -44,3 +44,39 @@ export function formatCreate(r) {
   const lines = [...head, ...r.warnings.map((w) => `warning: ${w}`), '', r.brief.text, 'next:', ...r.next.map((s) => `  ${s}`)];
   return lines.join('\n');
 }
+
+export const formatReport = (r) => `${r.lane}: status=${r.status}, task=${r.task ?? '-'}, blocked=${r.blocked ?? '-'}`;
+export const formatKeep = (r) => `${r.lane} kept: ${r.kept.reason}`;
+export const formatRelease = (r) => (r.released ? `${r.lane} released` : `${r.lane} was not kept`);
+
+export function formatList(r) {
+  if (!r.lanes.length) return 'no lanes';
+  return r.lanes
+    .map((l) => [
+      l.kept ? '📌' : '  ',
+      l.lane.padEnd(14),
+      l.state.padEnd(13),
+      String(l.status).padEnd(14),
+      l.branch.padEnd(28),
+      `${l.ports[0]}–${l.ports[1]}`,
+    ].join(' '))
+    .join('\n');
+}
+
+export function formatStatus(r) {
+  if (r.lanes) {
+    const requests = r.requests.length ? r.requests.map((q) => `  ${q.text} → ${q.command}`).join('\n') : '  none';
+    return [`container ${r.container.id} · ports ${r.container.portRange[0]}–${r.container.portRange[1]}`, formatList(r), 'requests:', requests].join('\n');
+  }
+  return [
+    `${r.lane} (${r.id})`,
+    `state:   ${r.state}`,
+    `status:  ${r.status}`,
+    `task:    ${r.task ?? '-'}`,
+    `blocked: ${r.blocked ?? '-'}`,
+    `branch:  ${r.branch}`,
+    `ports:   ${r.ports[0]}–${r.ports[1]}`,
+    `path:    ${r.path}`,
+    `kept:    ${r.kept ? r.kept.reason : '-'}`,
+  ].join('\n');
+}

@@ -6,8 +6,9 @@ import { runConfigGet } from './commands/config.js';
 import { runDoctor } from './commands/doctor.js';
 import { runBrief } from './commands/brief.js';
 import { runCreate } from './commands/create.js';
+import { runReport, runKeep, runRelease, runList, runStatus } from './commands/lanes.js';
 import { EXIT_CODES, InvalidInputError, LainesError } from './lib/errors.js';
-import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate } from './lib/format.js';
+import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate, formatReport, formatKeep, formatRelease, formatList, formatStatus } from './lib/format.js';
 
 // The single choke point: positionals → opts, global options, rendering, error → exit code.
 function handle(fn, { table, args } = {}, deps) {
@@ -85,6 +86,36 @@ export function buildProgram(deps = defaultDeps) {
     .option('--branch <name>', 'branch to check out (default: the container default branch)')
     .option('--dry-run', 'show what would be created without cloning or reserving anything')
     .action(handle(runCreate, { table: formatCreate, args: ['name'] }, deps));
+
+  withGlobals(program.command('report'))
+    .description("Update a lane's board entry")
+    .argument('[lane]', 'lane name (default: the lane you are in)')
+    .option('--status <text>', 'lane status, e.g. idle, in-progress, review')
+    .option('--task <text>', 'current task ("-" clears it)')
+    .option('--blocked <text>', 'what the lane is blocked on ("-" clears it)')
+    .option('--note <text>', 'a line for the Activity Log')
+    .action(handle(runReport, { table: formatReport, args: ['lane'] }, deps));
+
+  withGlobals(program.command('keep'))
+    .description('Pin a lane so it cannot be torn down until a human releases it')
+    .argument('[lane]', 'lane name (default: the lane you are in)')
+    .option('--reason <text>', 'what depends on this lane, e.g. "base of stacked PR #123"')
+    .action(handle(runKeep, { table: formatKeep, args: ['lane'] }, deps));
+
+  withGlobals(program.command('release'))
+    .description('Unpin a kept lane (human-only)')
+    .argument('<lane>', 'lane name')
+    .action(handle(runRelease, { table: formatRelease, args: ['lane'] }, deps));
+
+  withGlobals(program.command('list'))
+    .description('List lanes')
+    .option('--all', 'include closed lanes')
+    .action(handle(runList, { table: formatList }, deps));
+
+  withGlobals(program.command('status'))
+    .description('Show the container overview, or one lane')
+    .argument('[lane]', 'lane name (default: the lane you are in, else the overview)')
+    .action(handle(runStatus, { table: formatStatus, args: ['lane'] }, deps));
 
   return program;
 }
