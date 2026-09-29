@@ -8,6 +8,7 @@ import {
 import { buildConfig } from '../src/config.js';
 import { containerPaths } from '../src/lib/paths.js';
 import { denyRules } from '../src/lib/agent-files.js';
+import { GitError } from '../src/lib/errors.js';
 import { tmp, cleanupTmp, testDeps, gitIn, makeRemote } from './helpers.js';
 
 afterEach(cleanupTmp);
@@ -78,5 +79,16 @@ describe('writeLaneFiles', () => {
     expect(isTracked(deps, lane.laneDir, '.ai/context/README.md')).toBe(false);
     expect(untrackedEntries(deps, lane.laneDir, '.ai/plans')).toEqual([]);
     expect(untrackedEntries(deps, lane.laneDir, '.ai/context')).toEqual(['README.md']);
+  });
+
+  it('treats tracked files with non-ASCII names as tracked', () => {
+    const { deps, lane } = setup({ files: { 'README.md': 'x\n', '.ai/plans/résumé.md': 'p\n' } });
+    expect(untrackedEntries(deps, lane.laneDir, '.ai/plans')).not.toContain('résumé.md');
+    expect(untrackedEntries(deps, lane.laneDir, '.ai/plans')).toEqual([]);
+  });
+
+  it('isTracked throws GitError outside a git repository instead of reading as untracked', () => {
+    const dir = tmp();
+    expect(() => isTracked(testDeps(dir), dir, 'x')).toThrow(GitError);
   });
 });
