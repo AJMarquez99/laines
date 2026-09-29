@@ -7,8 +7,9 @@ import { runDoctor } from './commands/doctor.js';
 import { runBrief } from './commands/brief.js';
 import { runCreate } from './commands/create.js';
 import { runReport, runKeep, runRelease, runList, runStatus } from './commands/lanes.js';
+import { runTeardown } from './commands/teardown.js';
 import { EXIT_CODES, InvalidInputError, LainesError } from './lib/errors.js';
-import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate, formatReport, formatKeep, formatRelease, formatList, formatStatus } from './lib/format.js';
+import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate, formatReport, formatKeep, formatRelease, formatList, formatStatus, formatTeardown } from './lib/format.js';
 
 // The single choke point: positionals → opts, global options, rendering, error → exit code.
 function handle(fn, { table, args } = {}, deps) {
@@ -116,6 +117,14 @@ export function buildProgram(deps = defaultDeps) {
     .description('Show the container overview, or one lane')
     .argument('[lane]', 'lane name (default: the lane you are in, else the overview)')
     .action(handle(runStatus, { table: formatStatus, args: ['lane'] }, deps));
+
+  withGlobals(program.command('teardown'))
+    .description('Close a lane: archive plans, delete context, and optionally remove the clone (human-only)')
+    .argument('<lane>', 'lane name')
+    .option('--remove-dir', 'also delete the clone, after the unpushed-work checks')
+    .option('--force', 'remove even if the lane holds unpushed work (never overrides keep)')
+    .option('--dry-run', 'show what would happen without changing anything')
+    .action(handle(runTeardown, { table: formatTeardown, args: ['lane'] }, deps));
 
   return program;
 }
