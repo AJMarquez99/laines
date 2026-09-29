@@ -3,8 +3,9 @@ import { defaultDeps } from './deps.js';
 import { VERSION } from './version.js';
 import { runInit } from './commands/init.js';
 import { runConfigGet } from './commands/config.js';
+import { runDoctor } from './commands/doctor.js';
 import { EXIT_CODES, InvalidInputError, LainesError } from './lib/errors.js';
-import { printJson, formatInit, formatConfig } from './lib/format.js';
+import { printJson, formatInit, formatConfig, formatDoctor } from './lib/format.js';
 
 // The single choke point: positionals → opts, global options, rendering, error → exit code.
 function handle(fn, { table, args } = {}, deps) {
@@ -59,6 +60,12 @@ export function buildProgram(deps = defaultDeps) {
     .description('Print the container config, or one dotted key')
     .argument('[key]', 'dotted key, e.g. hooks.policy')
     .action(handle(runConfigGet, { table: formatConfig, args: ['key'] }, deps));
+
+  program
+    .command('doctor')
+    .description('Check the container, its .ai/ layer, agent wiring and the machine index')
+    .option('--prune', 'remove machine-index entries whose container no longer exists')
+    .action(handle(runDoctor, { table: formatDoctor }, deps));
 
   return program;
 }
