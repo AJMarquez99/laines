@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { getEventListeners } from 'node:events';
 import { newLines, runWatch } from '../src/commands/watch.js';
 import { InvalidInputError } from '../src/lib/errors.js';
 import { tmp, cleanupTmp, testDeps } from './helpers.js';
@@ -37,5 +38,28 @@ describe('watch', () => {
     await expect(runWatch({ file: 'nope.md' }, deps, { signal: ac.signal, write: () => {} })).rejects.toBeInstanceOf(InvalidInputError);
     writeFileSync(join(root, 'f.md'), 'x');
     await expect(runWatch({ file: 'f.md', interval: '0' }, deps, { signal: ac.signal, write: () => {} })).rejects.toBeInstanceOf(InvalidInputError);
+  });
+
+  it('refuses a directory', async () => {
+    const root = tmp();
+    const dir = join(root, 'subdir');
+    mkdirSync(dir);
+    const deps = testDeps(root);
+    const ac = new AbortController();
+    await expect(runWatch({ file: 'subdir' }, deps, { signal: ac.signal, write: () => {} })).rejects.toBeInstanceOf(InvalidInputError);
+  });
+
+  it('does not accumulate abort listeners on repeated polls', async () => {
+    const root = tmp();
+    const file = join(root, 'board.md');
+    writeFileSync(file, '# board\n');
+    const out = [];
+    const ac = new AbortController();
+    const done = runWatch({ file }, testDeps(root), { signal: ac.signal, write: (s) => out.push(s), intervalMs: 20 });
+    await new Promise((r) => setTimeout(r, 200));
+    const listeners = getEventListeners(ac.signal, 'abort');
+    ac.abort();
+    await done;
+    expect(listeners.length).toBeLessThanOrEqual(1);
   });
 });

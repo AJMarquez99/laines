@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { loadContainer } from '../lib/container.js';
 import { InvalidInputError } from '../lib/errors.js';
@@ -10,17 +10,22 @@ export function newLines(prev, next) {
 
 const sleep = (ms, signal) =>
   new Promise((done) => {
-    const t = setTimeout(done, ms);
-    signal?.addEventListener('abort', () => {
+    const t = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      done();
+    }, ms);
+    const onAbort = () => {
       clearTimeout(t);
       done();
-    }, { once: true });
+    };
+    signal?.addEventListener('abort', onAbort);
   });
 
 // The board is regenerated wholesale on every write, so "what's new" is a line-set difference.
 export async function runWatch(opts, deps, { signal, write, intervalMs } = {}) {
   const file = opts.file ? resolve(deps.cwd(), opts.file) : loadContainer(opts, deps).paths.board;
   if (!existsSync(file)) throw new InvalidInputError(`File not found: ${file}`);
+  if (!statSync(file).isFile()) throw new InvalidInputError(`Not a file: ${file}`);
   let ms = intervalMs;
   if (ms === undefined) {
     const seconds = Number(opts.interval ?? 2);
@@ -39,7 +44,7 @@ export async function runWatch(opts, deps, { signal, write, intervalMs } = {}) {
     } catch {
       continue;
     }
-    if (cur === prev) continue;
+    if (!cur || cur === prev) continue;
     const lines = newLines(prev, cur);
     prev = cur;
     if (!lines.length) continue;
