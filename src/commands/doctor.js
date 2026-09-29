@@ -1,9 +1,9 @@
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { loadConfig } from '../config.js';
 import { readJson } from '../lib/jsonfile.js';
 import { configDir, containerPaths } from '../lib/paths.js';
-import { loadIndex, pruneIndex } from '../lib/machine-index.js';
+import { indexFiles, loadIndex, pruneIndex } from '../lib/machine-index.js';
 import { resolveContainer } from '../lib/container.js';
 import { AGENT_FILES, LANES_BEGIN, denyRules } from '../lib/agent-files.js';
 import { NotAContainerError } from '../lib/errors.js';
@@ -15,7 +15,7 @@ export async function runDoctor(opts, deps) {
 
   let root;
   try {
-    root = resolveContainer(opts.container ?? deps.cwd());
+    root = resolveContainer(resolve(deps.cwd(), opts.container ?? '.'));
   } catch (err) {
     if (opts.prune && err instanceof NotAContainerError) return result;
     throw err;
@@ -42,8 +42,7 @@ export async function runDoctor(opts, deps) {
     return `repo ${Object.keys(config.repos)[0]}, hook policy ${config.hooks.policy}`;
   });
   check('machine-index', () => {
-    const real = realpathSync(root);
-    const entry = loadIndex(indexDir).containers.find((c) => c.path === real);
+    const entry = loadIndex(indexDir).containers.find((c) => c.path === root);
     if (!entry) throw new Error(`not registered in ${join(indexDir, 'containers.json')}`);
     if (marker && entry.id !== marker.id) throw new Error(`index id ${entry.id} does not match marker id ${marker.id}`);
     return `ports ${entry.portRange[0]}–${entry.portRange[1]}`;
@@ -77,6 +76,11 @@ export async function runDoctor(opts, deps) {
   });
   check('lock', () => {
     if (existsSync(p.lock)) throw new Error(`lock held at ${p.lock}; if no laines command is running, remove it: rmdir '${p.lock}'`);
+    return 'free';
+  });
+  check('machine-lock', () => {
+    const { lock } = indexFiles(indexDir);
+    if (existsSync(lock)) throw new Error(`machine-index lock held at ${lock}; if no laines command is running, remove it: rmdir '${lock}'`);
     return 'free';
   });
 

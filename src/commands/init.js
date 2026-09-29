@@ -54,8 +54,13 @@ function assertSafeTarget(target, home) {
       throw new InvalidInputError(`${target} already has ${name}/. L.AI.nes creates fresh containers only; pick a new or empty directory.`);
     }
   }
-  for (let dir = dirname(target); ; dir = dirname(dir)) {
-    if (existsSync(join(dir, '.laines', 'container.json'))) {
+  for (let dir = target; ; dir = dirname(dir)) {
+    if (existsSync(join(dir, '.git'))) {
+      throw new InvalidInputError(
+        `${target} is inside the git repository ${dir}. Create the container outside any repository; lanes are the clones.`,
+      );
+    }
+    if (dir !== target && existsSync(join(dir, '.laines', 'container.json'))) {
       throw new InvalidInputError(`${target} is inside the container ${dir}. Create containers outside other containers.`);
     }
     if (dirname(dir) === dir) break;
@@ -109,6 +114,11 @@ const nextSteps = (path) => [
 export async function runInit(opts, deps) {
   if (!opts.dir) throw new InvalidInputError('Usage: laines init <dir> --remote <url>');
   if (!opts.remote) throw new InvalidInputError('--remote <url> is required: the git URL every lane clones.');
+  for (const [flag, value] of [['--remote', opts.remote], ['--branch', opts.branch]]) {
+    if (typeof value === 'string' && value.startsWith('-')) {
+      throw new InvalidInputError(`${flag} must not start with "-" (got "${value}"): it is passed to git.`);
+    }
+  }
   const target = resolve(deps.cwd(), opts.dir);
   assertSafeTarget(target, deps.homedir());
   if (opts.id !== undefined) validateId(opts.id);

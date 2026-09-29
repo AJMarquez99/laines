@@ -1,12 +1,16 @@
-import { dirname } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { readJson } from './lib/jsonfile.js';
 import { parseWith } from './lib/schema.js';
-import { NotAContainerError } from './lib/errors.js';
+import { MalformedConfigError, NotAContainerError } from './lib/errors.js';
+
+// Both end up as git arguments: a leading "-" would be parsed as an option.
+const gitArg = () => z.string().min(1).refine((s) => !s.startsWith('-'), 'must not start with "-"');
 
 const Repo = z.strictObject({
-  remote: z.string().min(1),
-  defaultBranch: z.string().min(1).default('main'),
+  remote: gitArg(),
+  defaultBranch: gitArg().default('main'),
 });
 
 export const ConfigSchema = z.strictObject({
@@ -49,7 +53,9 @@ export function buildConfig({ repoName, remote, defaultBranch, agents }) {
 export function loadConfig(file) {
   const raw = readJson(file, {
     onMissing: () => {
-      throw new NotAContainerError(dirname(dirname(file)));
+      const laines = dirname(file);
+      if (existsSync(join(laines, 'container.json'))) throw new MalformedConfigError(file, 'missing');
+      throw new NotAContainerError(dirname(laines));
     },
   });
   return parseWith(ConfigSchema, raw, file);

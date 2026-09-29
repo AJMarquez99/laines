@@ -37,7 +37,7 @@ describe('cli', () => {
     const r = await cli(['init', 'lanes', '--remote', REMOTE], deps);
     expect(r.code).toBe(0);
     expect(JSON.parse(r.stdout).id).toBe('my-app');
-    const t = await cli(['--format', 'table', 'init', 'more', '--remote', REMOTE, '--dry-run'], deps);
+    const t = await cli(['init', 'more', '--remote', REMOTE, '--dry-run', '--format', 'table'], deps);
     expect(t.code).toBe(0);
     expect(t.stdout).toContain('dry run');
     expect(t.stdout).toContain('my-app-2');
@@ -46,8 +46,11 @@ describe('cli', () => {
   it('config get reads the whole config or one key, from --container or cwd', async () => {
     const { root, deps } = setup();
     await cli(['init', 'lanes', '--remote', REMOTE], deps);
-    const whole = await cli(['--container', join(root, 'lanes'), 'config', 'get'], deps);
+    const whole = await cli(['config', 'get', '--container', join(root, 'lanes')], deps);
     expect(JSON.parse(whole.stdout).maxLanes).toBe(20);
+    const relative = await cli(['config', 'get', 'maxLanes', '--container', 'lanes'], deps);
+    expect(relative.code).toBe(0);
+    expect(JSON.parse(relative.stdout)).toEqual({ key: 'maxLanes', value: 20 });
     const inCwd = { ...deps, cwd: () => join(root, 'lanes') };
     const one = await cli(['config', 'get', 'hooks.policy'], inCwd);
     expect(JSON.parse(one.stdout)).toEqual({ key: 'hooks.policy', value: 'notify' });
@@ -62,9 +65,28 @@ describe('cli', () => {
     expect(notContainer.stderr).toContain('Not a L.AI.nes container');
     const missingRemote = await cli(['init', 'x'], deps);
     expect(missingRemote.code).toBe(2);
-    const badFormat = await cli(['--format', 'xml', 'config', 'get'], deps);
+    const badFormat = await cli(['config', 'get', '--format', 'xml'], deps);
     expect(badFormat.code).toBe(2);
     const help = await cli(['--help'], deps);
     expect(help.code).toBe(0);
+    const version = await cli(['--version'], deps);
+    expect(version.code).toBe(0);
+  });
+
+  it('rejects global options placed before the subcommand, so deny rules cannot be bypassed', async () => {
+    const { root, deps } = setup();
+    await cli(['init', 'lanes', '--remote', REMOTE], deps);
+    const format = await cli(['--format', 'json', 'config', 'get'], deps);
+    expect(format.code).toBe(2);
+    const container = await cli(['--container', join(root, 'lanes'), 'config', 'get'], deps);
+    expect(container.code).toBe(2);
+  });
+
+  it('prints the stack for unexpected errors and exits 1', async () => {
+    const { deps } = setup();
+    const r = await cli(['config', 'get'], { ...deps, cwd: () => { throw new Error('boom'); } });
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain('Error: boom');
+    expect(r.stderr).toMatch(/\n\s+at /);
   });
 });

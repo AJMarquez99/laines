@@ -12,25 +12,33 @@ function handle(fn, { table, args } = {}, deps) {
   return async (...actionArgs) => {
     const cmd = actionArgs[actionArgs.length - 1];
     const positionals = actionArgs.slice(0, -2);
-    const opts = { ...cmd.opts() };
+    const { format, ...opts } = cmd.opts();
     (args || []).forEach((name, i) => {
       if (positionals[i] !== undefined) opts[name] = positionals[i];
     });
-    let root = cmd;
-    while (root.parent) root = root.parent;
-    const g = root.opts();
-    if (opts.container === undefined) opts.container = g.container;
     try {
-      if (!['json', 'table'].includes(g.format)) throw new InvalidInputError(`--format must be json or table (got "${g.format}").`);
+      if (!['json', 'table'].includes(format)) throw new InvalidInputError(`--format must be json or table (got "${format}").`);
       const result = await fn(opts, deps);
-      if (g.format === 'table' && table) process.stdout.write(table(result) + '\n');
+      if (format === 'table' && table) process.stdout.write(table(result) + '\n');
       else printJson(result);
     } catch (err) {
-      process.stderr.write(((err && err.message) || String(err)) + '\n');
-      process.exitCode = err instanceof LainesError ? err.exitCode : EXIT_CODES.GENERIC;
+      if (err instanceof LainesError) {
+        process.stderr.write(err.message + '\n');
+        process.exitCode = err.exitCode;
+      } else {
+        process.stderr.write(((err && (err.stack || err.message)) || String(err)) + '\n');
+        process.exitCode = EXIT_CODES.GENERIC;
+      }
     }
   };
 }
+
+// Global options live on each leaf command, never on the program: `laines --format json teardown`
+// would otherwise slip past `Bash(laines teardown:*)` deny rules.
+const withGlobals = (cmd) =>
+  cmd
+    .option('--format <format>', 'output format: json|table', 'json')
+    .option('--container <dir>', 'container directory (default: current directory)');
 
 export function buildProgram(deps = defaultDeps) {
   const program = new Command();
@@ -39,12 +47,9 @@ export function buildProgram(deps = defaultDeps) {
   program
     .name('laines')
     .description('L.AI.nes: isolated parallel work lanes for coding agents')
-    .version(VERSION)
-    .option('--format <format>', 'output format: json|table', 'json')
-    .option('--container <dir>', 'container directory (default: current directory)');
+    .version(VERSION);
 
-  program
-    .command('init')
+  withGlobals(program.command('init'))
     .description('Create a new L.AI.nes container (shared .ai/ layer, board, lane tooling)')
     .argument('<dir>', 'directory to create the container in')
     .option('--remote <url>', 'git URL every lane clones')
@@ -55,14 +60,12 @@ export function buildProgram(deps = defaultDeps) {
     .action(handle(runInit, { table: formatInit, args: ['dir'] }, deps));
 
   const config = program.command('config').description('Read container settings');
-  config
-    .command('get')
+  withGlobals(config.command('get'))
     .description('Print the container config, or one dotted key')
     .argument('[key]', 'dotted key, e.g. hooks.policy')
     .action(handle(runConfigGet, { table: formatConfig, args: ['key'] }, deps));
 
-  program
-    .command('doctor')
+  withGlobals(program.command('doctor'))
     .description('Check the container, its .ai/ layer, agent wiring and the machine index')
     .option('--prune', 'remove machine-index entries whose container no longer exists')
     .action(handle(runDoctor, { table: formatDoctor }, deps));

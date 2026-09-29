@@ -39,4 +39,22 @@ describe('config', () => {
     writeFileSync(file, JSON.stringify({ repos: { app: { remote: 'x' } } }));
     expect(loadConfig(file).hooks.policy).toBe('notify');
   });
+
+  it('reports a missing config inside an existing container as malformed, not as not-a-container', () => {
+    const root = tmp();
+    const file = join(root, '.laines', 'config.json');
+    mkdirSync(join(root, '.laines'));
+    expect(() => loadConfig(file)).toThrow(NotAContainerError);
+    writeFileSync(join(root, '.laines', 'container.json'), JSON.stringify({ id: 'app' }));
+    const err = (() => { try { loadConfig(file); } catch (e) { return e; } })();
+    expect(err).toBeInstanceOf(MalformedConfigError);
+    expect(err.message).toContain(file);
+    expect(err.message).toContain('missing');
+  });
+
+  it('rejects dash-prefixed git arguments', () => {
+    const base = { repoName: 'app', remote: 'git@example.com:o/app.git', defaultBranch: 'main', agents: ['claude'] };
+    expect(() => buildConfig({ ...base, remote: '--upload-pack=x' })).toThrow(/must not start with "-"/);
+    expect(() => buildConfig({ ...base, defaultBranch: '--orphan' })).toThrow(/must not start with "-"/);
+  });
 });

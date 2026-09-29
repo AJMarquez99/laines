@@ -75,6 +75,9 @@ describe('runInit', () => {
     mkdirSync(join(root, 'has-ai', '.ai'), { recursive: true });
     mkdirSync(join(root, 'has-laines', '.laines'), { recursive: true });
     writeFileSync(join(root, 'file'), 'x');
+    mkdirSync(join(root, 'repo', '.git'), { recursive: true });
+    mkdirSync(join(root, 'worktree'));
+    writeFileSync(join(root, 'worktree', '.git'), 'gitdir: /elsewhere\n');
     await runInit({ dir: 'parent', remote: REMOTE }, deps);
     const cases = [
       { dir: 'has-ai' },
@@ -86,12 +89,28 @@ describe('runInit', () => {
       { dir: 'x', remote: '' },
       { dir: 'x', id: 'Bad Id' },
       { dir: 'x', agents: 'cursor' },
+      { dir: 'repo' },
+      { dir: 'repo/lanes' },
+      { dir: 'worktree/lanes' },
+      { dir: 'x', remote: '--upload-pack=x' },
+      { dir: 'x', branch: '--orphan' },
     ];
     for (const c of cases) {
       await expect(runInit({ remote: REMOTE, ...c }, deps), JSON.stringify(c)).rejects.toBeInstanceOf(InvalidInputError);
     }
     expect(loadIndex(deps.env.LAINES_CONFIG_DIR).containers.map((e) => e.id)).toEqual(['my-app']);
     expect(existsSync(join(root, 'x'))).toBe(false);
+    expect(existsSync(join(root, 'repo', 'lanes'))).toBe(false);
+  });
+
+  it('names the offending option or repository in refusals', async () => {
+    const { root, deps } = setup();
+    mkdirSync(join(root, 'repo', '.git'), { recursive: true });
+    await expect(runInit({ dir: 'repo/lanes', remote: REMOTE }, deps)).rejects.toThrow(
+      `${join(root, 'repo', 'lanes')} is inside the git repository ${join(root, 'repo')}`,
+    );
+    await expect(runInit({ dir: 'x', remote: '--upload-pack=x' }, deps)).rejects.toThrow(/--remote/);
+    await expect(runInit({ dir: 'x', remote: REMOTE, branch: '--orphan' }, deps)).rejects.toThrow(/--branch/);
   });
 
   it('releases the index claim and names the partial directory when dot-ai fails', async () => {

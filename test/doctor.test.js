@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { runInit } from '../src/commands/init.js';
 import { runDoctor } from '../src/commands/doctor.js';
@@ -27,7 +27,7 @@ describe('doctor', () => {
     const r = await runDoctor({ container: c }, deps);
     expect(r.ok).toBe(true);
     expect(r.container).toEqual({ id: 'my-app', path: c });
-    expect(r.checks.map((x) => x.name)).toEqual(['container-marker', 'config', 'machine-index', 'dot-ai', 'agent-files', 'deny-rules', 'board', 'lock']);
+    expect(r.checks.map((x) => x.name)).toEqual(['container-marker', 'config', 'machine-index', 'dot-ai', 'agent-files', 'deny-rules', 'board', 'lock', 'machine-lock']);
   });
 
   it('reports each broken piece without throwing', async () => {
@@ -43,6 +43,26 @@ describe('doctor', () => {
     for (const name of ['config', 'agent-files', 'deny-rules', 'board', 'lock']) expect(n[name].ok, name).toBe(false);
     expect(n.lock.detail).toContain('rmdir');
     expect(n['container-marker'].ok).toBe(true);
+  });
+
+  it('flags a stale machine-index lock', async () => {
+    const { deps, c } = await container();
+    const lock = join(deps.env.LAINES_CONFIG_DIR, '.lock');
+    mkdirSync(lock);
+    const r = await runDoctor({ container: c }, deps);
+    expect(r.ok).toBe(false);
+    expect(byName(r)['machine-lock'].ok).toBe(false);
+    expect(byName(r)['machine-lock'].detail).toContain(`rmdir '${lock}'`);
+  });
+
+  it('resolves a relative or symlinked --container to the canonical path', async () => {
+    const { root, deps, c } = await container();
+    const rel = await runDoctor({ container: 'lanes' }, deps);
+    expect(rel.container.path).toBe(c);
+    symlinkSync(c, join(root, 'link'));
+    const linked = await runDoctor({ container: join(root, 'link') }, deps);
+    expect(linked.ok).toBe(true);
+    expect(linked.container.path).toBe(c);
   });
 
   it('flags a container missing from the machine index', async () => {
