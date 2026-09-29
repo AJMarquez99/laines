@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runInit, parseAgents } from '../src/commands/init.js';
 import { runDotAi } from '../src/lib/dotai.js';
@@ -76,6 +76,8 @@ describe('runInit', () => {
     mkdirSync(join(root, 'has-laines', '.laines'), { recursive: true });
     writeFileSync(join(root, 'file'), 'x');
     mkdirSync(join(root, 'repo', '.git'), { recursive: true });
+    mkdirSync(join(root, 'repo', 'sub'), { recursive: true });
+    symlinkSync(join(root, 'repo', 'sub'), join(root, 'link'));
     mkdirSync(join(root, 'worktree'));
     writeFileSync(join(root, 'worktree', '.git'), 'gitdir: /elsewhere\n');
     await runInit({ dir: 'parent', remote: REMOTE }, deps);
@@ -92,6 +94,7 @@ describe('runInit', () => {
       { dir: 'repo' },
       { dir: 'repo/lanes' },
       { dir: 'worktree/lanes' },
+      { dir: 'link/lanes' },
       { dir: 'x', remote: '--upload-pack=x' },
       { dir: 'x', branch: '--orphan' },
     ];

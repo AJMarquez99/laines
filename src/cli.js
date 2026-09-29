@@ -40,6 +40,8 @@ const withGlobals = (cmd) =>
     .option('--format <format>', 'output format: json|table', 'json')
     .option('--container <dir>', 'container directory (default: current directory)');
 
+const withFormat = (cmd) => cmd.option('--format <format>', 'output format: json|table', 'json');
+
 export function buildProgram(deps = defaultDeps) {
   const program = new Command();
   // exitOverride is inherited by subcommands created after this call.
@@ -49,7 +51,7 @@ export function buildProgram(deps = defaultDeps) {
     .description('L.AI.nes: isolated parallel work lanes for coding agents')
     .version(VERSION);
 
-  withGlobals(program.command('init'))
+  withFormat(program.command('init'))
     .description('Create a new L.AI.nes container (shared .ai/ layer, board, lane tooling)')
     .argument('<dir>', 'directory to create the container in')
     .option('--remote <url>', 'git URL every lane clones')

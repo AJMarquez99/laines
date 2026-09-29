@@ -1,10 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { loadConfig } from '../config.js';
 import { readJson } from '../lib/jsonfile.js';
 import { configDir, containerPaths } from '../lib/paths.js';
 import { indexFiles, loadIndex, pruneIndex } from '../lib/machine-index.js';
-import { resolveContainer } from '../lib/container.js';
+import { containerDirFrom, resolveContainer } from '../lib/container.js';
 import { AGENT_FILES, LANES_BEGIN, denyRules } from '../lib/agent-files.js';
 import { NotAContainerError } from '../lib/errors.js';
 
@@ -15,7 +15,7 @@ export async function runDoctor(opts, deps) {
 
   let root;
   try {
-    root = resolveContainer(resolve(deps.cwd(), opts.container ?? '.'));
+    root = resolveContainer(containerDirFrom(opts, deps));
   } catch (err) {
     if (opts.prune && err instanceof NotAContainerError) return result;
     throw err;

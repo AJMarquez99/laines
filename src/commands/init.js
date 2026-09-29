@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, realpathSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, parse, resolve } from 'node:path';
+import { dirname, join, parse, relative, resolve } from 'node:path';
 import { VERSION } from '../version.js';
 import { buildConfig } from '../config.js';
 import { InvalidInputError, LainesError } from '../lib/errors.js';
@@ -54,13 +54,17 @@ function assertSafeTarget(target, home) {
       throw new InvalidInputError(`${target} already has ${name}/. L.AI.nes creates fresh containers only; pick a new or empty directory.`);
     }
   }
-  for (let dir = target; ; dir = dirname(dir)) {
+  // Walk the real path: a symlink into a repository or container must not slip through.
+  let existing = target;
+  while (!existsSync(existing)) existing = dirname(existing);
+  const real = join(realpathSync(existing), relative(existing, target));
+  for (let dir = real; ; dir = dirname(dir)) {
     if (existsSync(join(dir, '.git'))) {
       throw new InvalidInputError(
         `${target} is inside the git repository ${dir}. Create the container outside any repository; lanes are the clones.`,
       );
     }
-    if (dir !== target && existsSync(join(dir, '.laines', 'container.json'))) {
+    if (dir !== real && existsSync(join(dir, '.laines', 'container.json'))) {
       throw new InvalidInputError(`${target} is inside the container ${dir}. Create containers outside other containers.`);
     }
     if (dirname(dir) === dir) break;

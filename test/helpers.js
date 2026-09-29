@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { vi } from 'vitest';
 import { runGit } from '../src/lib/git.js';
+import { runInit } from '../src/commands/init.js';
+import { runDotAi } from '../src/lib/dotai.js';
 
 const made = [];
 
@@ -67,6 +69,15 @@ export function makeRemote(root, { files = { 'README.md': '# app\n' }, branches 
     gitIn(seed, 'checkout', '-q', 'main');
   }
   return remote;
+}
+
+export async function setupContainer({ files, branches, agents, dir = 'lanes' } = {}) {
+  const root = tmp();
+  mkdirSync(join(root, 'home'));
+  const deps = testDeps(root, { runDotAi });
+  const remote = makeRemote(root, { files, branches });
+  const r = await runInit({ dir, remote, ...(agents ? { agents } : {}) }, deps);
+  return { root, deps, remote, container: r.path };
 }
 
 export async function runCli(args, deps) {
