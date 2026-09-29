@@ -6,7 +6,7 @@ const safe = (value) => oneLine(value).replace(/<!--/g, '&lt;!--');
 
 export const fmtTs = (iso) => `${String(iso).slice(0, 16).replace('T', ' ')} UTC`;
 
-function laneBlock(name, lane) {
+export function laneBlock(name, lane) {
   const flags = `${lane.kept ? ' 📌' : ''}${lane.state === 'setup-failed' ? ' ⚠️ setup-failed' : ''}`;
   const lines = [
     `<!-- lane:${name}:start -->`,
