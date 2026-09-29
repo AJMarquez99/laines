@@ -61,4 +61,14 @@ describe('machine index', () => {
     writeFileSync(join(dir, 'containers.json'), JSON.stringify({ version: 1, containers: 'nope' }));
     expect(() => loadIndex(dir)).toThrow(MalformedConfigError);
   });
+
+  it('rejects an inverted range naming the file', () => {
+    const dir = join(tmp(), 'cfg');
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, 'containers.json');
+    writeFileSync(file, JSON.stringify({ version: 1, machine: { range: [29999, 20000], blockSize: 200 }, containers: [] }));
+    expect(() => loadIndex(dir)).toThrow(MalformedConfigError);
+    expect(() => loadIndex(dir)).toThrow(file);
+    expect(() => loadIndex(dir)).toThrow(/range start must be <= end/);
+  });
 });

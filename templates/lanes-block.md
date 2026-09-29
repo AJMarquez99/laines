@@ -6,8 +6,8 @@ every lane.
 
 **Which mode am I in?** Look for `.ai/.lane.json` at the root of the git repository you are
 working in.
-- **Present, and the `container` path it names has `.laines/container.json`:** you are in a lane.
-  Follow the lane rules below.
+- **Present, the `container` path it names has `.laines/container.json`, and its `containerId`
+  equals that marker's `id`:** you are in a lane. Follow the lane rules below.
 - **Absent:** you are not in a lane. Ignore this section and use normal `.ai/` resolution. Do not
   look for a container or report to a board.
 - **In the container directory itself (not inside a git repository):** you are the container

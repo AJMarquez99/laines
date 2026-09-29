@@ -38,6 +38,16 @@ describe('lanes state', () => {
   });
 });
 
+describe('lanes state: unlimited log', () => {
+  it('archives nothing when logLimit is missing', () => {
+    let state = emptyLanesState();
+    for (let i = 0; i < 300; i++) ({ state } = addActivity(state, { ts: `t${i}`, lane: null, text: `e${i}` }));
+    const { state: next, overflow } = addActivity(state, { ts: 'tx', lane: null, text: 'ex' });
+    expect(next.activity).toHaveLength(301);
+    expect(overflow).toEqual([]);
+  });
+});
+
 describe('board', () => {
   it('formats helpers', () => {
     expect(fmtTs('2026-09-29T14:02:33.000Z')).toBe('2026-09-29 14:02 UTC');
@@ -86,5 +96,10 @@ describe('board', () => {
     expect(md.match(/^## Requests$/gm)).toHaveLength(1);
     expect(md.match(/<!-- lane:lane_2:end -->/g)).toHaveLength(1);
     expect(md).toContain('- **Blocked on:** a b');
+  });
+
+  it('leaves a leading "#" in user text alone', () => {
+    const state = { ...emptyLanesState(), lanes: { lane_2: lane({ task: '#123 fix' }) } };
+    expect(renderBoard({ container, state })).toContain('- **Task:** #123 fix');
   });
 });

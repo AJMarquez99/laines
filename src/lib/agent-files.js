@@ -40,8 +40,15 @@ export function mergeDenyRules(file, rules) {
   if (data === null || typeof data !== 'object' || Array.isArray(data)) {
     throw new MalformedConfigError(file, 'expected a JSON object');
   }
-  const permissions = data.permissions && typeof data.permissions === 'object' ? data.permissions : {};
-  const deny = Array.isArray(permissions.deny) ? permissions.deny : [];
+  const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  if (data.permissions !== undefined && !isObject(data.permissions)) {
+    throw new MalformedConfigError(file, '"permissions" must be an object');
+  }
+  const permissions = data.permissions ?? {};
+  if (permissions.deny !== undefined && !Array.isArray(permissions.deny)) {
+    throw new MalformedConfigError(file, '"permissions.deny" must be an array');
+  }
+  const deny = permissions.deny ?? [];
   const added = rules.filter((r) => !deny.includes(r));
   if (added.length) writeJson(file, { ...data, permissions: { ...permissions, deny: [...deny, ...added] } });
   return { added };

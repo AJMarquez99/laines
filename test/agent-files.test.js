@@ -76,6 +76,15 @@ describe('deny rules', () => {
     expect(() => mergeDenyRules(f, ['x'])).toThrow(MalformedConfigError);
     expect(readFileSync(f, 'utf8')).toBe('{ broken');
   });
+
+  it('refuses to replace a non-object permissions or a non-array deny', () => {
+    const f = join(tmp(), 'settings.json');
+    for (const bad of [{ permissions: 'x' }, { permissions: ['a'] }, { permissions: { deny: 'Bash(rm:*)' } }]) {
+      writeFileSync(f, JSON.stringify(bad));
+      expect(() => mergeDenyRules(f, ['x']), JSON.stringify(bad)).toThrow(MalformedConfigError);
+      expect(JSON.parse(readFileSync(f, 'utf8'))).toEqual(bad);
+    }
+  });
 });
 
 describe('index rows and one-time sections', () => {

@@ -8,7 +8,7 @@ import { uniqueId, validateId } from './ids.js';
 import { allocateBlock, DEFAULT_MACHINE } from './ports.js';
 import { InvalidInputError } from './errors.js';
 
-const Range = z.tuple([z.number().int(), z.number().int()]);
+const Range = z.tuple([z.number().int(), z.number().int()]).refine(([a, b]) => a <= b, 'range start must be <= end');
 
 const IndexSchema = z.strictObject({
   version: z.literal(1),

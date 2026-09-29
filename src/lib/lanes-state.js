@@ -37,7 +37,9 @@ export const emptyLanesState = () => ({ version: 1, lanes: {}, requests: [], hoo
 export const parseLanesState = (data, file) => parseWith(LanesStateSchema, data, file);
 
 // Pure: returns a new state; entries beyond logLimit come back as overflow for the caller to archive.
+// A missing logLimit means unlimited: nothing overflows.
 export function addActivity(state, entry, logLimit) {
+  const limit = logLimit ?? Infinity;
   const all = [entry, ...state.activity];
-  return { state: { ...state, activity: all.slice(0, logLimit) }, overflow: all.slice(logLimit) };
+  return { state: { ...state, activity: all.slice(0, limit) }, overflow: all.slice(limit) };
 }
