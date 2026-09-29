@@ -9,13 +9,14 @@ export function unpushedWork(deps, laneDir) {
   const dirty = lines(g(['status', '--porcelain']));
   const stashes = lines(g(['stash', 'list'])).length;
   const unpushed = Number(g(['rev-list', '--count', '--exclude=refs/stash', '--all', '--not', '--remotes']).trim()) || 0;
+  const branch = g(['branch', '--show-current']).trim();
+  // A detached HEAD is a ref too; it is named so the message points at the commits.
   const refs = unpushed === 0
     ? []
-    : lines(g(['for-each-ref', '--format=%(refname)']))
+    : [...(branch ? [] : ['HEAD']), ...lines(g(['for-each-ref', '--format=%(refname)']))]
       .filter((ref) => !ref.startsWith('refs/remotes/') && ref !== 'refs/stash')
       .map((ref) => ({ ref, commits: Number(g(['rev-list', '--count', ref, '--not', '--remotes']).trim()) || 0 }))
       .filter((r) => r.commits > 0);
-  const branch = g(['branch', '--show-current']).trim();
   const noUpstream = branch && deps.git(['rev-parse', '--abbrev-ref', '@{u}'], { cwd: laneDir }).status !== 0 ? branch : null;
   const problems = [];
   if (dirty.length) problems.push(`${dirty.length} uncommitted change(s)`);

@@ -26,6 +26,9 @@ function deleteContext(deps, laneDir) {
   return entries.length > 0;
 }
 
+const keptMessage = (name, kept) =>
+  `Lane ${name} is kept (${kept.reason}). A human must run \`laines release ${name}\` before it can be torn down.`;
+
 // Human-only (deny rules in agent settings): the lane must always be named.
 export async function runTeardown(opts, deps) {
   if (!opts.lane) throw new InvalidInputError('Name the lane to tear down: `laines teardown <lane>`.');
@@ -34,7 +37,7 @@ export async function runTeardown(opts, deps) {
   const lane = readLanes(ctx).lanes[name];
   if (!lane) throw new InvalidInputError(`No lane named ${name}. See \`laines list --all\`.`);
   if (lane.kept) {
-    throw new BlockedError(`Lane ${name} is kept (${lane.kept.reason}). A human must run \`laines release ${name}\` before it can be torn down.`);
+    throw new BlockedError(keptMessage(name, lane.kept));
   }
   if (lane.state === 'closed' && !opts.removeDir) {
     throw new InvalidInputError(`Lane ${name} is already closed. Pass --remove-dir to delete its clone.`);
@@ -42,7 +45,10 @@ export async function runTeardown(opts, deps) {
   const laneDir = join(ctx.root, lane.repos[0].path);
   const real = assertLaneDir(ctx.root, laneDir, lane.repos[0].path);
   const isRepo = Boolean(real) && existsSync(join(real, '.git'));
-  const checks = opts.removeDir && isRepo ? unpushedWork(deps, real) : null;
+  // A directory that is not a repository cannot be proven safe to delete: refuse unless --force.
+  const unverifiable = { dirty: [], stashes: 0, unpushed: 0, refs: [], noUpstream: null, problems: ['not a git repository: unpushed work cannot be verified'] };
+  let checks = null;
+  if (opts.removeDir && real) checks = isRepo ? unpushedWork(deps, real) : unverifiable;
   const risky = Boolean(checks && checks.problems.length);
   const blocked = risky && !opts.force;
   const warnings = checks?.noUpstream ? [`branch ${checks.noUpstream} has no upstream`] : [];
@@ -60,13 +66,20 @@ export async function runTeardown(opts, deps) {
   }
 
   // M3: run the pre-teardown hook here; a failure aborts with nothing touched.
-  const open = lane.state !== 'closed' && Boolean(real);
-  const archivedTo = open ? archivePlans(ctx, deps, real, name) : null;
-  const contextDeleted = open ? deleteContext(deps, real) : false;
   const now = deps.now();
+  let archivedTo = null;
+  let contextDeleted = false;
   if (lane.state !== 'closed') {
+    // Re-checked under the lock: a `keep` that landed during the git checks must win, and the
+    // archive/delete happen only once the record is known to be closable.
     await updateLanes(ctx, deps, (state) => {
       const l = state.lanes[name];
+      if (!l) throw new InvalidInputError(`Lane ${name} no longer exists.`);
+      if (l.kept) throw new BlockedError(keptMessage(name, l.kept));
+      if (real) {
+        archivedTo = archivePlans(ctx, deps, real, name);
+        contextDeleted = deleteContext(deps, real);
+      }
       l.state = 'closed';
       l.status = 'closed';
       l.blocked = null;

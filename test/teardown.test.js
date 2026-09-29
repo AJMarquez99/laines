@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runCreate } from '../src/commands/create.js';
 import { runKeep } from '../src/commands/lanes.js';
@@ -105,6 +105,48 @@ describe('teardown --remove-dir safety', () => {
       expect(state(s).state).toBe('active');
     });
   }
+
+  it('names a detached HEAD that holds unpushed commits', async () => {
+    const s = await lane();
+    gitIn(s.dir, 'checkout', '-q', '--detach');
+    gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'detached');
+    const err = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedError);
+    expect(err.message).toContain('HEAD (1)');
+  });
+
+  it('refuses a directory that is not a git repository unless forced', async () => {
+    const s = await lane();
+    rmSync(join(s.dir, '.git'), { recursive: true, force: true });
+    const err = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedError);
+    expect(err.exitCode).toBe(3);
+    expect(err.message).toContain('not a git repository');
+    expect(existsSync(s.dir)).toBe(true);
+    const r = await runTeardown({ lane: 'lane_1', removeDir: true, force: true, container: s.container }, s.deps);
+    expect(r).toMatchObject({ removedDir: true, forced: true });
+    expect(existsSync(s.dir)).toBe(false);
+  });
+
+  it('re-checks keep under the lock: a keep landing during the checks wins', async () => {
+    const s = await lane();
+    writeFileSync(join(s.dir, '.ai', 'plans', 'task.md'), 'plan\n');
+    const ctx = loadContainer({ container: s.container }, s.deps);
+    const git = (args, o) => {
+      if (args[0] === 'stash') {
+        const st = readLanes(ctx);
+        st.lanes.lane_1.kept = { reason: 'late keep', since: '2026-09-29T12:00:00.000Z' };
+        writeFileSync(ctx.paths.lanes, JSON.stringify(st));
+      }
+      return s.deps.git(args, o);
+    };
+    const err = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, { ...s.deps, git }).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedError);
+    expect(err.message).toContain('kept');
+    expect(existsSync(s.dir)).toBe(true);
+    expect(existsSync(join(s.dir, '.ai', 'plans', 'task.md'))).toBe(true);
+    expect(state(s).state).toBe('active');
+  });
 
   it('names the refs that hold unpushed commits', async () => {
     const s = await lane();
