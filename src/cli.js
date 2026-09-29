@@ -8,8 +8,19 @@ import { runBrief } from './commands/brief.js';
 import { runCreate } from './commands/create.js';
 import { runReport, runKeep, runRelease, runList, runStatus } from './commands/lanes.js';
 import { runTeardown } from './commands/teardown.js';
+import { runWatch } from './commands/watch.js';
 import { EXIT_CODES, InvalidInputError, LainesError } from './lib/errors.js';
 import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate, formatReport, formatKeep, formatRelease, formatList, formatStatus, formatTeardown } from './lib/format.js';
+
+function reportError(err) {
+  if (err instanceof LainesError) {
+    process.stderr.write(err.message + '\n');
+    process.exitCode = err.exitCode;
+  } else {
+    process.stderr.write(((err && (err.stack || err.message)) || String(err)) + '\n');
+    process.exitCode = EXIT_CODES.GENERIC;
+  }
+}
 
 // The single choke point: positionals → opts, global options, rendering, error → exit code.
 function handle(fn, { table, args } = {}, deps) {
@@ -26,13 +37,7 @@ function handle(fn, { table, args } = {}, deps) {
       if (format === 'table' && table) process.stdout.write(table(result) + '\n');
       else printJson(result);
     } catch (err) {
-      if (err instanceof LainesError) {
-        process.stderr.write(err.message + '\n');
-        process.exitCode = err.exitCode;
-      } else {
-        process.stderr.write(((err && (err.stack || err.message)) || String(err)) + '\n');
-        process.exitCode = EXIT_CODES.GENERIC;
-      }
+      reportError(err);
     }
   };
 }
@@ -125,6 +130,25 @@ export function buildProgram(deps = defaultDeps) {
     .option('--force', 'remove even if the lane holds unpushed work (never overrides keep)')
     .option('--dry-run', 'show what would happen without changing anything')
     .action(handle(runTeardown, { table: formatTeardown, args: ['lane'] }, deps));
+
+  program
+    .command('watch')
+    .description('Follow the board (or any file) and print new lines as they land')
+    .argument('[file]', 'file to watch (default: the container board)')
+    .option('--interval <seconds>', 'polling interval', '2')
+    .option('--container <dir>', 'container directory (default: current directory)')
+    .action(async (file, cmdOpts) => {
+      const ac = new AbortController();
+      const stop = () => ac.abort();
+      process.once('SIGINT', stop);
+      try {
+        await runWatch({ ...cmdOpts, file }, deps, { signal: ac.signal, write: (s) => process.stdout.write(s) });
+      } catch (err) {
+        reportError(err);
+      } finally {
+        process.off('SIGINT', stop);
+      }
+    });
 
   return program;
 }
