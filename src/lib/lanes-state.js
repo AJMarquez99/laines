@@ -43,3 +43,13 @@ export function addActivity(state, entry, logLimit) {
   const all = [entry, ...state.activity];
   return { state: { ...state, activity: all.slice(0, limit) }, overflow: all.slice(limit) };
 }
+
+export const requestId = (kind, lane) => `${kind}:${lane ?? '*'}`;
+
+// Pure. One request per kind and lane: a repeat replaces the earlier one and moves to the top.
+export function putRequest(state, { ts, lane = null, kind, text, command }) {
+  const id = requestId(kind, lane);
+  return { ...state, requests: [{ id, ts, lane, kind, text, command }, ...state.requests.filter((r) => r.id !== id)] };
+}
+
+export const dropRequests = (state, match) => ({ ...state, requests: state.requests.filter((r) => !match(r)) });

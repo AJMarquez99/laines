@@ -57,3 +57,12 @@ export class GitError extends LainesError {
     this.args = args;
   }
 }
+
+// A hook that failed, exited 3, or was refused by the policy. `run` carries the structured result
+// (the MCP server hands it to agents); hook output inside it is untrusted.
+export class HookError extends LainesError {
+  constructor(message, exitCode, run) {
+    super(message, exitCode);
+    this.run = run;
+  }
+}
