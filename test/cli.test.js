@@ -25,6 +25,12 @@ async function cli(args, deps) {
 
 afterEach(cleanupTmp);
 
+it('refuses a bare -- before a subcommand', async () => {
+  const r = await cli(['--', 'config', 'get'], testDeps(tmp()));
+  expect(r.code).toBe(2);
+  expect(r.stderr).toContain('bare "--"');
+});
+
 function setup() {
   const root = tmp();
   mkdirSync(join(root, 'home'));

@@ -126,13 +126,21 @@ export function formatHooksStatus(r) {
 }
 
 export function formatHooksApprove(r) {
+  const diffs = (list, label) => list.filter((h) => h.diff).flatMap((h) => ['', `--- ${h.hook} (${label(h)}) ---`, h.diff.trimEnd()]);
+  const dropped = r.removed.map((rel) => `  dropped ${rel} (no longer present)`);
   if (r.dryRun) {
-    return [`dry run: would approve ${r.approve.length} hook(s)${r.lock ? ' and set hook policy approve' : ''}`, ...r.approve.map((h) => `  ${h.hook} (${h.state})`)].join('\n');
+    return [
+      `dry run: would approve ${r.approve.length} hook(s)${r.lock ? ' and set hook policy approve' : ''}`,
+      ...r.approve.map((h) => `  ${h.hook} (${h.state})`),
+      ...dropped,
+      ...diffs(r.approve, (h) => h.state),
+    ].join('\n');
   }
   return [
     `approved ${r.approved.length} hook(s); hook policy ${r.policy}`,
     ...r.approved.map((h) => `  ${h.hook} ${h.checksum}${h.was === 'approved' ? '' : ` (was ${h.was})`}`),
-    ...r.removed.map((rel) => `  dropped ${rel} (no longer present)`),
+    ...dropped,
+    ...diffs(r.approved, (h) => h.was),
   ].join('\n');
 }
 

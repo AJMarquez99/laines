@@ -179,6 +179,13 @@ export function buildProgram(deps = defaultDeps) {
 }
 
 export async function run(argv, deps = defaultDeps) {
+  // A bare `--` makes commander dispatch the next operand as a subcommand, which would slip
+  // `laines hooks -- approve` past prefix-matched deny rules like `Bash(laines hooks approve:*)`.
+  if (argv.slice(2).includes('--')) {
+    process.stderr.write('laines does not accept a bare "--" argument.\n');
+    process.exitCode = EXIT_CODES.CONFIG;
+    return;
+  }
   const program = buildProgram(deps);
   try {
     await program.parseAsync(argv);

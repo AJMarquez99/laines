@@ -40,23 +40,26 @@ export async function runHooksApprove(opts, deps) {
   const ctx = loadContainer(opts, deps);
   if (opts.dryRun) {
     const { hooks, removed } = hookStates(ctx.paths);
-    return { dryRun: true, approve: hooks.filter((h) => h.state !== 'approved').map((h) => ({ hook: h.rel, state: h.state, checksum: h.checksum })), removed, lock: Boolean(opts.lock) };
+    return { dryRun: true, approve: hooks.filter((h) => h.state !== 'approved').map((h) => ({ hook: h.rel, state: h.state, checksum: h.checksum, diff: hookDiff(deps, ctx.paths, h) })), removed, lock: Boolean(opts.lock) };
   }
+  // Diffs are taken just before approving so the output shows what was actually approved.
+  const diffs = Object.fromEntries(hookStates(ctx.paths).hooks.filter((h) => h.state !== 'approved').map((h) => [h.rel, hookDiff(deps, ctx.paths, h)]));
   const { approved, removed } = approveHooks(ctx.paths);
-  if (opts.lock) setPolicy(ctx, 'approve');
+  const lockChanged = Boolean(opts.lock) && ctx.config.hooks.policy !== 'approve';
+  if (lockChanged) setPolicy(ctx, 'approve');
   const now = deps.now();
   const list = approved.map((h) => h.rel).join(', ') || 'none';
   await updateLanes(ctx, deps, (s) => ({
     state: dropRequests(s, (q) => q.kind === 'hooks-changed' || (opts.lock && q.kind === 'hooks-lock')),
     result: null,
-    activity: [{ ts: now, lane: null, text: `hooks approved: ${list}${opts.lock ? '; hook policy set to approve' : ''}` }],
+    activity: [{ ts: now, lane: null, text: `hooks approved: ${list}${lockChanged ? '; hook policy set to approve' : ''}` }],
   }));
   appendAudit(
     ctx.paths.audit,
-    { ts: now, action: 'hooks-approve', container: ctx.id, hooks: Object.fromEntries(approved.map((h) => [h.rel, h.checksum])), lock: Boolean(opts.lock) },
+    { ts: now, action: 'hooks-approve', container: ctx.id, hooks: Object.fromEntries(approved.map((h) => [h.rel, h.checksum])), lock: Boolean(opts.lock), removed },
     { warn: deps.warn },
   );
-  return { dryRun: false, approved: approved.map((h) => ({ hook: h.rel, checksum: h.checksum, was: h.state })), removed, policy: ctx.config.hooks.policy };
+  return { dryRun: false, approved: approved.map((h) => ({ hook: h.rel, checksum: h.checksum, was: h.state, ...(diffs[h.rel] === undefined ? {} : { diff: diffs[h.rel] }) })), removed, policy: ctx.config.hooks.policy };
 }
 
 // Human-only (deny rules in agent settings).

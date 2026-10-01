@@ -41,7 +41,7 @@ describe('hooks approve', () => {
     expect(readLanes(ctxOf(s)).requests.map((q) => q.id)).toContain('hooks-changed:*');
     const r = await runHooksApprove({ container: s.container }, s.deps);
     expect(r).toMatchObject({ dryRun: false, policy: 'notify', removed: [] });
-    expect(r.approved).toEqual([{ hook: 'post-create', checksum: expect.stringMatching(/^sha256:/), was: 'new' }]);
+    expect(r.approved).toEqual([{ hook: 'post-create', checksum: expect.stringMatching(/^sha256:/), was: 'new', diff: expect.stringContaining('+true') }]);
     expect(readLanes(ctxOf(s)).requests).toEqual([]);
     expect((await runHooksStatus({ container: s.container }, s.deps)).hooks[0]).toMatchObject({ state: 'approved' });
     expect(readFileSync(ctxOf(s).paths.audit, 'utf8')).toContain('"action":"hooks-approve"');
@@ -66,6 +66,7 @@ describe('hooks approve', () => {
     writeHook(s.container, 'post-create', 'true');
     const r = await runHooksApprove({ dryRun: true, lock: true, container: s.container }, s.deps);
     expect(r).toMatchObject({ dryRun: true, lock: true, approve: [{ hook: 'post-create', state: 'new' }] });
+    expect(r.approve[0].diff).toContain('+true');
     expect((await runHooksStatus({ container: s.container }, s.deps)).hooks[0].state).toBe('new');
     expect(config(s).hooks.policy).toBe('notify');
   });
@@ -106,5 +107,16 @@ describe('hooks CLI', () => {
     const approve = await runCli(['hooks', 'approve', '--container', s.container, '--format', 'table'], s.deps);
     expect(approve.code).toBe(0);
     expect(approve.stdout).toContain('approved 0 hook(s)');
+  });
+
+  it('refuses a bare -- so subcommands cannot dodge prefix-matched deny rules', async () => {
+    const s = await setupContainer();
+    writeHook(s.container, 'post-create', 'true');
+    const a = await runCli(['hooks', '--', 'approve', '--container', s.container], s.deps);
+    expect(a.code).toBe(2);
+    expect((await runHooksStatus({ container: s.container }, s.deps)).hooks[0].state).toBe('new');
+    const p = await runCli(['hooks', '--', 'policy', 'open', '--container', s.container], s.deps);
+    expect(p.code).toBe(2);
+    expect(config(s).hooks.policy).toBe('notify');
   });
 });
