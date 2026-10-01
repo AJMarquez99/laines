@@ -17,6 +17,7 @@ export function containerPaths(root) {
     lanes: join(laines, 'lanes.json'),
     hooks: join(laines, 'hooks'),
     hooksLock: join(laines, 'hooks.lock.json'),
+    hooksApproved: join(laines, 'hooks.approved'),
     audit: join(laines, 'audit.jsonl'),
     lock: join(laines, '.lock'),
     ai,

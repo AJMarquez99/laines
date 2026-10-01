@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -95,4 +95,20 @@ export async function runCli(args, deps) {
     e.mockRestore();
     process.exitCode = undefined;
   }
+}
+
+// A fixture hook: a /bin/sh script under <container>/.laines/hooks/<rel>.
+export function writeHook(container, rel, body, { mode = 0o755 } = {}) {
+  const file = join(container, '.laines', 'hooks', rel);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `#!/bin/sh\n${body}\n`);
+  chmodSync(file, mode);
+  return file;
+}
+
+export function setConfig(container, mutate) {
+  const file = join(container, '.laines', 'config.json');
+  const config = JSON.parse(readFileSync(file, 'utf8'));
+  mutate(config);
+  writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
 }
