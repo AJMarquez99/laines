@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { runCreate } from '../src/commands/create.js';
 import { loadContainer } from '../src/lib/container.js';
 import { readLanes } from '../src/lib/lanes-store.js';
-import { BlockedError, GitError, InvalidInputError } from '../src/lib/errors.js';
-import { cleanupTmp, setupContainer, gitIn, runCli } from './helpers.js';
+import { BlockedError, GitError, HookError, InvalidInputError, MalformedConfigError } from '../src/lib/errors.js';
+import { cleanupTmp, setupContainer, gitIn, runCli, writeHook, setConfig } from './helpers.js';
 
 afterEach(cleanupTmp);
 
@@ -121,7 +121,7 @@ describe('create', () => {
     expect(next).toMatchObject({ lane: 'lane_1', number: 1 });
     await expect(runCreate({ container, name: 'lane_1', dryRun: true }, deps)).rejects.toBeInstanceOf(InvalidInputError);
     await expect(runCreate({ container, name: 'lane_21', dryRun: true }, deps)).rejects.toBeInstanceOf(InvalidInputError);
-    await expect(runCreate({ container, name: 'lane_0', dryRun: true }, deps)).rejects.toBeInstanceOf(InvalidInputError);
+    expect(await runCreate({ container, name: 'lane_0', dryRun: true }, deps)).toMatchObject({ lane: 'lane_0', number: 2 });
   });
 
   it('stops at maxLanes and reuses the number of a closed lane', async () => {
@@ -155,5 +155,101 @@ describe('create', () => {
     expect(r.code).toBe(0);
     expect(r.stdout).toContain('lane lane_1 created');
     expect(r.stdout).toContain('# Lane brief: lane_1');
+  });
+});
+
+describe('create with hooks', () => {
+  const lanes = (container, deps) => readLanes(loadContainer({ container }, deps));
+  const board = (container) => readFileSync(join(container, '.ai', 'context', 'LANES_BOARD.md'), 'utf8');
+
+  it('runs post-create in the lane after .laines.env is written, and records the hook set', async () => {
+    const { deps, container } = await setupContainer();
+    writeHook(container, 'post-create', 'grep -q LANE_SUFFIX "$LANE_ENV_FILE" && echo "DATABASE_URL=postgres://localhost/app$LANE_SUFFIX" >> "$LANE_ENV_FILE"');
+    const r = await runCreate({ container }, deps);
+    expect(r.hooks).toMatchObject({ event: 'post-create', outcome: 'ok' });
+    expect(readFileSync(join(r.path, '.laines.env'), 'utf8')).toContain('DATABASE_URL=postgres://localhost/app_my_app_l1');
+    expect(gitIn(r.path, 'status', '--porcelain')).toBe('');
+    const st = lanes(container, deps);
+    expect(st.lanes.lane_1).toMatchObject({ state: 'active', status: 'idle' });
+    expect(st.hookHistory).toHaveLength(1);
+    expect(Object.keys(st.hookHistory[0].checksums)).toEqual(['post-create']);
+    expect(r.warnings).toEqual([expect.stringMatching(/hook post-create is new and ran unapproved \(policy notify\)/)]);
+    expect(board(container)).toMatch(/unapproved hook\(s\) ran under policy notify: post-create \(new, sha256:/);
+  });
+
+  it('keeps a lane whose post-create fails, marks it setup-failed and asks for a refresh', async () => {
+    const { deps, container } = await setupContainer();
+    writeHook(container, 'post-create', 'echo "db down" >&2; exit 1');
+    const err = await runCreate({ container }, deps).catch((e) => e);
+    expect(err).toBeInstanceOf(HookError);
+    expect(err.exitCode).toBe(1);
+    expect(err.message).toContain('db down');
+    expect(err.message).toContain('untrusted');
+    expect(err.message).toContain('laines refresh lane_1');
+    expect(existsSync(join(container, 'lane_1', '.laines.env'))).toBe(true);
+    const st = lanes(container, deps);
+    expect(st.lanes.lane_1).toMatchObject({ state: 'setup-failed', status: 'setup-failed' });
+    expect(st.requests.find((q) => q.id === 'setup-failed:lane_1')).toMatchObject({ command: 'laines refresh lane_1' });
+    expect(st.hookHistory).toEqual([]);
+    expect(board(container)).toContain('⚠️ setup-failed');
+  });
+
+  it('exits 3 when post-create exits 3', async () => {
+    const { deps, container } = await setupContainer();
+    writeHook(container, 'post-create', 'echo "start Postgres, then refresh"; exit 3');
+    const err = await runCreate({ container }, deps).catch((e) => e);
+    expect(err.exitCode).toBe(3);
+    expect(lanes(container, deps).lanes.lane_1.state).toBe('setup-failed');
+  });
+
+  it('under policy approve, refuses an unapproved hook without running it', async () => {
+    const { deps, container } = await setupContainer();
+    setConfig(container, (c) => { c.hooks.policy = 'approve'; });
+    writeHook(container, 'post-create', 'touch "$LANE_DIR/ran"');
+    const err = await runCreate({ container }, deps).catch((e) => e);
+    expect(err).toBeInstanceOf(HookError);
+    expect(err.exitCode).toBe(3);
+    expect(err.message).toContain('+touch "$LANE_DIR/ran"');
+    expect(existsSync(join(container, 'lane_1', 'ran'))).toBe(false);
+    const st = lanes(container, deps);
+    expect(st.requests.map((q) => q.id).sort()).toEqual(['hooks-changed:*', 'setup-failed:lane_1']);
+    expect(st.requests.find((q) => q.kind === 'setup-failed').command).toBe('laines hooks approve && laines refresh lane_1');
+  });
+
+  it('suggests locking once the hook set is unchanged across stableAfter creates', async () => {
+    const { deps, container } = await setupContainer();
+    setConfig(container, (c) => { c.hooks.stableAfter = 2; });
+    writeHook(container, 'post-create', 'true');
+    const a = await runCreate({ container }, deps);
+    expect(a.next.join('\n')).not.toContain('--lock');
+    const b = await runCreate({ container }, deps);
+    expect(b.next.at(-1)).toContain('laines hooks approve --lock');
+    expect(lanes(container, deps).requests.map((q) => q.id)).toContain('hooks-lock:*');
+    expect(board(container)).toContain('`laines hooks approve --lock`');
+    writeHook(container, 'post-create', 'true # changed');
+    const c = await runCreate({ container }, deps);
+    expect(c.next.join('\n')).not.toContain('--lock');
+    expect(lanes(container, deps).requests.map((q) => q.id)).not.toContain('hooks-lock:*');
+  });
+
+  it('dry run lists the hooks that would run and runs none', async () => {
+    const { deps, container } = await setupContainer();
+    writeHook(container, 'post-create', 'touch "$CONTAINER_DIR/ran"');
+    const r = await runCreate({ container, dryRun: true }, deps);
+    expect(r.hooks).toMatchObject({ event: 'post-create', wouldRun: true, hooks: [{ hook: 'post-create', state: 'new' }] });
+    expect(existsSync(join(container, 'ran'))).toBe(false);
+  });
+
+  it('fails before cloning when hooks.lock.json is malformed', async () => {
+    const { deps, container } = await setupContainer();
+    writeFileSync(join(container, '.laines', 'hooks.lock.json'), '{');
+    await expect(runCreate({ container }, deps)).rejects.toBeInstanceOf(MalformedConfigError);
+    expect(existsSync(join(container, 'lane_1'))).toBe(false);
+    expect(lanes(container, deps).lanes).toEqual({});
+  });
+
+  it('treats lane_003 as a custom name, not lane number 3', async () => {
+    const { deps, container } = await setupContainer();
+    expect(await runCreate({ container, name: 'lane_003' }, deps)).toMatchObject({ lane: 'lane_003', number: 1 });
   });
 });

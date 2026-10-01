@@ -11,14 +11,21 @@ import { laneId } from '../lib/ids.js';
 import { shellQuote } from '../lib/paths.js';
 import { appendAudit } from '../lib/audit.js';
 import { BlockedError, InvalidInputError } from '../lib/errors.js';
+import { dropRequests, putRequest, requestId } from '../lib/lanes-state.js';
+import { currentChecksums, hookStates } from '../lib/hooks.js';
+import {
+  HISTORY_CAP, dryRunHooks, hookBoardEntries, hookError, lockRequest, lockSuggested,
+  runEvent, runSummary, setupFailedNext, setupFailedRequest, unapprovedWarnings,
+} from '../lib/hook-events.js';
 
 const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
-// An explicit `<lanePrefix><N>` name claims lane number N, so the name and the ports agree.
+// An explicit `<lanePrefix><N>` name claims lane number N, so the name and the ports agree. Only a
+// canonical number counts: `lane_003` or `lane_0` is a custom name.
 function explicitNumber(ctx, name) {
   const prefix = ctx.config.lanePrefix;
   if (name === undefined || !name.startsWith(prefix)) return null;
-  const m = /^\d+$/.exec(name.slice(prefix.length));
+  const m = /^[1-9]\d*$/.exec(name.slice(prefix.length));
   return m ? Number(m[0]) : null;
 }
 
@@ -60,10 +67,12 @@ export async function runCreate(opts, deps) {
   const [repoName, repo] = Object.entries(ctx.config.repos)[0];
   const branch = opts.branch ?? repo.defaultBranch;
   validate(ctx, deps, opts, branch);
+  // A malformed hooks.lock.json fails here, before anything is cloned or reserved.
+  hookStates(ctx.paths);
 
   if (opts.dryRun) {
     const p = planLane(ctx, readLanes(ctx), opts);
-    return { dryRun: true, lane: p.name, id: laneId(ctx.id, p.name), number: p.number, path: p.laneDir, branch, ports: p.ports, remote: repo.remote, warnings: [] };
+    return { dryRun: true, lane: p.name, id: laneId(ctx.id, p.name), number: p.number, path: p.laneDir, branch, ports: p.ports, remote: repo.remote, warnings: [], hooks: dryRunHooks(ctx, 'post-create') };
   }
 
   // Reserve under the lock so concurrent creates never pick the same number; clone outside it.
@@ -131,16 +140,40 @@ export async function runCreate(opts, deps) {
     await abandon(String(err.message).split('\n')[0]);
     throw err;
   }
-  // M3: run the post-create hook here.
+  // Spec §10.2 steps 5–6: post-create runs once the lane is on disk, outside the lock. A failed hook
+  // keeps the lane as setup-failed so it can be fixed and refreshed.
+  const record = { number: plan.number, repos: [{ name: repoName, path: plan.name, branch }], ports: plan.ports };
+  const run = await runEvent(ctx, deps, { event: 'post-create', name: plan.name, lane: record, cwd: plan.laneDir });
+  const ok = run.outcome === 'ok';
+  const checksums = ok ? currentChecksums(ctx.paths) : null;
+  let suggestLock = false;
 
-  const lane = await updateLanes(ctx, deps, (state) => {
+  const lane = await updateLanes(ctx, deps, (s) => {
+    const ts = deps.now();
+    const board = hookBoardEntries(run, { lane: plan.name, now: ts });
+    let state = board.requests.reduce(putRequest, s);
     const l = getLane(state, plan.name);
-    l.status = 'idle';
-    l.updated = deps.now();
-    return { state, result: l, activity: [{ ts: deps.now(), lane: plan.name, text: `lane created on branch ${branch}` }] };
+    l.updated = ts;
+    if (ok) {
+      l.status = 'idle';
+      state.hookHistory = [...state.hookHistory, { ts, checksums }].slice(-HISTORY_CAP);
+      suggestLock = lockSuggested(state, ctx.config, checksums);
+      // The suggestion tracks the current set: a changed set withdraws it.
+      state = suggestLock
+        ? putRequest(state, lockRequest(ctx.config, ts))
+        : dropRequests(state, (q) => q.id === requestId('hooks-lock', null));
+    } else {
+      l.state = 'setup-failed';
+      l.status = 'setup-failed';
+      state = putRequest(state, setupFailedRequest(run, plan.name, ts));
+    }
+    const text = ok ? `lane created on branch ${branch}` : `lane created on branch ${branch}; setup failed: post-create ${runSummary(run)}`;
+    return { state, result: l, activity: [...board.activity, { ts, lane: plan.name, text }] };
   });
-  appendAudit(ctx.paths.audit, { ts: deps.now(), action: 'create', container: ctx.id, lane: plan.name, branch }, { warn: deps.warn });
+  appendAudit(ctx.paths.audit, { ts: deps.now(), action: 'create', container: ctx.id, lane: plan.name, branch, hooks: run.outcome }, { warn: deps.warn });
+  if (!ok) throw hookError(run, setupFailedNext(run, plan.name));
 
+  const { stableAfter } = ctx.config.hooks;
   return {
     dryRun: false,
     lane: plan.name,
@@ -150,8 +183,13 @@ export async function runCreate(opts, deps) {
     branch,
     ports: plan.ports,
     files: files.written,
-    warnings: files.skipped.map((s) => `${s.file} not written: ${s.reason}`),
+    warnings: [...files.skipped.map((s) => `${s.file} not written: ${s.reason}`), ...unapprovedWarnings(run)],
+    hooks: run,
     brief: buildBrief(ctx, plan.name, lane),
-    next: [`cd ${shellQuote(plan.laneDir)} && ${ctx.config.agentCmd}`, `or hand \`laines brief ${plan.name}\` to a subagent`],
+    next: [
+      `cd ${shellQuote(plan.laneDir)} && ${ctx.config.agentCmd}`,
+      `or hand \`laines brief ${plan.name}\` to a subagent`,
+      ...(suggestLock ? [`hooks have been unchanged across the last ${stableAfter} creates: a human can lock them with \`laines hooks approve --lock\``] : []),
+    ],
   };
 }

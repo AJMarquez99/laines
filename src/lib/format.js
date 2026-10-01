@@ -1,3 +1,4 @@
+import { runSummary } from './hook-events.js';
 export function printJson(value) {
   process.stdout.write(JSON.stringify(value, null, 2) + '\n');
 }
@@ -33,6 +34,11 @@ export function formatDoctor(r) {
 
 export const formatBrief = (r) => r.text;
 
+export function formatDryHooks(h) {
+  const list = h.hooks.length ? h.hooks.map((x) => `${x.hook} (${x.state})`).join(', ') : 'none';
+  return `hooks:   ${h.event}: ${list}${h.refused ? ' — would be refused (policy approve)' : ''}`;
+}
+
 export function formatCreate(r) {
   const head = [
     r.dryRun ? `dry run: would create ${r.lane} (${r.id})` : `lane ${r.lane} created`,
@@ -40,8 +46,8 @@ export function formatCreate(r) {
     `branch:  ${r.branch}`,
     `ports:   ${r.ports[0]}–${r.ports[1]}`,
   ];
-  if (r.dryRun) return [...head, `remote:  ${r.remote}`].join('\n');
-  const lines = [...head, ...r.warnings.map((w) => `warning: ${w}`), '', r.brief.text, 'next:', ...r.next.map((s) => `  ${s}`)];
+  if (r.dryRun) return [...head, `remote:  ${r.remote}`, formatDryHooks(r.hooks)].join('\n');
+  const lines = [...head, `hooks:   post-create ${runSummary(r.hooks)}`, ...r.warnings.map((w) => `warning: ${w}`), '', r.brief.text, 'next:', ...r.next.map((s) => `  ${s}`)];
   return lines.join('\n');
 }
 
