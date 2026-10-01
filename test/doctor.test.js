@@ -180,6 +180,7 @@ describe('doctor lane checks', () => {
     await setUpdated('2026-09-29T10:00:00.000Z');
     r = byName(await runDoctor({ container: s.container }, s.deps));
     expect(r['lane:lane_2'].detail).toContain('create was interrupted');
+    expect(r['lane:lane_2'].detail).toContain('laines refresh lane_2');
     expect(r['lane:lane_2'].detail).toContain('laines teardown lane_2 --remove-dir --force');
   });
 });

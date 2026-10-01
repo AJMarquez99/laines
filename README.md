@@ -127,7 +127,7 @@ human-readable output.
 | `laines hooks policy <approve\|notify\|open> [--dry-run]` | Set the hook policy (human-only). |
 | `laines watch [file] [--interval <s>]` | Follow the board (or any file) and print new lines as they land. |
 
-Run commands from the container directory, or pass `--container <dir>`.
+Run commands from the container directory, or pass `--container <dir>`. A bare `--` argument is rejected (exit 2), so options can't be used to slip past the agent deny rules for human-only commands.
 
 ### Exit codes
 

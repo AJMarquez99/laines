@@ -54,7 +54,7 @@ function laneStateProblems(name, lane, config, deps) {
   // timeout is treated as interrupted.
   const staleMs = ((config?.hooks.timeoutSec ?? 300) + 1800) * 1000;
   if (lane.status === 'spinning up' && Date.parse(deps.now()) - Date.parse(lane.updated) > staleMs) {
-    problems.push(`create was interrupted (spinning up since ${lane.updated}): run \`laines teardown ${name} --remove-dir --force\`, then create it again`);
+    problems.push(`create was interrupted (spinning up since ${lane.updated}): if the clone is complete, run \`laines refresh ${name}\`; otherwise run \`laines teardown ${name} --remove-dir --force\` and create it again`);
   }
   return problems;
 }
@@ -141,7 +141,7 @@ export async function runDoctor(opts, deps) {
     return `${open} open lane(s)`;
   });
   check('hooks', () => {
-    const policy = config ? config.hooks.policy : 'notify';
+    const policy = config?.hooks.policy;
     const { hooks, removed } = hookStates(p);
     const problems = [];
     const stuck = hooks.filter((h) => !isExecutable(h.path)).map((h) => h.rel);
@@ -155,7 +155,7 @@ export async function runDoctor(opts, deps) {
       .map((st) => [st, hooks.filter((h) => h.state === st).length])
       .filter(([, n]) => n)
       .map(([st, n]) => `${n} ${st}`);
-    const parts = [`policy ${policy}`, hooks.length ? `${hooks.length} hook(s): ${counts.join(', ')}` : 'no hooks'];
+    const parts = [`policy ${policy ?? 'unknown'}`, hooks.length ? `${hooks.length} hook(s): ${counts.join(', ')}` : 'no hooks'];
     if (removed.length) parts.push(`approved but since removed: ${removed.join(', ')}`);
     const current = Object.fromEntries(hooks.map((h) => [h.rel, h.checksum]));
     if (config && lanesState && lockSuggested(lanesState, config, current)) {
