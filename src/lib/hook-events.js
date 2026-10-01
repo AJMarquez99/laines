@@ -20,6 +20,11 @@ export function laneHookVars(ctx, name, lane) {
   });
 }
 
+const START_ERRORS = {
+  ENOENT: 'the interpreter on its #! line was not found',
+  ENOEXEC: 'it has no #! line',
+};
+
 const brief = (h) => ({ hook: h.rel, state: h.state, checksum: h.checksum });
 
 // Spec §8.3–8.4: run one event's hooks in order under the hook policy. Returns data only; the
@@ -54,6 +59,12 @@ export async function runEvent(ctx, deps, { event, name, lane, cwd }) {
       return { ...run, outcome: 'failed' };
     }
     const r = await deps.runHook({ file: h.path, cwd, vars, timeoutMs: timeoutSec * 1000 });
+    // The kernel's reasons a file cannot start: these come from laines, not from the hook.
+    const reason = r.error && r.status === null && !r.timedOut ? START_ERRORS[r.error.code] : undefined;
+    if (reason) {
+      run.results.push({ hook: h.rel, status: null, signal: null, timedOut: false, durationMs: r.durationMs, untrusted: false, output: `${h.path} could not start: ${reason}.` });
+      return { ...run, outcome: 'failed' };
+    }
     run.results.push({
       hook: h.rel,
       status: r.status,
@@ -112,7 +123,7 @@ export function hookBoardEntries(run, { lane, now }) {
       ts: now,
       lane: null,
       kind: 'hooks-changed',
-      text: `hooks changed since the last approval: ${unapprovedRan.map((u) => u.hook).join(', ')}. Review with \`laines hooks status\``,
+      text: 'hooks changed since the last approval: review them with `laines hooks status`',
       command: 'laines hooks approve',
     }],
   };
@@ -124,7 +135,7 @@ export const unapprovedWarnings = (run) => {
 };
 
 export function hookError(run, next) {
-  const lines = [`${run.event} ${runSummary(run)}.`];
+  const lines = [`${run.event}: ${runSummary(run)}.`];
   if (run.outcome === 'refused') {
     for (const d of run.diffs) lines.push('', `--- ${d.hook} (${d.state}) ---`, d.diff.trimEnd() || '(no diff)');
   } else if (run.results.length) {
@@ -142,7 +153,7 @@ export function setupFailedRequest(run, lane, ts) {
     ts,
     lane,
     kind: 'setup-failed',
-    text: `post-create ${runSummary(run)}`,
+    text: `post-create: ${runSummary(run)}`,
     command: run.outcome === 'refused' ? `laines hooks approve && ${refresh}` : refresh,
   };
 }

@@ -82,6 +82,15 @@ describe('hooks policy', () => {
     expect(readFileSync(ctxOf(s).paths.audit, 'utf8')).toContain('"action":"hooks-policy"');
   });
 
+  it('setting policy open withdraws the hooks-changed request', async () => {
+    const s = await setupContainer();
+    writeHook(s.container, 'post-create', 'true');
+    await runCreate({ container: s.container }, s.deps);
+    expect(readLanes(ctxOf(s)).requests.map((q) => q.id)).toContain('hooks-changed:*');
+    await runHooksPolicy({ policy: 'open', container: s.container }, s.deps);
+    expect(readLanes(ctxOf(s)).requests.map((q) => q.id)).not.toContain('hooks-changed:*');
+  });
+
   it('rejects an unknown policy, and does nothing when unchanged or on a dry run', async () => {
     const s = await setupContainer();
     await expect(runHooksPolicy({ policy: 'yolo', container: s.container }, s.deps)).rejects.toBeInstanceOf(InvalidInputError);

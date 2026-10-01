@@ -152,6 +152,7 @@ export async function runCreate(opts, deps) {
     const ts = deps.now();
     const board = hookBoardEntries(run, { lane: plan.name, now: ts });
     let state = board.requests.reduce(putRequest, s);
+    // Mutating l is safe: putRequest keeps state.lanes the same object as in s.
     const l = getLane(state, plan.name);
     l.updated = ts;
     if (ok) {
@@ -167,7 +168,7 @@ export async function runCreate(opts, deps) {
       l.status = 'setup-failed';
       state = putRequest(state, setupFailedRequest(run, plan.name, ts));
     }
-    const text = ok ? `lane created on branch ${branch}` : `lane created on branch ${branch}; setup failed: post-create ${runSummary(run)}`;
+    const text = ok ? `lane created on branch ${branch}` : `lane created on branch ${branch}; setup failed — post-create: ${runSummary(run)}`;
     return { state, result: l, activity: [...board.activity, { ts, lane: plan.name, text }] };
   });
   appendAudit(ctx.paths.audit, { ts: deps.now(), action: 'create', container: ctx.id, lane: plan.name, branch, hooks: run.outcome }, { warn: deps.warn });

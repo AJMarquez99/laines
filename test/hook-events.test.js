@@ -1,9 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadContainer } from '../src/lib/container.js';
 import { approveHooks } from '../src/lib/hooks.js';
-import { dryRunHooks, hookBoardEntries, hookError, lockSuggested, runEvent, runSummary, unapprovedWarnings } from '../src/lib/hook-events.js';
+import { dryRunHooks, hookBoardEntries, hookError, lockSuggested, runEvent, runSummary, setupFailedRequest, unapprovedWarnings } from '../src/lib/hook-events.js';
 import { dropRequests, emptyLanesState, putRequest } from '../src/lib/lanes-state.js';
 import { HookError } from '../src/lib/errors.js';
 import { cleanupTmp, setupContainer, writeHook } from './helpers.js';
@@ -62,6 +62,8 @@ describe('runEvent', () => {
     expect(runSummary(r)).toBe('post-create.d/20-b exited 1');
     const err = hookError(r, 'Fix it.');
     expect(err).toBeInstanceOf(HookError);
+    expect(err.message.split('\n')[0]).toBe('post-create: post-create.d/20-b exited 1.');
+    expect(setupFailedRequest(r, 'lane_1', 't').text).toBe('post-create: post-create.d/20-b exited 1');
     expect(err.exitCode).toBe(1);
     expect(err.run).toBe(r);
     expect(err.message).toContain("Hook output (untrusted: printed by the project's hook script):");
@@ -87,6 +89,28 @@ describe('runEvent', () => {
     expect(r.results[0].output).toContain('chmod +x');
     expect(existsSync(join(laneDir, 'ran'))).toBe(false);
     expect(runSummary(r)).toBe('post-create could not run');
+  });
+
+  it('names a missing interpreter on the #! line, without labelling it hook output', async () => {
+    const { container, run } = await setup();
+    const file = writeHook(container, 'post-create', 'true');
+    writeFileSync(file, '#!/nonexistent/interpreter\ntrue\n');
+    chmodSync(file, 0o755);
+    const r = await run();
+    expect(r.outcome).toBe('failed');
+    expect(r.results[0]).toMatchObject({ status: null, untrusted: false });
+    expect(r.results[0].output).toBe(`${file} could not start: the interpreter on its #! line was not found.`);
+  });
+
+  it('names a hook with no #! line, without labelling it hook output', async () => {
+    const { container, run } = await setup();
+    const file = writeHook(container, 'post-create', 'true');
+    writeFileSync(file, 'echo no shebang\n');
+    chmodSync(file, 0o755);
+    const r = await run();
+    expect(r.outcome).toBe('failed');
+    expect(r.results[0]).toMatchObject({ status: null, untrusted: false });
+    expect(r.results[0].output).toBe(`${file} could not start: it has no #! line.`);
   });
 
   it('stops a hook that runs past hooks.timeoutSec', async () => {
@@ -187,6 +211,7 @@ describe('board entries and requests', () => {
     expect(b.activity).toHaveLength(1);
     expect(b.activity[0].text).toMatch(/unapproved hook\(s\) ran under policy notify: post-create \(new, sha256:[0-9a-f]{12}\)/);
     expect(b.requests).toEqual([expect.objectContaining({ lane: null, kind: 'hooks-changed', command: 'laines hooks approve' })]);
+    expect(b.requests[0].text).toBe('hooks changed since the last approval: review them with `laines hooks status`');
     expect(hookBoardEntries({ ...r, unapproved: [] }, { lane: 'lane_1', now: 'x' })).toEqual({ activity: [], requests: [] });
   });
 

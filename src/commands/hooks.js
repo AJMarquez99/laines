@@ -74,7 +74,8 @@ export async function runHooksPolicy(opts, deps) {
   const now = deps.now();
   await updateLanes(ctx, deps, (s) => ({
     // Any policy change settles the lock suggestion: `approve` fulfils it, others decline it.
-    state: dropRequests(s, (q) => q.kind === 'hooks-lock'),
+    // Under `open` nothing is reviewed, so a pending approval request no longer applies.
+    state: dropRequests(s, (q) => q.kind === 'hooks-lock' || (to === 'open' && q.kind === 'hooks-changed')),
     result: null,
     activity: [{ ts: now, lane: null, text: `hook policy changed: ${from} → ${to}` }],
   }));

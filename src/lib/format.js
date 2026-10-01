@@ -45,7 +45,7 @@ export function formatRefresh(r) {
     `lane ${r.lane} refreshed`,
     `path:    ${r.path}`,
     `branch:  ${r.branch}`,
-    `hooks:   post-create ${runSummary(r.hooks)}`,
+    `hooks:   post-create: ${runSummary(r.hooks)}`,
     ...r.warnings.map((w) => `warning: ${w}`),
   ].join('\n');
 }
@@ -58,7 +58,7 @@ export function formatCreate(r) {
     `ports:   ${r.ports[0]}–${r.ports[1]}`,
   ];
   if (r.dryRun) return [...head, `remote:  ${r.remote}`, formatDryHooks(r.hooks)].join('\n');
-  const lines = [...head, `hooks:   post-create ${runSummary(r.hooks)}`, ...r.warnings.map((w) => `warning: ${w}`), '', r.brief.text, 'next:', ...r.next.map((s) => `  ${s}`)];
+  const lines = [...head, `hooks:   post-create: ${runSummary(r.hooks)}`, ...r.warnings.map((w) => `warning: ${w}`), '', r.brief.text, 'next:', ...r.next.map((s) => `  ${s}`)];
   return lines.join('\n');
 }
 
@@ -110,7 +110,7 @@ export function formatTeardown(r) {
   lines.push(r.archivedTo ? `plans archived to ${r.archivedTo}` : 'no plans to archive');
   if (r.removedDir) lines.push(`removed ${r.path}${r.forced ? ' (forced)' : ''}`);
   else lines.push(`clone left at ${r.path}`);
-  for (const h of r.hooks ?? []) lines.push(`hooks:   ${h.event} ${runSummary(h)}`);
+  for (const h of r.hooks ?? []) lines.push(`hooks:   ${h.event}: ${runSummary(h)}`);
   for (const w of r.warnings) lines.push(`warning: ${w}`);
   return lines.join('\n');
 }
