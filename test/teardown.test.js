@@ -1,13 +1,13 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runCreate } from '../src/commands/create.js';
 import { runKeep } from '../src/commands/lanes.js';
 import { runTeardown } from '../src/commands/teardown.js';
 import { loadContainer } from '../src/lib/container.js';
 import { readLanes, updateLanes } from '../src/lib/lanes-store.js';
-import { BlockedError, InvalidInputError } from '../src/lib/errors.js';
-import { tmp, cleanupTmp, setupContainer, gitIn, runCli } from './helpers.js';
+import { BlockedError, HookError, InvalidInputError } from '../src/lib/errors.js';
+import { tmp, cleanupTmp, setupContainer, gitIn, runCli, writeHook, setConfig } from './helpers.js';
 
 afterEach(cleanupTmp);
 
@@ -206,5 +206,110 @@ describe('teardown --remove-dir safety', () => {
     const r = await runCli(['teardown', 'lane_1', '--remove-dir', '--container', s.container, '--format', 'table'], s.deps);
     expect(r.code).toBe(0);
     expect(r.stdout).toContain('lane_1 torn down');
+  });
+});
+
+describe('teardown hooks', () => {
+  const requests = (s) => readLanes(loadContainer({ container: s.container }, s.deps)).requests;
+  const board = (s) => readFileSync(join(s.container, '.ai', 'context', 'LANES_BOARD.md'), 'utf8');
+
+  it('runs pre-teardown in the lane before anything is archived, and post-teardown in the container after', async () => {
+    const s = await lane();
+    writeFileSync(join(s.dir, '.ai', 'plans', 'task.md'), 'plan\n');
+    writeHook(s.container, 'pre-teardown', 'test -f .ai/plans/task.md && echo "pre $LANE_NAME" >> "$CONTAINER_DIR/hooks.log"');
+    writeHook(s.container, 'post-teardown', 'test ! -d "$LANE_DIR" && echo "post $(pwd -P)" >> "$CONTAINER_DIR/hooks.log"');
+    const r = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps);
+    expect(readFileSync(join(s.container, 'hooks.log'), 'utf8')).toBe(`pre lane_1\npost ${s.container}\n`);
+    expect(r.hooks.map((h) => [h.event, h.outcome])).toEqual([['pre-teardown', 'ok'], ['post-teardown', 'ok']]);
+  });
+
+  it('reproduces per-lane database isolation purely with hooks (spec §14, criterion 4)', async () => {
+    const s = await setupContainer();
+    writeHook(s.container, 'post-create', 'mkdir -p "$CONTAINER_DIR/dbs" && touch "$CONTAINER_DIR/dbs/app$LANE_SUFFIX" && echo "DATABASE=app$LANE_SUFFIX" >> "$LANE_ENV_FILE"');
+    writeHook(s.container, 'post-teardown', 'rm -f "$CONTAINER_DIR/dbs/app$LANE_SUFFIX"');
+    await runCreate({ container: s.container }, s.deps);
+    const two = await runCreate({ container: s.container }, s.deps);
+    expect(readdirSync(join(s.container, 'dbs')).sort()).toEqual(['app_my_app_l1', 'app_my_app_l2']);
+    expect(readFileSync(join(two.path, '.laines.env'), 'utf8')).toContain('DATABASE=app_my_app_l2');
+    await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps);
+    expect(readdirSync(join(s.container, 'dbs'))).toEqual(['app_my_app_l2']);
+  });
+
+  it('a failing pre-teardown aborts with nothing touched', async () => {
+    const s = await lane();
+    writeFileSync(join(s.dir, '.ai', 'plans', 'task.md'), 'plan\n');
+    writeHook(s.container, 'pre-teardown', 'echo "server still running" >&2; exit 1');
+    const err = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps).catch((e) => e);
+    expect(err).toBeInstanceOf(HookError);
+    expect(err.exitCode).toBe(1);
+    expect(err.message).toContain('server still running');
+    expect(err.message).toContain('Teardown aborted: nothing was archived or deleted.');
+    expect(state(s)).toMatchObject({ state: 'active' });
+    expect(readFileSync(join(s.dir, '.ai', 'plans', 'task.md'), 'utf8')).toBe('plan\n');
+    expect(board(s)).toContain('teardown aborted, nothing touched');
+  });
+
+  it('pre-teardown exit 3 asks a human and exits 3', async () => {
+    const s = await lane();
+    writeHook(s.container, 'pre-teardown', 'echo "stop the server first"; exit 3');
+    const err = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps).catch((e) => e);
+    expect(err.exitCode).toBe(3);
+    expect(requests(s).find((q) => q.id === 'teardown-blocked:lane_1')).toMatchObject({ command: 'laines teardown lane_1' });
+    expect(state(s).state).toBe('active');
+  });
+
+  it('under policy approve an unapproved pre-teardown is refused and nothing is touched', async () => {
+    const s = await lane();
+    setConfig(s.container, (c) => { c.hooks.policy = 'approve'; });
+    writeHook(s.container, 'pre-teardown', 'true');
+    const err = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps).catch((e) => e);
+    expect(err.exitCode).toBe(3);
+    expect(state(s).state).toBe('active');
+    expect(requests(s).map((q) => q.id).sort()).toEqual(['hooks-changed:*', 'teardown-blocked:lane_1']);
+    expect(requests(s).find((q) => q.id === 'teardown-blocked:lane_1').command).toBe('laines hooks approve && laines teardown lane_1');
+  });
+
+  it('a failing post-teardown closes the lane with a cleanup request, and teardown retries it', async () => {
+    const s = await lane();
+    writeHook(s.container, 'post-teardown', 'echo "dropdb failed" >&2; exit 1');
+    const r = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(state(s).state).toBe('closed');
+    expect(r.warnings.join('\n')).toMatch(/cleanup incomplete: post-teardown exited 1/);
+    expect(requests(s).find((q) => q.id === 'cleanup-incomplete:lane_1')).toMatchObject({ command: 'laines teardown lane_1' });
+
+    writeHook(s.container, 'post-teardown', 'touch "$CONTAINER_DIR/cleaned"');
+    const retry = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(retry.hooks.map((h) => [h.event, h.outcome])).toEqual([['post-teardown', 'ok']]);
+    expect(existsSync(join(s.container, 'cleaned'))).toBe(true);
+    expect(requests(s).filter((q) => q.lane === 'lane_1')).toEqual([]);
+    await expect(runTeardown({ lane: 'lane_1', container: s.container }, s.deps)).rejects.toBeInstanceOf(InvalidInputError);
+  });
+
+  it('skips pre-teardown when the clone is missing, and still runs post-teardown', async () => {
+    const s = await lane();
+    rmSync(s.dir, { recursive: true, force: true });
+    writeHook(s.container, 'pre-teardown', 'exit 1');
+    writeHook(s.container, 'post-teardown', 'touch "$CONTAINER_DIR/post-ran"');
+    const r = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(r.warnings.join('\n')).toContain('pre-teardown skipped');
+    expect(existsSync(join(s.container, 'post-ran'))).toBe(true);
+    expect(state(s).state).toBe('closed');
+  });
+
+  it('dry run lists the hooks that would run and runs none', async () => {
+    const s = await lane();
+    writeHook(s.container, 'pre-teardown', 'touch "$CONTAINER_DIR/pre-ran"');
+    writeHook(s.container, 'post-teardown', 'touch "$CONTAINER_DIR/post-ran"');
+    const r = await runTeardown({ lane: 'lane_1', dryRun: true, container: s.container }, s.deps);
+    expect(r.hooks.map((h) => [h.event, h.wouldRun])).toEqual([['pre-teardown', true], ['post-teardown', true]]);
+    expect(existsSync(join(s.container, 'pre-ran'))).toBe(false);
+    expect(existsSync(join(s.container, 'post-ran'))).toBe(false);
+  });
+
+  it('logs the second phase of a two-step teardown on the board', async () => {
+    const s = await lane();
+    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps);
+    expect(board(s)).toContain('clone removed');
   });
 });

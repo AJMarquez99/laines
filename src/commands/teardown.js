@@ -2,9 +2,12 @@ import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadContainer } from '../lib/container.js';
 import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
+import { dropRequests, putRequest, requestId } from '../lib/lanes-state.js';
 import { assertLaneDir, removeLaneDir } from '../lib/containment.js';
 import { untrackedEntries } from '../lib/lane-files.js';
 import { unpushedWork } from '../lib/lane-git.js';
+import { listHooks } from '../lib/hooks.js';
+import { dryRunHooks, hookBoardEntries, hookError, runEvent, runSummary, unapprovedWarnings } from '../lib/hook-events.js';
 import { appendAudit } from '../lib/audit.js';
 import { BlockedError, InvalidInputError } from '../lib/errors.js';
 
@@ -29,17 +32,30 @@ function deleteContext(deps, laneDir) {
 const keptMessage = (name, kept) =>
   `Lane ${name} is kept (${kept.reason}). A human must run \`laines release ${name}\` before it can be torn down.`;
 
+// One locked board update for a hook run: its unapproved-hook notes, plus the caller's request and line.
+const recordHookRun = (ctx, deps, run, name, finish) =>
+  updateLanes(ctx, deps, (s) => {
+    const ts = deps.now();
+    const board = hookBoardEntries(run, { lane: name, now: ts });
+    const { state, text } = finish(board.requests.reduce(putRequest, s), ts);
+    return { state, result: null, activity: [...board.activity, { ts, lane: name, text }] };
+  });
+
 // Human-only (deny rules in agent settings): the lane must always be named.
 export async function runTeardown(opts, deps) {
   if (!opts.lane) throw new InvalidInputError('Name the lane to tear down: `laines teardown <lane>`.');
   const ctx = loadContainer(opts, deps);
   const name = opts.lane;
-  const lane = getLane(readLanes(ctx), name);
+  const before = readLanes(ctx);
+  const lane = getLane(before, name);
   if (!lane) throw new InvalidInputError(`No lane named ${name}. See \`laines list --all\`.`);
   if (lane.kept) {
     throw new BlockedError(keptMessage(name, lane.kept));
   }
-  if (lane.state === 'closed' && !opts.removeDir) {
+  const closed = lane.state === 'closed';
+  const cleanupId = requestId('cleanup-incomplete', name);
+  const cleanupPending = before.requests.some((q) => q.id === cleanupId);
+  if (closed && !opts.removeDir && !cleanupPending) {
     throw new InvalidInputError(`Lane ${name} is already closed. Pass --remove-dir to delete its clone.`);
   }
   const laneDir = join(ctx.root, lane.repos[0].path);
@@ -52,9 +68,14 @@ export async function runTeardown(opts, deps) {
   const risky = Boolean(checks && checks.problems.length);
   const blocked = risky && !opts.force;
   const warnings = checks?.noUpstream ? [`branch ${checks.noUpstream} has no upstream`] : [];
+  // A first teardown runs pre-teardown (when the clone exists) and post-teardown. Tearing down a
+  // closed lane again re-runs only a post-teardown that failed last time.
+  const runPre = !closed && Boolean(real);
+  const runPost = !closed || cleanupPending;
 
   if (opts.dryRun) {
-    return { dryRun: true, lane: name, path: laneDir, blocked, removedDir: Boolean(opts.removeDir && real), forced: risky && Boolean(opts.force), checks, warnings };
+    const hooks = [...(runPre ? [dryRunHooks(ctx, 'pre-teardown')] : []), ...(runPost ? [dryRunHooks(ctx, 'post-teardown')] : [])];
+    return { dryRun: true, lane: name, path: laneDir, blocked, removedDir: Boolean(opts.removeDir && real), forced: risky && Boolean(opts.force), checks, warnings, hooks };
   }
   if (blocked) {
     throw new BlockedError([
@@ -67,14 +88,43 @@ export async function runTeardown(opts, deps) {
     ].join('\n'));
   }
 
-  // M3: run the pre-teardown hook here; a failure aborts with nothing touched.
+  // Spec §10.3 step 4: pre-teardown runs after the safety checks and before anything is touched.
+  let pre = null;
+  if (runPre) {
+    // Narrow the window for a `keep` landing during the checks: the hook may have side effects.
+    // The under-lock re-check below still decides; the lock is never held while a hook runs.
+    const fresh = getLane(readLanes(ctx), name);
+    if (fresh?.kept) throw new BlockedError(keptMessage(name, fresh.kept));
+    pre = await runEvent(ctx, deps, { event: 'pre-teardown', name, lane, cwd: real });
+    if (pre.outcome !== 'ok') {
+      await recordHookRun(ctx, deps, pre, name, (state, ts) => ({
+        state: pre.outcome === 'failed'
+          ? state
+          : putRequest(state, {
+            ts,
+            lane: name,
+            kind: 'teardown-blocked',
+            text: `teardown stopped: pre-teardown ${runSummary(pre)}`,
+            command: `${pre.outcome === 'refused' ? 'laines hooks approve && ' : ''}laines teardown ${name}${opts.removeDir ? ' --remove-dir' : ''}`,
+          }),
+        text: `teardown aborted, nothing touched: pre-teardown ${runSummary(pre)}`,
+      }));
+      throw hookError(pre, 'Teardown aborted: nothing was archived or deleted.');
+    }
+    warnings.push(...unapprovedWarnings(pre));
+  } else if (!closed && listHooks(ctx.paths.hooks, 'pre-teardown').length) {
+    warnings.push(`pre-teardown skipped: ${laneDir} does not exist`);
+  }
+
   const now = deps.now();
   let archivedTo = null;
   let contextDeleted = false;
-  if (lane.state !== 'closed') {
+  if (!closed) {
     // Re-checked under the lock: a `keep` that landed during the git checks must win, and the
     // archive/delete happen only once the record is known to be closable.
-    await updateLanes(ctx, deps, (state) => {
+    await updateLanes(ctx, deps, (s) => {
+      const board = pre ? hookBoardEntries(pre, { lane: name, now }) : { activity: [], requests: [] };
+      const state = board.requests.reduce(putRequest, s);
       const l = getLane(state, name);
       if (!l) throw new InvalidInputError(`Lane ${name} no longer exists.`);
       if (l.kept) throw new BlockedError(keptMessage(name, l.kept));
@@ -89,7 +139,7 @@ export async function runTeardown(opts, deps) {
       l.updated = now;
       state.requests = state.requests.filter((q) => q.lane !== name);
       const note = archivedTo ? `plans archived to ${archivedTo}` : 'no plans to archive';
-      return { state, result: null, activity: [{ ts: now, lane: name, text: `lane torn down; ${note}` }] };
+      return { state, result: null, activity: [...board.activity, { ts: now, lane: name, text: `lane torn down; ${note}` }] };
     });
   } else if (opts.removeDir && real) {
     // Second phase of a two-step teardown: anything written since the close is archived too.
@@ -97,8 +147,32 @@ export async function runTeardown(opts, deps) {
     contextDeleted = deleteContext(deps, real);
   }
   const removedDir = opts.removeDir ? removeLaneDir(ctx.root, laneDir, lane.repos[0].path) : false;
-  // M3: run the post-teardown hook here.
+  if (closed && opts.removeDir) {
+    const text = removedDir ? `clone removed${archivedTo ? `; plans archived to ${archivedTo}` : ''}` : 'no clone left to remove';
+    await updateLanes(ctx, deps, (state) => ({ state, result: null, activity: [{ ts: deps.now(), lane: name, text }] }));
+  }
+
+  // Spec §10.3 step 7: post-teardown runs in the container; a failure leaves a request, never an error.
+  let post = null;
+  if (runPost) {
+    post = await runEvent(ctx, deps, { event: 'post-teardown', name, lane, cwd: ctx.root });
+    const ok = post.outcome === 'ok';
+    warnings.push(...unapprovedWarnings(post));
+    if (!ok) warnings.push(`cleanup incomplete: ${runSummary(post)}. Fix it, then run \`laines teardown ${name}\` to retry.`);
+    if (!ok || post.results.length || cleanupPending) {
+      await recordHookRun(ctx, deps, post, name, (state, ts) => ({
+        state: ok
+          ? dropRequests(state, (q) => q.id === cleanupId)
+          : putRequest(state, { ts, lane: name, kind: 'cleanup-incomplete', text: `cleanup incomplete: ${runSummary(post)}`, command: `laines teardown ${name}` }),
+        text: ok ? `post-teardown: ${runSummary(post)}` : `cleanup incomplete: ${runSummary(post)}`,
+      }));
+    }
+  }
   const forced = risky && Boolean(opts.force);
-  appendAudit(ctx.paths.audit, { ts: now, action: 'teardown', container: ctx.id, lane: name, removedDir, forced }, { warn: deps.warn });
-  return { dryRun: false, lane: name, path: laneDir, archivedTo, contextDeleted, removedDir, forced, checks, warnings };
+  appendAudit(
+    ctx.paths.audit,
+    { ts: now, action: 'teardown', container: ctx.id, lane: name, removedDir, forced, hooks: { pre: pre?.outcome ?? null, post: post?.outcome ?? null } },
+    { warn: deps.warn },
+  );
+  return { dryRun: false, lane: name, path: laneDir, archivedTo, contextDeleted, removedDir, forced, checks, warnings, hooks: [pre, post].filter(Boolean) };
 }
