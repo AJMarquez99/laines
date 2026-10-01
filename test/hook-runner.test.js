@@ -108,4 +108,27 @@ describe('runHookFile', () => {
     expect(signals.listenerCount('SIGINT')).toBe(0);
     expect(signals.listenerCount('SIGTERM')).toBe(0);
   });
+
+  it('timeout hard-kills a child that ignores SIGTERM', async () => {
+    const dir = tmp();
+    const file = script(dir, "sh -c 'trap \"\" TERM; sleep 30' &\necho $! > child.pid\nwait");
+    const r = await runHookFile({ file, cwd: dir, vars: {}, timeoutMs: 300 });
+    expect(r.timedOut).toBe(true);
+    expect(r.status).toBe(null);
+    const pid = Number(readFileSync(join(dir, 'child.pid'), 'utf8'));
+    expect(await until(() => !alive(pid), 8000)).toBe(true);
+  }, 15000);
+
+  it('a second interrupt escalates to SIGKILL', async () => {
+    const dir = tmp();
+    const signals = new EventEmitter();
+    const pending = runHookFile({ file: script(dir, "trap '' TERM\nsleep 30"), cwd: dir, vars: {}, timeoutMs: 20000, signals });
+    await new Promise((r) => setTimeout(r, 200));
+    signals.emit('SIGINT');
+    await new Promise((r) => setTimeout(r, 200));
+    signals.emit('SIGINT');
+    const r = await pending;
+    expect(r.signal).toBe('SIGKILL');
+    expect(r.durationMs).toBeLessThan(20000);
+  });
 });

@@ -23,6 +23,7 @@ export function runHookFile({ file, cwd, vars, timeoutMs, signals = process }) {
     let hardKill;
     let linger;
     let child;
+    let interruptCount = 0;
 
     const append = (chunk) => {
       output += chunk;
@@ -33,12 +34,25 @@ export function runHookFile({ file, cwd, vars, timeoutMs, signals = process }) {
         process.kill(-child.pid, sig);
       } catch {}
     };
-    const forward = () => killGroup('SIGTERM');
+    const stop = () => {
+      if (!hardKill) {
+        killGroup('SIGTERM');
+        hardKill = setTimeout(() => killGroup('SIGKILL'), KILL_GRACE_MS);
+      }
+    };
+    const forward = () => {
+      interruptCount++;
+      if (interruptCount === 1) {
+        stop();
+      } else {
+        killGroup('SIGKILL');
+      }
+    };
     const finish = (status, signal, error = null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      clearTimeout(hardKill);
+      if (hardKill) hardKill.unref();
       clearTimeout(linger);
       for (const s of FORWARDED) signals.off(s, forward);
       const text = output.length > MAX_OUTPUT ? `… (output truncated)\n${output.slice(-MAX_OUTPUT)}` : output;
@@ -47,8 +61,7 @@ export function runHookFile({ file, cwd, vars, timeoutMs, signals = process }) {
 
     const timer = setTimeout(() => {
       timedOut = true;
-      killGroup('SIGTERM');
-      hardKill = setTimeout(() => killGroup('SIGKILL'), KILL_GRACE_MS);
+      stop();
     }, timeoutMs);
 
     try {
@@ -62,6 +75,7 @@ export function runHookFile({ file, cwd, vars, timeoutMs, signals = process }) {
     child.stderr.setEncoding('utf8').on('data', append);
     child.on('error', (error) => finish(null, null, error));
     child.on('exit', (status, signal) => {
+      if (settled) return;
       linger = setTimeout(() => {
         child.stdout.destroy();
         child.stderr.destroy();
