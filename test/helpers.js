@@ -6,6 +6,7 @@ import { vi } from 'vitest';
 import { runGit } from '../src/lib/git.js';
 import { runInit } from '../src/commands/init.js';
 import { runDotAi } from '../src/lib/dotai.js';
+import { runHookFile } from '../src/lib/hook-runner.js';
 
 const made = [];
 
@@ -31,6 +32,7 @@ export function testDeps(root, overrides = {}) {
     },
     git: runGit,
     busyPorts: async () => [],
+    runHook: runHookFile,
     warn: () => {},
     ...overrides,
   };
