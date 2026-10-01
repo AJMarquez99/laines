@@ -114,3 +114,27 @@ export function formatTeardown(r) {
   for (const w of r.warnings) lines.push(`warning: ${w}`);
   return lines.join('\n');
 }
+
+export function formatHooksStatus(r) {
+  const lines = [`policy: ${r.policy}`];
+  if (!r.hooks.length && !r.removed.length) lines.push('no hooks');
+  for (const h of r.hooks) lines.push(`${h.state.padEnd(9)} ${h.hook}${h.executable ? '' : ' (not executable)'}`);
+  for (const rel of r.removed) lines.push(`${'removed'.padEnd(9)} ${rel}`);
+  if (r.lockSuggested) lines.push('', 'hooks are stable: a human can lock them with `laines hooks approve --lock`');
+  for (const h of r.hooks.filter((x) => x.diff)) lines.push('', `--- ${h.hook} (${h.state}) ---`, h.diff.trimEnd());
+  return lines.join('\n');
+}
+
+export function formatHooksApprove(r) {
+  if (r.dryRun) {
+    return [`dry run: would approve ${r.approve.length} hook(s)${r.lock ? ' and set hook policy approve' : ''}`, ...r.approve.map((h) => `  ${h.hook} (${h.state})`)].join('\n');
+  }
+  return [
+    `approved ${r.approved.length} hook(s); hook policy ${r.policy}`,
+    ...r.approved.map((h) => `  ${h.hook} ${h.checksum}${h.was === 'approved' ? '' : ` (was ${h.was})`}`),
+    ...r.removed.map((rel) => `  dropped ${rel} (no longer present)`),
+  ].join('\n');
+}
+
+export const formatHooksPolicy = (r) =>
+  r.dryRun ? `dry run: hook policy ${r.from} → ${r.to}` : r.changed ? `hook policy ${r.from} → ${r.to}` : `hook policy already ${r.to}`;

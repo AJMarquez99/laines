@@ -9,9 +9,10 @@ import { runCreate } from './commands/create.js';
 import { runRefresh } from './commands/refresh.js';
 import { runReport, runKeep, runRelease, runList, runStatus } from './commands/lanes.js';
 import { runTeardown } from './commands/teardown.js';
+import { runHooksStatus, runHooksApprove, runHooksPolicy } from './commands/hooks.js';
 import { runWatch } from './commands/watch.js';
 import { EXIT_CODES, InvalidInputError, LainesError } from './lib/errors.js';
-import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate, formatRefresh, formatReport, formatKeep, formatRelease, formatList, formatStatus, formatTeardown } from './lib/format.js';
+import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate, formatRefresh, formatReport, formatKeep, formatRelease, formatList, formatStatus, formatTeardown, formatHooksStatus, formatHooksApprove, formatHooksPolicy } from './lib/format.js';
 
 function reportError(err) {
   if (err instanceof LainesError) {
@@ -137,6 +138,23 @@ export function buildProgram(deps = defaultDeps) {
     .option('--force', 'remove even if the lane holds unpushed work (never overrides keep)')
     .option('--dry-run', 'show what would happen without changing anything')
     .action(handle(runTeardown, { table: formatTeardown, args: ['lane'] }, deps));
+
+  // The group itself takes no options: `laines hooks --format json approve` must stay a usage error
+  // so it cannot slip past the `Bash(laines hooks approve:*)` deny rule.
+  const hooks = program.command('hooks').description('Review, approve and set the policy for lane hooks');
+  withGlobals(hooks.command('status'))
+    .description('List hooks as approved, changed or new, with diffs against the approved copies')
+    .action(handle(runHooksStatus, { table: formatHooksStatus }, deps));
+  withGlobals(hooks.command('approve'))
+    .description('Approve the current hooks (human-only)')
+    .option('--lock', 'also set hook policy "approve", so later changes are refused until approved')
+    .option('--dry-run', 'show what would be approved without changing anything')
+    .action(handle(runHooksApprove, { table: formatHooksApprove }, deps));
+  withGlobals(hooks.command('policy'))
+    .description('Set the hook policy: approve, notify or open (human-only)')
+    .argument('<policy>', 'approve | notify | open')
+    .option('--dry-run', 'show the change without writing it')
+    .action(handle(runHooksPolicy, { table: formatHooksPolicy, args: ['policy'] }, deps));
 
   program
     .command('watch')

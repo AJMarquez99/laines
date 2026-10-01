@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
-import { readJson } from './lib/jsonfile.js';
+import { readJson, writeJson } from './lib/jsonfile.js';
 import { parseWith } from './lib/schema.js';
 import { MalformedConfigError, NotAContainerError } from './lib/errors.js';
 
@@ -59,4 +59,9 @@ export function loadConfig(file) {
     },
   });
   return parseWith(ConfigSchema, raw, file);
+}
+
+// Validates before writing, so a bad value never reaches disk.
+export function saveConfig(file, config) {
+  writeJson(file, parseWith(ConfigSchema, config, file));
 }
