@@ -28,7 +28,7 @@
 - **Every command, from the CLI or MCP, runs through `invoke(name, opts, deps)`.** Capability (exit 4) and locked (exit 3) checks exist only there.
 - MCP tool names are `laines_<command>` with spaces → `_`; arguments are snake_case. **No tool declares `force`, `prune` or `container`.** Each tool's `mapArgs` copies only declared arguments; the server adds the bound container last so nothing can override it.
 - The MCP server writes only protocol to stdout (`console.log` is redirected to stderr), never crashes on a tool error (every handler returns `isError` with `{ error: { exitCode, message } }`), and prefixes any result containing `"untrusted": true` with the untrusted-output note.
-- Elicitation is reached only through `deps.elicit(message, schema)` / `deps.canElicit()`, created per server.
+- Elicitation is reached only through `deps.elicit(message, schema)` / `deps.canElicit()`: `canElicit` per server, `elicit` per tool call (tied to the call's abort signal).
 - New board request kind: `teardown-confirm` (per lane), cleared by the lane's teardown like the others.
 - Commit trailer, exactly: `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`.
 - The user's shell aliases `rm`/`cp` to interactive prompts: use `command rm -f` / `command cp` in Bash, Node `fs` in tests.
