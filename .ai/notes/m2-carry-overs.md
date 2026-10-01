@@ -15,6 +15,12 @@ that owns it, then delete this note.
 - `doctor` and `config get` resolve containers without the `/`-and-home guard; fine while they
   are read-only, but route any future write through `loadContainer`.
 - `hooks approve` approves whatever is on disk when it runs; a hook edited between `hooks status` and `approve` is approved unseen (approve now prints the diffs it approved). Consider `--expect <checksum>` binding approval to what the human reviewed.
+- `refresh` accepts a lane still `spinning up` (the rescue path) with no age guard, so a refresh
+  while a slow `create` is still in `post-create` runs the hook twice concurrently. Agents over
+  MCP make this likelier: refuse a recent `spinning up` lane (doctor's `timeoutSec + 30 min`
+  threshold) unless forced.
+- `saveConfig` writes the parsed config back, expanding every default into `config.json`;
+  `config set` should patch the one key on the raw file instead.
 
 ## M5 (release, SECURITY.md residual risks)
 
@@ -30,4 +36,6 @@ that owns it, then delete this note.
   written over it.
 - The port-busy error names ports, not the owning process (spec §6.4 says process).
 - Custom lane names need not match the lane prefix (spec §9.1 vs §10.2): record the deviation.
+- CI on Linux: the hook test for a file with no `#!` line expects `ENOEXEC`, which macOS returns;
+  Linux's exec path may run such a file through `/bin/sh` instead. Check it on the first Linux run.
 - Hooks never run under the container lock: a `keep` that lands while `pre-teardown` runs aborts the teardown only after the hook's side effects (teardown re-reads `kept` just before the hook to narrow the window).
