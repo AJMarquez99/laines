@@ -6,11 +6,12 @@ import { runConfigGet } from './commands/config.js';
 import { runDoctor } from './commands/doctor.js';
 import { runBrief } from './commands/brief.js';
 import { runCreate } from './commands/create.js';
+import { runRefresh } from './commands/refresh.js';
 import { runReport, runKeep, runRelease, runList, runStatus } from './commands/lanes.js';
 import { runTeardown } from './commands/teardown.js';
 import { runWatch } from './commands/watch.js';
 import { EXIT_CODES, InvalidInputError, LainesError } from './lib/errors.js';
-import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate, formatReport, formatKeep, formatRelease, formatList, formatStatus, formatTeardown } from './lib/format.js';
+import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate, formatRefresh, formatReport, formatKeep, formatRelease, formatList, formatStatus, formatTeardown } from './lib/format.js';
 
 function reportError(err) {
   if (err instanceof LainesError) {
@@ -92,6 +93,12 @@ export function buildProgram(deps = defaultDeps) {
     .option('--branch <name>', 'branch to check out (default: the container default branch)')
     .option('--dry-run', 'show what would be created without cloning or reserving anything')
     .action(handle(runCreate, { table: formatCreate, args: ['name'] }, deps));
+
+  withGlobals(program.command('refresh'))
+    .description("Rewrite a lane's local files and .laines.env, then run post-create again (recovers a setup-failed lane)")
+    .argument('[lane]', 'lane name (default: the lane you are in)')
+    .option('--dry-run', 'show which hooks would run without changing anything')
+    .action(handle(runRefresh, { table: formatRefresh, args: ['lane'] }, deps));
 
   withGlobals(program.command('report'))
     .description("Update a lane's board entry")

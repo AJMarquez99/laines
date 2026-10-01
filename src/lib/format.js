@@ -39,6 +39,17 @@ export function formatDryHooks(h) {
   return `hooks:   ${h.event}: ${list}${h.refused ? ' — would be refused (policy approve)' : ''}`;
 }
 
+export function formatRefresh(r) {
+  if (r.dryRun) return [`dry run: would refresh ${r.lane}`, `path:    ${r.path}`, formatDryHooks(r.hooks)].join('\n');
+  return [
+    `lane ${r.lane} refreshed`,
+    `path:    ${r.path}`,
+    `branch:  ${r.branch}`,
+    `hooks:   post-create ${runSummary(r.hooks)}`,
+    ...r.warnings.map((w) => `warning: ${w}`),
+  ].join('\n');
+}
+
 export function formatCreate(r) {
   const head = [
     r.dryRun ? `dry run: would create ${r.lane} (${r.id})` : `lane ${r.lane} created`,
