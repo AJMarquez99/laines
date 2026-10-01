@@ -19,12 +19,15 @@ prompt.
 scratch and runs `post-create` again, so append unconditionally, and don't edit the file by hand.
 Because it runs again, make `post-create` safe to repeat (for example `createdb … || true`).
 
+Anything a hook leaves running must redirect its output, for example
+`npm run dev >"$LANE_DIR/dev.log" 2>&1 &`: the hook's output pipes close when it exits.
+
 Exit `0` for success, `3` when a human must act first (for example "start Postgres, then run
 `laines refresh <lane>`"), anything else for failure. A hook that runs longer than
 `hooks.timeoutSec` (default 300) is stopped, with everything it started. Output is captured and
 shown to agents as untrusted.
 
 Hook policy (`laines config get hooks.policy`): `notify` runs changed hooks and flags them on the
-board; `approve` refuses changed hooks until a human runs `laines hooks approve`; `open` runs
+board; `approve` refuses new or changed hooks until a human runs `laines hooks approve`; `open` runs
 hooks without checks. `laines hooks status` shows each hook's state and what changed. Once the
 hooks are stable, a human locks them with `laines hooks approve --lock`.

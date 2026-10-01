@@ -71,7 +71,7 @@ people running several containers across several projects on one machine.
 │   ├── lanes.json                # lane index: source of truth for lane state (§6.2)
 │   ├── hooks/                    # post-create, pre-teardown, post-teardown, <event>.d/
 │   ├── hooks.lock.json           # approved hook checksums
-│   ├── hooks.approved/            # copies of the approved hooks (diffs for hooks status)
+│   ├── hooks.approved/           # copies of the approved hooks (diffs for hooks status)
 │   ├── audit.jsonl               # metadata-only action log
 │   └── .lock/                    # mkdir lock for lanes.json + board
 ├── .ai/                          # full dot-ai layer (shared by all lanes)

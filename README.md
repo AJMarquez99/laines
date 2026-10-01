@@ -175,6 +175,9 @@ echo "DATABASE_URL=postgres://localhost/app$LANE_SUFFIX" >> "$LANE_ENV_FILE"
 dropdb --if-exists "app$LANE_SUFFIX"
 ```
 
+Anything a hook leaves running must redirect its output, for example
+`npm run dev >"$LANE_DIR/dev.log" 2>&1 &`: the hook's output pipes close when it exits.
+
 Make both executable (`chmod +x`). A container's `.laines/hooks/README.md` documents the full
 contract.
 
