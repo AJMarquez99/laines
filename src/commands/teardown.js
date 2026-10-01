@@ -6,7 +6,7 @@ import { dropRequests, putRequest, requestId } from '../lib/lanes-state.js';
 import { assertLaneDir, removeLaneDir } from '../lib/containment.js';
 import { untrackedEntries } from '../lib/lane-files.js';
 import { unpushedWork } from '../lib/lane-git.js';
-import { listHooks } from '../lib/hooks.js';
+import { hookStates, listHooks } from '../lib/hooks.js';
 import { dryRunHooks, hookBoardEntries, hookError, runEvent, runSummary, unapprovedWarnings } from '../lib/hook-events.js';
 import { appendAudit } from '../lib/audit.js';
 import { BlockedError, InvalidInputError } from '../lib/errors.js';
@@ -49,6 +49,8 @@ export async function runTeardown(opts, deps) {
   const before = readLanes(ctx);
   const lane = getLane(before, name);
   if (!lane) throw new InvalidInputError(`No lane named ${name}. See \`laines list --all\`.`);
+  // A malformed hooks.lock.json fails here, before anything is touched.
+  hookStates(ctx.paths);
   if (lane.kept) {
     throw new BlockedError(keptMessage(name, lane.kept));
   }
@@ -104,10 +106,10 @@ export async function runTeardown(opts, deps) {
             ts,
             lane: name,
             kind: 'teardown-blocked',
-            text: `teardown stopped: pre-teardown ${runSummary(pre)}`,
+            text: `teardown stopped — pre-teardown: ${runSummary(pre)}`,
             command: `${pre.outcome === 'refused' ? 'laines hooks approve && ' : ''}laines teardown ${name}${opts.removeDir ? ' --remove-dir' : ''}`,
           }),
-        text: `teardown aborted, nothing touched: pre-teardown ${runSummary(pre)}`,
+        text: `teardown aborted, nothing touched — pre-teardown: ${runSummary(pre)}`,
       }));
       throw hookError(pre, 'Teardown aborted: nothing was archived or deleted.');
     }
@@ -157,13 +159,14 @@ export async function runTeardown(opts, deps) {
   if (runPost) {
     post = await runEvent(ctx, deps, { event: 'post-teardown', name, lane, cwd: ctx.root });
     const ok = post.outcome === 'ok';
+    const retry = `${post.outcome === 'refused' ? 'laines hooks approve && ' : ''}laines teardown ${name}`;
     warnings.push(...unapprovedWarnings(post));
-    if (!ok) warnings.push(`cleanup incomplete: ${runSummary(post)}. Fix it, then run \`laines teardown ${name}\` to retry.`);
+    if (!ok) warnings.push(`cleanup incomplete: ${runSummary(post)}. Fix it, then run \`${retry}\` to retry.`);
     if (!ok || post.results.length || cleanupPending) {
       await recordHookRun(ctx, deps, post, name, (state, ts) => ({
         state: ok
           ? dropRequests(state, (q) => q.id === cleanupId)
-          : putRequest(state, { ts, lane: name, kind: 'cleanup-incomplete', text: `cleanup incomplete: ${runSummary(post)}`, command: `laines teardown ${name}` }),
+          : putRequest(state, { ts, lane: name, kind: 'cleanup-incomplete', text: `cleanup incomplete: ${runSummary(post)}`, command: retry }),
         text: ok ? `post-teardown: ${runSummary(post)}` : `cleanup incomplete: ${runSummary(post)}`,
       }));
     }

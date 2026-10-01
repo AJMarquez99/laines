@@ -7,7 +7,7 @@ import { runTeardown } from '../src/commands/teardown.js';
 import { loadContainer } from '../src/lib/container.js';
 import { readLanes, updateLanes } from '../src/lib/lanes-store.js';
 import { approveHooks } from '../src/lib/hooks.js';
-import { HookError, InvalidInputError } from '../src/lib/errors.js';
+import { HookError, InvalidInputError, MalformedConfigError } from '../src/lib/errors.js';
 import { cleanupTmp, setupContainer, gitIn, runCli, writeHook, setConfig } from './helpers.js';
 
 afterEach(cleanupTmp);
@@ -68,6 +68,34 @@ describe('refresh', () => {
     expect(readLanes(ctxOf(s)).requests.map((q) => q.id)).toContain('setup-failed:lane_1');
   });
 
+  it('a refusal under policy approve leaves .laines.env as it was and marks the lane setup-failed', async () => {
+    const s = await setupContainer();
+    setConfig(s.container, (c) => { c.hooks.policy = 'approve'; });
+    writeHook(s.container, 'post-create', 'echo "DB=x" >> "$LANE_ENV_FILE"');
+    approveHooks(ctxOf(s).paths);
+    const { path } = await runCreate({ container: s.container }, s.deps);
+    expect(readFileSync(join(path, '.laines.env'), 'utf8')).toContain('DB=x');
+    writeHook(s.container, 'post-create', 'echo "DB=y" >> "$LANE_ENV_FILE"');
+    const err = await runRefresh({ lane: 'lane_1', container: s.container }, s.deps).catch((e) => e);
+    expect(err).toBeInstanceOf(HookError);
+    expect(err.exitCode).toBe(3);
+    expect(readFileSync(join(path, '.laines.env'), 'utf8')).toContain('DB=x');
+    expect(lane1(s)).toMatchObject({ state: 'setup-failed', status: 'setup-failed' });
+    expect(readLanes(ctxOf(s)).requests.find((q) => q.id === 'setup-failed:lane_1')).toMatchObject({
+      command: 'laines hooks approve && laines refresh lane_1',
+    });
+  });
+
+  it('a malformed hooks.lock.json fails before anything is written', async () => {
+    const s = await setupContainer();
+    const { path } = await runCreate({ container: s.container }, s.deps);
+    writeFileSync(join(path, '.laines.env'), 'x\n');
+    writeFileSync(ctxOf(s).paths.hooksLock, '{ not json');
+    await expect(runRefresh({ lane: 'lane_1', container: s.container }, s.deps)).rejects.toBeInstanceOf(MalformedConfigError);
+    expect(readFileSync(join(path, '.laines.env'), 'utf8')).toBe('x\n');
+    expect(lane1(s).state).toBe('active');
+  });
+
   it('rescues a lane left "spinning up" by an interrupted create', async () => {
     const s = await setupContainer();
     await runCreate({ container: s.container }, s.deps);
@@ -116,5 +144,6 @@ describe('refresh', () => {
     const r = await runCli(['refresh', '--format', 'table'], { ...s.deps, cwd: () => path });
     expect(r.code).toBe(0);
     expect(r.stdout).toContain('lane lane_1 refreshed');
+    expect(r.stdout).toContain('hooks:   post-create: no hooks');
   });
 });

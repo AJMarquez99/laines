@@ -6,7 +6,7 @@ import { runKeep } from '../src/commands/lanes.js';
 import { runTeardown } from '../src/commands/teardown.js';
 import { loadContainer } from '../src/lib/container.js';
 import { readLanes, updateLanes } from '../src/lib/lanes-store.js';
-import { BlockedError, HookError, InvalidInputError } from '../src/lib/errors.js';
+import { BlockedError, HookError, InvalidInputError, MalformedConfigError } from '../src/lib/errors.js';
 import { tmp, cleanupTmp, setupContainer, gitIn, runCli, writeHook, setConfig } from './helpers.js';
 
 afterEach(cleanupTmp);
@@ -283,6 +283,34 @@ describe('teardown hooks', () => {
     expect(existsSync(join(s.container, 'cleaned'))).toBe(true);
     expect(requests(s).filter((q) => q.lane === 'lane_1')).toEqual([]);
     await expect(runTeardown({ lane: 'lane_1', container: s.container }, s.deps)).rejects.toBeInstanceOf(InvalidInputError);
+  });
+
+  it('under policy approve an unapproved post-teardown still closes the lane and asks for approval first', async () => {
+    const s = await lane();
+    setConfig(s.container, (c) => { c.hooks.policy = 'approve'; });
+    writeHook(s.container, 'post-teardown', 'true');
+    const r = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(state(s).state).toBe('closed');
+    expect(requests(s).find((q) => q.id === 'cleanup-incomplete:lane_1')).toMatchObject({ command: 'laines hooks approve && laines teardown lane_1' });
+    expect(r.warnings.join('\n')).toContain('`laines hooks approve && laines teardown lane_1`');
+  });
+
+  it('a pre-teardown that stops teardown is not left blocking once the lane is kept', async () => {
+    const s = await lane();
+    writeHook(s.container, 'pre-teardown', 'exit 3');
+    await expect(runTeardown({ lane: 'lane_1', container: s.container }, s.deps)).rejects.toMatchObject({ exitCode: 3 });
+    expect(requests(s).map((q) => q.id)).toContain('teardown-blocked:lane_1');
+    await runKeep({ lane: 'lane_1', reason: 'still needed', container: s.container }, s.deps);
+    expect(requests(s).map((q) => q.id)).not.toContain('teardown-blocked:lane_1');
+  });
+
+  it('a malformed hooks.lock.json fails before anything is touched', async () => {
+    const s = await lane();
+    writeFileSync(join(s.dir, '.ai', 'plans', 'task.md'), 'plan\n');
+    writeFileSync(loadContainer({ container: s.container }, s.deps).paths.hooksLock, '{ not json');
+    await expect(runTeardown({ lane: 'lane_1', container: s.container }, s.deps)).rejects.toBeInstanceOf(MalformedConfigError);
+    expect(state(s).state).toBe('active');
+    expect(readFileSync(join(s.dir, '.ai', 'plans', 'task.md'), 'utf8')).toBe('plan\n');
   });
 
   it('skips pre-teardown when the clone is missing, and still runs post-teardown', async () => {
