@@ -7,7 +7,9 @@ import { runCreate } from '../src/commands/create.js';
 import { runDotAi } from '../src/lib/dotai.js';
 import { claimContainer, loadIndex } from '../src/lib/machine-index.js';
 import { NotAContainerError } from '../src/lib/errors.js';
-import { tmp, cleanupTmp, testDeps, setupContainer } from './helpers.js';
+import { loadContainer } from '../src/lib/container.js';
+import { updateLanes } from '../src/lib/lanes-store.js';
+import { tmp, cleanupTmp, testDeps, setupContainer, writeHook, setConfig } from './helpers.js';
 
 afterEach(cleanupTmp);
 const REMOTE = 'git@example.com:org/my-app.git';
@@ -28,7 +30,7 @@ describe('doctor', () => {
     const r = await runDoctor({ container: c }, deps);
     expect(r.ok).toBe(true);
     expect(r.container).toEqual({ id: 'my-app', path: c });
-    expect(r.checks.map((x) => x.name)).toEqual(['container-marker', 'config', 'machine-index', 'dot-ai', 'agent-files', 'deny-rules', 'board', 'lock', 'machine-lock', 'lanes-state', 'agent-reach']);
+    expect(r.checks.map((x) => x.name)).toEqual(['container-marker', 'config', 'machine-index', 'dot-ai', 'agent-files', 'deny-rules', 'board', 'lock', 'machine-lock', 'lanes-state', 'hooks', 'agent-reach']);
   });
 
   it('reports each broken piece without throwing', async () => {
@@ -136,5 +138,48 @@ describe('doctor lane checks', () => {
     const lane = r.checks.find((c) => c.name === 'lane:lane_1');
     expect(lane.ok).toBe(false);
     expect(lane.detail).toContain('not a git repository');
+  });
+
+  it('reports hooks, and flags hooks that cannot run or will be refused', async () => {
+    const s = await setupContainer();
+    expect(byName(await runDoctor({ container: s.container }, s.deps)).hooks).toMatchObject({ ok: true, detail: 'policy notify; no hooks' });
+    writeHook(s.container, 'post-create', 'true');
+    expect(byName(await runDoctor({ container: s.container }, s.deps)).hooks).toMatchObject({ ok: true, detail: 'policy notify; 1 hook(s): 1 new' });
+    writeHook(s.container, 'pre-teardown', 'true', { mode: 0o644 });
+    const bad = byName(await runDoctor({ container: s.container }, s.deps)).hooks;
+    expect(bad.ok).toBe(false);
+    expect(bad.detail).toContain('not executable: pre-teardown');
+    writeHook(s.container, 'pre-teardown', 'true');
+    setConfig(s.container, (c) => { c.hooks.policy = 'approve'; });
+    expect(byName(await runDoctor({ container: s.container }, s.deps)).hooks.detail).toContain('policy approve will refuse post-create, pre-teardown');
+  });
+
+  it('suggests a lock once the hook set is stable', async () => {
+    const s = await setupContainer();
+    setConfig(s.container, (c) => { c.hooks.stableAfter = 1; });
+    writeHook(s.container, 'post-create', 'true');
+    await runCreate({ container: s.container }, s.deps);
+    expect(byName(await runDoctor({ container: s.container }, s.deps)).hooks.detail).toContain('laines hooks approve --lock');
+  });
+
+  it('flags a setup-failed lane and a create interrupted long ago', async () => {
+    const s = await setupContainer();
+    writeHook(s.container, 'post-create', 'exit 1');
+    await runCreate({ container: s.container }, s.deps).catch(() => {});
+    writeHook(s.container, 'post-create', 'true');
+    await runCreate({ container: s.container }, s.deps);
+    const ctx = loadContainer({ container: s.container }, s.deps);
+    const setUpdated = (ts) => updateLanes(ctx, s.deps, (st) => {
+      Object.assign(st.lanes.lane_2, { status: 'spinning up', updated: ts });
+      return { state: st, result: null };
+    });
+    await setUpdated('2026-09-29T11:55:00.000Z');
+    let r = byName(await runDoctor({ container: s.container }, s.deps));
+    expect(r['lane:lane_1'].detail).toContain('setup failed: fix the hook, then run `laines refresh lane_1`');
+    expect(r['lane:lane_2'].ok).toBe(true);
+    await setUpdated('2026-09-29T10:00:00.000Z');
+    r = byName(await runDoctor({ container: s.container }, s.deps));
+    expect(r['lane:lane_2'].detail).toContain('create was interrupted');
+    expect(r['lane:lane_2'].detail).toContain('laines teardown lane_2 --remove-dir --force');
   });
 });

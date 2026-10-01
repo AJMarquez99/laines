@@ -63,8 +63,15 @@ policy and config changes are human actions.
 ## Hooks
 
 Stack-specific setup lives in `.laines/hooks/` (`post-create`, `pre-teardown`, `post-teardown`).
-See `.laines/hooks/README.md`. New containers run changed hooks and flag them on the board
-(policy `notify`); once the hooks are stable, lock them with `laines hooks approve --lock`.
+See `.laines/hooks/README.md`.
+
+- A lane whose `post-create` fails stays on disk, marked `setup-failed` on the board. Fix the hook
+  (or what it needed), then run `laines refresh <lane>`: it rewrites the lane-local files and
+  `.laines.env` and runs `post-create` again.
+- `laines hooks status` lists each hook as approved, changed or new, with a diff.
+- New containers run changed hooks and flag them on the board (policy `notify`). Once the hooks
+  are stable, a human locks them with `laines hooks approve --lock`; from then on a changed hook
+  is refused until a human approves it.
 
 ## Monitoring
 

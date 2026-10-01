@@ -5,8 +5,7 @@
 **Isolated parallel work lanes for coding agents.** One shared knowledge base, many independent
 clones of your project, each with its own local environment.
 
-> **Status: pre-release.** Containers and lanes work today. Hooks and the MCP server are being
-> built. See [Roadmap](#roadmap). The package is not on npm yet; install from source.
+> **Status: pre-release.** Containers, lanes and hooks work today. The MCP server is being built. See [Roadmap](#roadmap). The package is not on npm yet; install from source.
 
 ## Why
 
@@ -114,14 +113,18 @@ human-readable output.
 | `laines init <dir> --remote <url>` | Create a container. Options: `--id <id>`, `--agents claude,codex,gemini`, `--branch <name>` (default `main`), `--dry-run`. |
 | `laines config get [key]` | Print the container's settings, or one dotted key such as `hooks.policy`. |
 | `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board, locks, every open lane, and how each agent reaches the lanes. `--prune` removes machine-index entries for containers that no longer exist. |
-| `laines create [name] [--branch <b>] [--dry-run]` | Create a lane: clone the repository, allocate ports, write the lane's env file, identity and deny rules, and print its brief. |
+| `laines create [name] [--branch <b>] [--dry-run]` | Create a lane: clone the repository, allocate ports, write the lane's env file, identity and deny rules, run the `post-create` hook, and print its brief. If the hook fails the lane is kept, marked `setup-failed`, and `refresh` retries it. |
+| `laines refresh [lane] [--dry-run]` | Rewrite a lane's local files and `.laines.env` from scratch, then run `post-create` again. Recovers a `setup-failed` lane. |
 | `laines list [--all]` | List open lanes (`--all` includes closed ones). |
 | `laines status [lane]` | Show one lane's state, task, branch and ports. With no lane named and outside a lane, shows the container overview. |
 | `laines report [lane] [--status <s>] [--task <t>] [--blocked <why>] [--note <n>]` | Update a lane's status on the board; at least one option is required. `-` clears `--task` or `--blocked`. |
 | `laines brief [lane]` | Print a lane's brief (identity, ports, rules). |
 | `laines keep [lane] --reason <why>` | Mark a lane to be kept, so it is not torn down as finished. |
 | `laines release <lane>` | Release a kept lane. Human-only: the lane name is required and agents are denied it. |
-| `laines teardown <lane> [--remove-dir] [--force] [--dry-run]` | Close a lane (human-only): archive its plans, delete its context and mark it closed. Without `--remove-dir` the clone stays in place. With `--remove-dir`, teardown refuses when the lane has uncommitted changes, stash entries, commits that exist on no remote (any ref: branches, tags, backup refs, detached HEAD), or is not a git repository. `--force` overrides those but never `keep`. A branch with no upstream whose commits are on a remote is only a warning. |
+| `laines teardown <lane> [--remove-dir] [--force] [--dry-run]` | Close a lane (human-only): archive its plans, delete its context and mark it closed. Without `--remove-dir` the clone stays in place. With `--remove-dir`, teardown refuses when the lane has uncommitted changes, stash entries, commits that exist on no remote (any ref: branches, tags, backup refs, detached HEAD), or is not a git repository. `--force` overrides those but never `keep`. A branch with no upstream whose commits are on a remote is only a warning. Runs `pre-teardown` first (a failure aborts with nothing touched) and `post-teardown` last (a failure leaves a board request; running `teardown` again retries it). |
+| `laines hooks status` | List each hook in `.laines/hooks/` as approved, changed or new, with a diff against the approved copy. |
+| `laines hooks approve [--lock] [--dry-run]` | Approve the current hooks (human-only). `--lock` also sets policy `approve`, so later changes are refused until a human approves them. It shows the diff of each hook it approves (with `--dry-run`, before approving). |
+| `laines hooks policy <approve\|notify\|open> [--dry-run]` | Set the hook policy (human-only). |
 | `laines watch [file] [--interval <s>]` | Follow the board (or any file) and print new lines as they land. |
 
 Run commands from the container directory, or pass `--container <dir>`.
@@ -153,6 +156,28 @@ fresh clone, goes in hooks (`post-create`, `pre-teardown`, `post-teardown`) in `
 New containers start with hook policy `notify`, so agents can build and change the hooks while
 you set the project up. Once the hooks are stable, you lock them with a checksum approval.
 
+### Example: a database per lane
+
+`.laines/hooks/post-create`:
+
+```sh
+#!/bin/sh
+set -e
+# post-create runs again on `laines refresh`, so it must be safe to repeat.
+createdb "app$LANE_SUFFIX" 2>/dev/null || true
+echo "DATABASE_URL=postgres://localhost/app$LANE_SUFFIX" >> "$LANE_ENV_FILE"
+```
+
+`.laines/hooks/post-teardown`:
+
+```sh
+#!/bin/sh
+dropdb --if-exists "app$LANE_SUFFIX"
+```
+
+Make both executable (`chmod +x`). A container's `.laines/hooks/README.md` documents the full
+contract.
+
 ## Agents
 
 L.AI.nes works with any agent: the board and plain files are how lanes coordinate. Claude Code is
@@ -172,7 +197,7 @@ read the container's instructions too.
 |---|---|---|
 | **M1: Foundation** | `init`, `config get`, `doctor`, machine index, board, agent wiring | ✅ Done |
 | **M2: Lanes** | `create`, `list`, `status`, `report`, `brief`, `keep` / `release`, `teardown` with unpushed-work safety checks, `watch` | ✅ Done |
-| **M3: Hooks** | hook runner, checksum approval (`hooks status / approve / policy`), `refresh` | Planned |
+| **M3: Hooks** | hook runner, checksum approval (`hooks status / approve / policy`), `refresh` | ✅ Done |
 | **M4: MCP server** | `laines-mcp`, capabilities, locked mode, human confirmation for teardown over MCP | Planned |
 | **M5: Release** | CI on macOS and Linux, security documentation, npm package | Planned |
 

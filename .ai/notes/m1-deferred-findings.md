@@ -13,7 +13,6 @@ carried into M2 have been implemented.
 - `init` rollback after a failed claim removes only the leaf directory; dry run reports the
   lexical path and skips the "path already registered" check; `deps.now()` is read three times.
 - Board: backticks in a branch or command break the code span; timestamps aren't ISO-validated.
-- `hooks-readme.md` says `laines refresh` without `<lane>` — fix when M3 adds `refresh`.
 - Users whose home directory is a git repository cannot `init` under it (by design); document it
   in the README (M5).
 - `npm test` runs vitest in watch mode; `prepublishOnly` skips lint (M5 CI covers lint).

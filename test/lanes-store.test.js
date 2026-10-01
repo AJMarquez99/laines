@@ -116,4 +116,16 @@ describe('lanes store', () => {
     expect(existsSync(archivePath)).toBe(archiveExistedBefore);
     expect(existsSync(ctx.paths.lock)).toBe(false);
   });
+
+  it('archives overflow oldest first when the log is already full', async () => {
+    const root = tmp();
+    const ctx = ctxFor(root, 10);
+    const deps = testDeps(root);
+    const at = (i) => ({ ts: `2026-09-29T12:${String(i).padStart(2, '0')}:00.000Z`, lane: null, text: `e${i}` });
+    await updateLanes(ctx, deps, (s) => ({ state: s, result: null, activity: Array.from({ length: 10 }, (_, i) => at(i + 1)) }));
+    await updateLanes(ctx, deps, (s) => ({ state: s, result: null, activity: [at(11), at(12), at(13)] }));
+    const archived = readFileSync(join(ctx.paths.ai, 'archive', '2026-09-29_board-log.md'), 'utf8').split('\n').filter((l) => l.startsWith('- **'));
+    expect(archived.map((l) => l.split(' · ')[1])).toEqual(['e1', 'e2', 'e3']);
+    expect(readLanes(ctx).activity.map((a) => a.text)).toEqual(['e13', 'e12', 'e11', 'e10', 'e9', 'e8', 'e7', 'e6', 'e5', 'e4']);
+  });
 });

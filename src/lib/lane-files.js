@@ -137,7 +137,7 @@ export function writeLaneFiles(ctx, deps, lane) {
   put('.ai/plans/README.md', template('lane-plans-readme.md'));
   put('.laines.env', laneEnv({ lane: name, number, containerId: ctx.id, laneDir, containerDir: ctx.root, ports, branch }));
 
-  const local = renderTemplate(readTemplate('lane-local-instructions.md'), vars);
+  const local = template('lane-local-instructions.md');
   const agents = ctx.config.agents;
   if (agents.includes('claude')) {
     put('CLAUDE.local.md', local);

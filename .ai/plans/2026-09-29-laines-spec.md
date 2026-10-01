@@ -71,6 +71,7 @@ people running several containers across several projects on one machine.
 │   ├── lanes.json                # lane index: source of truth for lane state (§6.2)
 │   ├── hooks/                    # post-create, pre-teardown, post-teardown, <event>.d/
 │   ├── hooks.lock.json           # approved hook checksums
+│   ├── hooks.approved/            # copies of the approved hooks (diffs for hooks status)
 │   ├── audit.jsonl               # metadata-only action log
 │   └── .lock/                    # mkdir lock for lanes.json + board
 ├── .ai/                          # full dot-ai layer (shared by all lanes)
@@ -266,7 +267,7 @@ clone, patching tracked config with `skip-worktree`) is a hook.
 |---|---|---|---|
 | `post-create` | after clone, lane files, excludes, env file; again on `refresh` | lane | lane kept, `state: setup-failed`, board request; fix and `refresh` |
 | `pre-teardown` | after safety checks, before any archive or delete | lane | teardown aborted, nothing touched |
-| `post-teardown` | after archive, delete, closed mark | container | warning + board "cleanup incomplete" |
+| `post-teardown` | after archive, delete, closed mark | container | warning + board request; `teardown <lane>` retries it |
 
 Hooks are executables named after the event in `.laines/hooks/`, plus `<event>.d/*` run in
 lexical order after the main hook. Future adapters install into `<event>.d/`; the contract does
@@ -279,7 +280,7 @@ Environment: `LANE_NAME`, `LANE_NUMBER`, `LANE_ID`, `LANE_DIR`, `CONTAINER_DIR`,
 `LANE_ENV_FILE`, `LAINES_HOOK`, `LAINES_DRY_RUN`.
 
 `.laines.env` is written before `post-create` and contains `LANE_*`, `PORT` (first port of the
-block), and `COMPOSE_PROJECT_NAME`. Hooks may append to it.
+block), and `COMPOSE_PROJECT_NAME`. Hooks may append to it. `refresh` rewrites it from scratch before re-running `post-create`, so appended lines come back exactly once; hand edits are lost.
 
 Exit `0` ok · `3` blocked, needs a human (becomes a board request, not a failure) · anything
 else fails. Default timeout 300s. Output is captured and returned to agents marked untrusted.

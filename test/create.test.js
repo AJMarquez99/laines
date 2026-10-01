@@ -252,4 +252,13 @@ describe('create with hooks', () => {
     const { deps, container } = await setupContainer();
     expect(await runCreate({ container, name: 'lane_003' }, deps)).toMatchObject({ lane: 'lane_003', number: 1 });
   });
+
+  it('uses the container copy of lane-local-instructions.md when a team customises it', async () => {
+    const { deps, container } = await setupContainer();
+    const own = join(container, '.ai', 'templates', 'lane-local-instructions.md');
+    expect(existsSync(own)).toBe(true);
+    writeFileSync(own, 'Custom rules for {{lane}}\n');
+    const r = await runCreate({ container }, deps);
+    expect(readFileSync(join(r.path, 'CLAUDE.local.md'), 'utf8')).toBe('Custom rules for lane_1\n');
+  });
 });

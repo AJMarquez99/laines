@@ -3,20 +3,6 @@
 Findings from the M2 (lanes) reviews that belong to later milestones. Fold each into the plan
 that owns it, then delete this note.
 
-## M3 (hooks, refresh)
-
-- **Env file on refresh.** `writeLaneFiles` rewrites `.laines.env` every time, but spec §8.3 lets
-  hooks append to it. Decide: preserve hook-appended lines (e.g. a marked generated block) or
-  regenerate and have hooks write a separate file. Same question for untracked user edits to
-  lane-local files, and whether `lane-local-instructions.md` should be overridable by the
-  container like the lane README templates.
-- **Stale `spinning up` lanes.** An interrupted `create` leaves a lane `spinning up`; teardown
-  handles it, but `doctor` should flag it.
-- **Small follow-ups in touched code:** test the archive's multi-entry overflow order; tighten
-  explicit lane numbers to `^[1-9]\d*$` (`lane_003` currently claims number 3); add a board
-  activity line for the second phase of a two-phase teardown; the create-cleanup warning can
-  suggest `teardown` when unregistering actually succeeded.
-
 ## M4 (MCP server)
 
 - **Async git.** `runGit` uses `spawnSync`; a long `clone` would freeze a long-lived server.
@@ -28,6 +14,7 @@ that owns it, then delete this note.
   `getLane`); the CLI's prototype-pollution bug would have poisoned a server until restart.
 - `doctor` and `config get` resolve containers without the `/`-and-home guard; fine while they
   are read-only, but route any future write through `loadContainer`.
+- `hooks approve` approves whatever is on disk when it runs; a hook edited between `hooks status` and `approve` is approved unseen (approve now prints the diffs it approved). Consider `--expect <checksum>` binding approval to what the human reviewed.
 
 ## M5 (release, SECURITY.md residual risks)
 
@@ -43,3 +30,4 @@ that owns it, then delete this note.
   written over it.
 - The port-busy error names ports, not the owning process (spec §6.4 says process).
 - Custom lane names need not match the lane prefix (spec §9.1 vs §10.2): record the deviation.
+- Hooks never run under the container lock: a `keep` that lands while `pre-teardown` runs aborts the teardown only after the hook's side effects (teardown re-reads `kept` just before the hook to narrow the window).

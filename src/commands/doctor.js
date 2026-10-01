@@ -9,6 +9,8 @@ import { AGENT_FILES, LANES_BEGIN, denyRules } from '../lib/agent-files.js';
 import { readLanes } from '../lib/lanes-store.js';
 import { EXCLUDE_BEGIN, isTracked } from '../lib/lane-files.js';
 import { NotAContainerError } from '../lib/errors.js';
+import { hookStates, isExecutable } from '../lib/hooks.js';
+import { lockSuggested } from '../lib/hook-events.js';
 
 function laneProblems(root, containerId, name, lane, agents, deps) {
   const dir = join(root, lane.repos[0].path);
@@ -42,6 +44,18 @@ function laneProblems(root, containerId, name, lane, agents, deps) {
   }
   const stray = ['knowledge', 'guidelines', 'lessons'].filter((f) => has(join('.ai', f)) && !isTracked(deps, dir, `.ai/${f}`));
   if (stray.length) problems.push(`a full .ai/ layer was scaffolded in the lane (${stray.join(', ')}): dot-ai init/sync was run there; move anything useful to the container's .ai/ and delete them`);
+  return problems;
+}
+
+function laneStateProblems(name, lane, config, deps) {
+  const problems = [];
+  if (lane.state === 'setup-failed') problems.push(`setup failed: fix the hook, then run \`laines refresh ${name}\``);
+  // A create in progress is "spinning up" too: only one older than a slow clone plus a full hook
+  // timeout is treated as interrupted.
+  const staleMs = ((config?.hooks.timeoutSec ?? 300) + 1800) * 1000;
+  if (lane.status === 'spinning up' && Date.parse(deps.now()) - Date.parse(lane.updated) > staleMs) {
+    problems.push(`create was interrupted (spinning up since ${lane.updated}): run \`laines teardown ${name} --remove-dir --force\`, then create it again`);
+  }
   return problems;
 }
 
@@ -126,11 +140,34 @@ export async function runDoctor(opts, deps) {
     const open = Object.values(lanesState.lanes).filter((l) => l.state !== 'closed').length;
     return `${open} open lane(s)`;
   });
+  check('hooks', () => {
+    const policy = config ? config.hooks.policy : 'notify';
+    const { hooks, removed } = hookStates(p);
+    const problems = [];
+    const stuck = hooks.filter((h) => !isExecutable(h.path)).map((h) => h.rel);
+    if (stuck.length) problems.push(`not executable: ${stuck.join(', ')} (chmod +x)`);
+    const unapproved = hooks.filter((h) => h.state !== 'approved').map((h) => h.rel);
+    if (policy === 'approve' && unapproved.length) {
+      problems.push(`policy approve will refuse ${unapproved.join(', ')} until a human runs \`laines hooks approve\``);
+    }
+    if (problems.length) throw new Error(problems.join('; '));
+    const counts = ['approved', 'changed', 'new']
+      .map((st) => [st, hooks.filter((h) => h.state === st).length])
+      .filter(([, n]) => n)
+      .map(([st, n]) => `${n} ${st}`);
+    const parts = [`policy ${policy}`, hooks.length ? `${hooks.length} hook(s): ${counts.join(', ')}` : 'no hooks'];
+    if (removed.length) parts.push(`approved but since removed: ${removed.join(', ')}`);
+    const current = Object.fromEntries(hooks.map((h) => [h.rel, h.checksum]));
+    if (config && lanesState && lockSuggested(lanesState, config, current)) {
+      parts.push(`unchanged across the last ${config.hooks.stableAfter} creates: a human can lock them with \`laines hooks approve --lock\``);
+    }
+    return parts.join('; ');
+  });
   const agents = config ? config.agents : ['claude'];
   const openLanes = Object.entries(lanesState?.lanes ?? {}).filter(([, l]) => l.state !== 'closed');
   for (const [name, lane] of openLanes) {
     check(`lane:${name}`, () => {
-      const problems = laneProblems(root, marker?.id, name, lane, agents, deps);
+      const problems = [...laneStateProblems(name, lane, config, deps), ...laneProblems(root, marker?.id, name, lane, agents, deps)];
       if (problems.length) throw new Error(problems.join('; '));
       return 'ok';
     });

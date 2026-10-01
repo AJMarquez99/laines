@@ -20,6 +20,7 @@ const LANE_TEMPLATES = [
   ['lane-ai-readme.md', 'Lane-local `.ai/README.md`: lane rules and where the shared knowledge lives'],
   ['lane-context-readme.md', 'Lane-local `.ai/context/README.md`'],
   ['lane-plans-readme.md', 'Lane-local `.ai/plans/README.md`'],
+  ['lane-local-instructions.md', 'Lane-local `CLAUDE.local.md` / `AGENTS.md` / `GEMINI.md`: lane identity and rules'],
 ];
 
 export const CONTAINER_FILES = (agents) => [
