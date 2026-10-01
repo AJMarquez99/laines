@@ -138,7 +138,23 @@ describe('runEvent', () => {
     writeHook(container, 'post-create', 'true');
     const r = await run();
     expect(r).toMatchObject({ outcome: 'ok', unapproved: [] });
+    expect(r.results).toHaveLength(1);
     expect(warnings).toEqual([]);
+  });
+
+  it('under notify, does not warn about unapproved hooks that never ran due to earlier failure', async () => {
+    const { container, ctx, run } = await setup('notify');
+    writeHook(container, 'post-create', 'exit 1');
+    approveHooks(ctx.paths);
+    expect((await run()).outcome).toBe('failed');
+    writeHook(container, 'post-create.d/10-x', 'echo x');
+    const r = await run();
+    expect(r.outcome).toBe('failed');
+    expect(r.unapproved).toEqual([{ hook: 'post-create.d/10-x', state: 'new', checksum: expect.stringMatching(/^sha256:/) }]);
+    expect(unapprovedWarnings(r)).toEqual([]);
+    const b = hookBoardEntries(r, { lane: 'lane_1', now: '2026-09-29T12:00:00.000Z' });
+    expect(b.activity).toEqual([]);
+    expect(b.requests).toEqual([]);
   });
 
   it('reports a malformed hooks.lock.json as a failed run instead of throwing', async () => {

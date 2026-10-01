@@ -93,10 +93,16 @@ export function runSummary(run) {
   return `${last.hook} ${why}${run.outcome === 'blocked' ? ' (needs a human)' : ''}`;
 }
 
+const ranUnapproved = (run) => {
+  const ran = new Set(run.results.filter((r) => r.untrusted).map((r) => r.hook));
+  return run.unapproved.filter((u) => ran.has(u.hook));
+};
+
 // Spec §8.4 (notify): a board note with the new checksum, and one container-wide request to approve.
 export function hookBoardEntries(run, { lane, now }) {
-  if (!run.unapproved.length) return { activity: [], requests: [] };
-  const list = run.unapproved.map((u) => `${u.hook} (${u.state}, ${short(u.checksum)})`).join(', ');
+  const unapprovedRan = run.outcome === 'refused' ? run.unapproved : ranUnapproved(run);
+  if (!unapprovedRan.length) return { activity: [], requests: [] };
+  const list = unapprovedRan.map((u) => `${u.hook} (${u.state}, ${short(u.checksum)})`).join(', ');
   const text = run.outcome === 'refused'
     ? `${run.event} refused under policy approve: ${list}`
     : `unapproved hook(s) ran under policy ${run.policy}: ${list}`;
@@ -106,16 +112,16 @@ export function hookBoardEntries(run, { lane, now }) {
       ts: now,
       lane: null,
       kind: 'hooks-changed',
-      text: `hooks changed since the last approval: ${run.unapproved.map((u) => u.hook).join(', ')}. Review with \`laines hooks status\``,
+      text: `hooks changed since the last approval: ${unapprovedRan.map((u) => u.hook).join(', ')}. Review with \`laines hooks status\``,
       command: 'laines hooks approve',
     }],
   };
 }
 
-export const unapprovedWarnings = (run) =>
-  run.outcome === 'refused'
-    ? []
-    : run.unapproved.map((u) => `hook ${u.hook} is ${u.state} and ran unapproved (policy ${run.policy}); review it with \`laines hooks status\``);
+export const unapprovedWarnings = (run) => {
+  const unapprovedRan = run.outcome === 'refused' ? [] : ranUnapproved(run);
+  return unapprovedRan.map((u) => `hook ${u.hook} is ${u.state} and ran unapproved (policy ${run.policy}); review it with \`laines hooks status\``);
+};
 
 export function hookError(run, next) {
   const lines = [`${run.event} ${runSummary(run)}.`];
