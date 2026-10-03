@@ -64,11 +64,20 @@ export function isTracked(deps, repoDir, rel) {
   return r.status === 0;
 }
 
+// Exact-file entries (no trailing `/`, no `*`) the repository tracks are left out: excluding a tracked
+// file does nothing, and the block should list only what laines really hides.
+export function laneExcludes(deps, laneDir) {
+  return LANE_EXCLUDES.filter((entry) => {
+    if (entry.endsWith('/') || entry.includes('*')) return true;
+    return !isTracked(deps, laneDir, entry.slice(1));
+  });
+}
+
 export function upsertExclude(deps, laneDir) {
   const rel = gitOut(deps, ['rev-parse', '--git-path', 'info/exclude'], laneDir).trim();
   const file = isAbsolute(rel) ? rel : join(laneDir, rel);
   const cur = existsSync(file) ? readFileSync(file, 'utf8') : '';
-  const block = [EXCLUDE_BEGIN, ...LANE_EXCLUDES, EXCLUDE_END].join('\n');
+  const block = [EXCLUDE_BEGIN, ...laneExcludes(deps, laneDir), EXCLUDE_END].join('\n');
   const b = cur.indexOf(EXCLUDE_BEGIN);
   const e = cur.indexOf(EXCLUDE_END);
   const next = b !== -1 && e > b

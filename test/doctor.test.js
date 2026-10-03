@@ -240,8 +240,24 @@ describe('doctor lane checks', () => {
     const r = byName(await runDoctor({ container: s.container }, s.deps));
     expect(r['lane:lane_1'].ok).toBe(true);
     expect(r['lane:lane_1'].detail).toMatch(/\.ai\/ differs in \d+ file\(s\): run `laines ai sync lane_1`/);
+    expect(r['lane:lane_1'].note).toMatch(/^\.ai\/ differs in \d+ file\(s\): run `laines ai sync lane_1`$/);
     expect(r['ai-sync']).toMatchObject({ ok: true, detail: 'base for 1 lane(s)' });
     writeFileSync(join(s.container, '.laines', 'ai-sync.json'), '{');
     expect(byName(await runDoctor({ container: s.container }, s.deps))['ai-sync'].ok).toBe(false);
+  });
+});
+
+describe('doctor notes', () => {
+  it('formatDoctor renders a note as a bullet under its check', () => {
+    const out = formatDoctor({ ok: true, container: null, checks: [{ name: 'lane:lane_1', ok: true, detail: 'ok', note: '.ai/ differs in 2 file(s): run `laines ai sync lane_1`' }] });
+    expect(out.split('\n').slice(0, 2)).toEqual(['✓ lane:lane_1 — ok', '  • .ai/ differs in 2 file(s): run `laines ai sync lane_1`']);
+  });
+
+  it('a repository tracking AGENTS.md and .ai/README.md has no outdated exclude block', async () => {
+    const s = await setupContainer({ files: { 'README.md': '#\n', 'AGENTS.md': 'a\n', '.ai/README.md': 'r\n' } });
+    await runCreate({ container: s.container }, s.deps);
+    const r = byName(await runDoctor({ container: s.container }, s.deps));
+    expect(r['lane:lane_1'].detail).not.toContain('outdated');
+    expect(r['lane:lane_1'].ok).toBe(true);
   });
 });

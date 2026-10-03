@@ -5,6 +5,7 @@ import { invoke } from '../src/commands/registry.js';
 import { loadContainer } from '../src/lib/container.js';
 import { readLanes } from '../src/lib/lanes-store.js';
 import { readAiBase, readAiBases, syncedState, writeAiBase } from '../src/lib/ai-tree.js';
+import { formatAiSync } from '../src/lib/format.js';
 import { BlockedError } from '../src/lib/errors.js';
 import { cleanupTmp, connectMcp, setupContainer, setConfig, gitIn, runCli } from './helpers.js';
 
@@ -63,6 +64,8 @@ describe('ai sync', () => {
     put(s.cAi, 'knowledge/a.md', 'A2\n');
     const r = await s.sync();
     expect(r).toMatchObject({ applies: true, toLane: ['knowledge/a.md', 'knowledge/b.md'], toContainer: [], conflicts: [] });
+    expect(r.why).toEqual({ 'knowledge/a.md': 'changed', 'knowledge/b.md': 'added' });
+    expect(formatAiSync(r)).toContain('→ lane       knowledge/b.md (added)');
     expect(read(join(s.lAi, 'knowledge', 'b.md'))).toBe('B\n');
     expect(gitIn(s.laneDir, 'status', '--porcelain')).toContain('.ai/knowledge/a.md');
   });
@@ -72,6 +75,7 @@ describe('ai sync', () => {
     put(s.lAi, 'knowledge/a.md', 'from main\n');
     const r = await s.sync();
     expect(r.toContainer).toEqual(['knowledge/a.md']);
+    expect(r.why).toEqual({ 'knowledge/a.md': 'changed' });
     expect(read(join(s.cAi, 'knowledge', 'a.md'))).toBe('from main\n');
   });
 
@@ -82,6 +86,8 @@ describe('ai sync', () => {
     rmSync(join(s.cAi, 'knowledge', 'gone.md'));
     const r = await s.sync();
     expect(r.deleted.lane).toEqual(['knowledge/gone.md']);
+    expect(r.why).toEqual({ 'knowledge/gone.md': 'deleted' });
+    expect(formatAiSync(r)).toContain('knowledge/gone.md (deleted)');
     expect(existsSync(join(s.lAi, 'knowledge', 'gone.md'))).toBe(false);
     rmSync(join(s.lAi, 'knowledge', 'a.md'));
     expect((await s.sync()).deleted.container).toEqual(['knowledge/a.md']);

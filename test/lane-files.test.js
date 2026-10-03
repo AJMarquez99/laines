@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
-  laneEnv, writeLaneFiles, isTracked, untrackedEntries, EXCLUDE_BEGIN,
+  laneEnv, laneExcludes, writeLaneFiles, isTracked, untrackedEntries, EXCLUDE_BEGIN,
 } from '../src/lib/lane-files.js';
 import { buildConfig } from '../src/config.js';
 import { containerPaths } from '../src/lib/paths.js';
@@ -85,6 +85,16 @@ describe('writeLaneFiles', () => {
     expect(isTracked(deps, lane.laneDir, '.ai/context/README.md')).toBe(false);
     expect(untrackedEntries(deps, lane.laneDir, '.ai/plans')).toEqual([]);
     expect(untrackedEntries(deps, lane.laneDir, '.ai/context')).toEqual(['README.md']);
+  });
+
+  it('the exclude block lists only files the repository does not track', () => {
+    const { ctx, deps, lane } = setup({ files: { 'README.md': 'x\n', 'AGENTS.md': 'a\n', '.ai/README.md': 'r\n' } });
+    writeLaneFiles(ctx, deps, lane);
+    const exclude = readFileSync(join(lane.laneDir, '.git', 'info', 'exclude'), 'utf8').split('\n');
+    expect(exclude).not.toContain('/AGENTS.md');
+    expect(exclude).not.toContain('/.ai/README.md');
+    for (const keep of ['/.ai/context/', '/*.pre-laines*', '/GEMINI.md']) expect(exclude).toContain(keep);
+    expect(laneExcludes(deps, lane.laneDir)).toEqual(expect.not.arrayContaining(['/AGENTS.md', '/.ai/README.md']));
   });
 
   it('treats tracked files with non-ASCII names as tracked', () => {

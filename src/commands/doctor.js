@@ -9,7 +9,7 @@ import { unmigratedFiles } from '../lib/container-files.js';
 import { AGENT_FILES, LANES_BEGIN, denyRules } from '../lib/agent-files.js';
 import { readLanes } from '../lib/lanes-store.js';
 import { spinUpState } from '../lib/lanes-state.js';
-import { EXCLUDE_BEGIN, EXCLUDE_END, LANE_EXCLUDES, isTracked } from '../lib/lane-files.js';
+import { EXCLUDE_BEGIN, EXCLUDE_END, isTracked, laneExcludes } from '../lib/lane-files.js';
 import { MalformedConfigError, NotAContainerError } from '../lib/errors.js';
 import { hookStates, isExecutable } from '../lib/hooks.js';
 import { hasMcpEntry, mcpAddCommand } from '../lib/mcp-config.js';
@@ -21,7 +21,7 @@ function aiDriftNote(paths, laneDir, deps, name) {
   try {
     if (!existsSync(join(laneDir, '.git')) || !repoCommitsAi(deps, laneDir)) return null;
     const n = aiDrift(paths.ai, join(laneDir, '.ai'));
-    return n ? `ok; .ai/ differs in ${n} file(s): run \`laines ai sync ${name}\`` : null;
+    return n ? `.ai/ differs in ${n} file(s): run \`laines ai sync ${name}\`` : null;
   } catch {
     return null;
   }
@@ -49,7 +49,7 @@ function laneProblems(root, containerId, name, lane, agents, deps) {
     const after = excludeText.slice(excludeText.indexOf(EXCLUDE_BEGIN));
     const end = after.indexOf(EXCLUDE_END);
     const block = new Set((end === -1 ? after : after.slice(0, end)).split('\n').map((l) => l.trim()));
-    if (LANE_EXCLUDES.some((l) => !block.has(l))) problems.push(`git exclude block outdated: run \`laines refresh ${name}\``);
+    if (laneExcludes(deps, dir).some((l) => !block.has(l))) problems.push(`git exclude block outdated: run \`laines refresh ${name}\``);
   }
   const settingsTracked = agents.includes('claude') && isTracked(deps, dir, '.claude/settings.local.json');
   if (settingsTracked) problems.push('.claude/settings.local.json is tracked by the repository: lane deny rules cannot be written');
@@ -100,7 +100,10 @@ export async function runDoctor(opts, deps) {
   const p = containerPaths(root);
   const check = (name, fn) => {
     try {
-      result.checks.push({ name, ok: true, detail: fn() ?? '' });
+      const out = fn();
+      // A check may return { detail, note }: the note is informational, never a failure.
+      const { detail, note } = out && typeof out === 'object' ? out : { detail: out };
+      result.checks.push({ name, ok: true, detail: note ? `${detail}; ${note}` : detail ?? '', ...(note ? { note } : {}) });
     } catch (err) {
       result.ok = false;
       result.checks.push({ name, ok: false, detail: err.message.split('\n')[0] });
@@ -213,7 +216,8 @@ export async function runDoctor(opts, deps) {
     check(`lane:${name}`, () => {
       const problems = [...laneStateProblems(name, lane, config, deps), ...laneProblems(root, marker?.id, name, lane, agents, deps)];
       if (problems.length) throw new Error(problems.join('; '));
-      return aiDriftNote(p, join(root, lane.repos[0].path), deps, name) ?? 'ok';
+      const note = aiDriftNote(p, join(root, lane.repos[0].path), deps, name);
+      return note ? { detail: 'ok', note } : 'ok';
     });
   }
   // Informational: Claude reads the container CLAUDE.md from every lane; Codex and Gemini stop at

@@ -28,7 +28,12 @@ export function formatConfig(r) {
 export function formatDoctor(r) {
   const lines = [];
   if (r.container) lines.push(`container: ${r.container.id ?? '(unknown)'} at ${r.container.path}`);
-  for (const c of r.checks) lines.push(`${c.ok ? (c.warn ? '!' : '✓') : '✗'} ${c.name}${c.detail ? ` — ${c.detail}` : ''}`);
+  for (const c of r.checks) {
+    // `detail` repeats the note after "; " for JSON consumers; the table shows it once, as a bullet.
+    const detail = c.note && c.detail.endsWith(`; ${c.note}`) ? c.detail.slice(0, -(c.note.length + 2)) : c.detail;
+    lines.push(`${c.ok ? (c.warn ? '!' : '✓') : '✗'} ${c.name}${detail ? ` — ${detail}` : ''}`);
+    if (c.note) lines.push(`  • ${c.note}`);
+  }
   if (r.pruned) lines.push(`pruned: ${r.pruned.length ? r.pruned.map((p) => `${p.id} (${p.path})`).join(', ') : 'nothing'}`);
   lines.push(r.ok ? 'status: ok' : 'status: problems found');
   return lines.join('\n');
@@ -166,8 +171,9 @@ export function formatConfigSet(r) {
 export function formatAiSync(r) {
   if (!r.applies) return r.note;
   const lines = [`${r.dryRun ? 'dry run: ' : ''}.ai/ sync for ${r.lane}: ${r.toLane.length} to the lane, ${r.toContainer.length} to the container`];
-  for (const p of r.toLane) lines.push(`  → lane       ${p}${r.deleted.lane.includes(p) ? ' (deleted)' : ''}`);
-  for (const p of r.toContainer) lines.push(`  → container  ${p}${r.deleted.container.includes(p) ? ' (deleted)' : ''}`);
+  const why = (p) => (r.why?.[p] ? ` (${r.why[p]})` : '');
+  for (const p of r.toLane) lines.push(`  → lane       ${p}${why(p)}`);
+  for (const p of r.toContainer) lines.push(`  → container  ${p}${why(p)}`);
   for (const p of r.refused) lines.push(`  skipped      ${p} (symbolic link)`);
   for (const p of r.conflicts) lines.push(`  CONFLICT     ${p}`);
   return lines.join('\n');

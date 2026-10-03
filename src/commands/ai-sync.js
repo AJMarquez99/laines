@@ -29,7 +29,7 @@ export async function runAiSync(opts, deps) {
   const laneDir = join(ctx.root, lane.repos[0].path);
   const real = assertLaneDir(ctx.root, laneDir, lane.repos[0].path);
   if (!real || !existsSync(join(real, '.git'))) throw new InvalidInputError(`${laneDir} is missing or not a git clone.`);
-  const empty = { dryRun: Boolean(opts.dryRun), lane: name, toLane: [], toContainer: [], deleted: { lane: [], container: [] }, refused: [], conflicts: [] };
+  const empty = { dryRun: Boolean(opts.dryRun), lane: name, toLane: [], toContainer: [], why: {}, deleted: { lane: [], container: [] }, refused: [], conflicts: [] };
   if (!repoCommitsAi(deps, real)) {
     return { ...empty, applies: false, note: 'This repository does not commit .ai/: knowledge stays in the container.' };
   }
@@ -54,9 +54,14 @@ export async function runAiSync(opts, deps) {
       lane: plan.toLane.filter((rel) => !Object.hasOwn(c.files, rel)),
       container: plan.toContainer.filter((rel) => !Object.hasOwn(l.files, rel)),
     },
+    why: {},
     refused,
     conflicts: plan.conflicts,
   };
+  // Judged on the side being copied: absent there = deleted, absent on the receiving side = added.
+  const reason = (rel, from, to) => (!Object.hasOwn(from, rel) ? 'deleted' : !Object.hasOwn(to, rel) ? 'added' : 'changed');
+  for (const rel of plan.toLane) result.why[rel] = reason(rel, c.files, l.files);
+  for (const rel of plan.toContainer) result.why[rel] = reason(rel, l.files, c.files);
   if (opts.dryRun) return result;
 
   for (const rel of plan.toLane) copyOrDelete(join(ctx.paths.ai, rel), join(laneAi, rel));

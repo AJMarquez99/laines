@@ -122,7 +122,7 @@ human-readable output.
 | `laines adopt <dir> [--id] [--agents] [--dry-run]` | Turn an existing git checkout into a container (human-only). The folder becomes the container and its contents become `lane_1` unchanged (uncommitted work, stashes and ignored files included); the project's `.ai/` becomes the shared layer. Needs a reachable `origin`. Recreate Python virtualenvs afterwards. `lane_1` keeps the project's Docker Compose project name, so existing volumes and containers stay attached; other lanes get their own (`<id>-l<n>`). Containers made before M4.5 get its deny rule from `laines refresh <lane>`. |
 | `laines config get [key]` | Print the container's settings, or one dotted key such as `hooks.policy`. |
 | `laines config set <key> <value> [--dry-run]` | Change one setting (human-only). The value is JSON when it parses (`true`, `20`, `["claude"]`), else a string. Only that key changes in the file; the whole config is validated first. |
-| `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board, locks, the `.ai/` sync base (`ai-sync`), every open lane (noting when a committed `.ai/` differs from the container's), and how each agent reaches the lanes. `--prune` removes machine-index entries for containers that no longer exist. |
+| `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board, locks, the `.ai/` sync base (`ai-sync`), every open lane (noting when a committed `.ai/` differs from the container's: reported as an informational `note` on the check, shown as a `•` line in the table, never a failure), and how each agent reaches the lanes. `--prune` removes machine-index entries for containers that no longer exist. |
 | `laines create [name] [--branch <b>] [--dry-run]` | Create a lane: clone the repository, allocate ports, write the lane's env file, identity and deny rules, run the `post-create` hook, and print its brief. If the hook fails the lane is kept, marked `setup-failed`, and `refresh` retries it. |
 | `laines refresh [lane] [--dry-run]` | Rewrite a lane's local files and `.laines.env` from scratch, then run `post-create` again. Recovers a `setup-failed` lane. |
 | `laines list [--all]` | List open lanes (`--all` includes closed ones). |
@@ -135,7 +135,7 @@ human-readable output.
 | `laines hooks status` | List each hook in `.laines/hooks/` as approved, changed or new, with a diff against the approved copy. |
 | `laines hooks approve [--lock] [--dry-run]` | Approve the current hooks (human-only). `--lock` also sets policy `approve`, so later changes are refused until a human approves them. It shows the diff of each hook it approves (with `--dry-run`, before approving). |
 | `laines hooks policy <approve\|notify\|open> [--dry-run]` | Set the hook policy (human-only). |
-| `laines ai sync [lane] [--dry-run]` | For a repository that commits `.ai/`: sync the container's shared `.ai/` with the lane's committed copy, both ways, against the last agreed state. A file changed on both sides is a conflict (exit 3) and is left alone. Run it before opening a PR. |
+| `laines ai sync [lane] [--dry-run]` | For a repository that commits `.ai/`: sync the container's shared `.ai/` with the lane's committed copy, both ways, against the last agreed state. A file changed on both sides is a conflict (exit 3) and is left alone. Run it before opening a PR. The result lists a `why` (`added`, `changed` or `deleted`) for every path it copies. |
 | `laines watch [file] [--interval <s>]` | Follow the board (or any file) and print new lines as they land. |
 
 Run commands from the container directory, or pass `--container <dir>`. A bare `--` argument is rejected (exit 2), so options can't be used to slip past the agent deny rules for human-only commands.
@@ -256,6 +256,7 @@ lane.
 | **M3: Hooks** | hook runner, checksum approval (`hooks status / approve / policy`), `refresh` | ✅ Done |
 | **M4: MCP server** | `laines-mcp`, capabilities, locked mode, human confirmation for teardown over MCP | ✅ Done |
 | **M4.5: Adopt** | `laines adopt`, `.ai/` seeding, `laines ai sync` | ✅ Done |
+| **M4.6: Adopt fixes** | Fixes from the first real adoption: Compose identity for adopted `lane_1`, `_` laines files, exclude block that lists only untracked files, doctor notes, `ai sync` reasons | ✅ Done |
 | **M5: Release** | CI on macOS and Linux, security documentation, npm package | Planned |
 
 Out of scope for v1: Windows and several repositories in one lane.
