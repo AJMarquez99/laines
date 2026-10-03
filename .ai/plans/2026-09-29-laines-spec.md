@@ -79,6 +79,7 @@ people running several containers across several projects on one machine.
 │   ├── runbooks/lane-management.md
 │   └── templates/lane-*.md       # lane-local README templates
 ├── .claude/settings.json         # deny rules for human-only commands (+ dot-ai settings)
+├── .mcp.json                     # registers laines-mcp for agent sessions (Claude)
 ├── CLAUDE.md                     # dot-ai block, then <!-- BEGIN laines-lanes --> block
 └── lane_1/ lane_2/ …
 
@@ -88,7 +89,8 @@ people running several containers across several projects on one machine.
 ├── .ai/context/  .ai/plans/      # lane-owned working state
 ├── .laines.env                   # lane environment (§8.3)
 ├── CLAUDE.local.md               # lane identity + lane-mode check (Claude)
-└── .claude/settings.local.json   # deny rules + plansDirectory (merged if present)
+├── .claude/settings.local.json   # deny rules + plansDirectory (merged if present)
+└── .mcp.json                     # same, so a session started in the lane has the tools
 ```
 
 Only `context/` and `plans/` are lane-owned. `knowledge/`, `guidelines/`, `lessons/`, `data/`,
@@ -156,6 +158,7 @@ Writes to `lanes.json`, the board, and `containers.json` happen under their mkdi
   Read-only commands have no capability switch.
 - `locked: true` makes `config set`, `hooks approve`, `hooks policy`, `release`, and
   `teardown --force` exit 3, even from the CLI. Unlocking requires editing the file by hand.
+- `config set` changes one key in the file as written and validates the whole config first; defaults stay implicit.
 
 ### 6.2 `lanes.json`
 
@@ -240,6 +243,7 @@ Agents in a lane must not run `dot-ai init` or `dot-ai sync` (they would scaffol
   setting that fixes it (`project_root_markers`, `context.includeDirectories`). L.AI.nes never
   edits user-level agent config.
 - The lane `.ai/README.md` carries the same rules for any agent.
+- **MCP:** `init` writes the container's `.mcp.json`, and `create`/`refresh` write an excluded one in each lane, registering `laines-mcp --container <container>` as server `laines`. A repo-tracked `.mcp.json` is never overwritten.
 
 ### 7.4 Workflows and `brief`
 

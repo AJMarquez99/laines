@@ -3,25 +3,6 @@
 Findings from the M2 (lanes) reviews that belong to later milestones. Fold each into the plan
 that owns it, then delete this note.
 
-## M4 (MCP server)
-
-- **Async git.** `runGit` uses `spawnSync`; a long `clone` would freeze a long-lived server.
-- **Atomic board writes.** `writeBoard` uses `writeFileSync`; make it temp-file + rename like
-  `writeJson` (`watch` already tolerates an empty read).
-- **Harden lane detection** for tool calls: validate `.lane.json`'s `number` and require the lane
-  root to be `<container>/<lane>` (a copied lane directory is currently detected as the lane).
-- **User-supplied keys into plain objects** must go through an own-property check (see
-  `getLane`); the CLI's prototype-pollution bug would have poisoned a server until restart.
-- `doctor` and `config get` resolve containers without the `/`-and-home guard; fine while they
-  are read-only, but route any future write through `loadContainer`.
-- `hooks approve` approves whatever is on disk when it runs; a hook edited between `hooks status` and `approve` is approved unseen (approve now prints the diffs it approved). Consider `--expect <checksum>` binding approval to what the human reviewed.
-- `refresh` accepts a lane still `spinning up` (the rescue path) with no age guard, so a refresh
-  while a slow `create` is still in `post-create` runs the hook twice concurrently. Agents over
-  MCP make this likelier: refuse a recent `spinning up` lane (doctor's `timeoutSec + 30 min`
-  threshold) unless forced.
-- `saveConfig` writes the parsed config back, expanding every default into `config.json`;
-  `config set` should patch the one key on the raw file instead.
-
 ## M5 (release, SECURITY.md residual risks)
 
 - SSH remotes: `GIT_TERMINAL_PROMPT=0` does not cover SSH passphrase or host-key prompts. From a
@@ -39,3 +20,6 @@ that owns it, then delete this note.
 - CI on Linux: the hook test for a file with no `#!` line expects `ENOEXEC`, which macOS returns;
   Linux's exec path may run such a file through `/bin/sh` instead. Check it on the first Linux run.
 - Hooks never run under the container lock: a `keep` that lands while `pre-teardown` runs aborts the teardown only after the hook's side effects (teardown re-reads `kept` just before the hook to narrow the window).
+- `hooks approve` approves what is on disk when it runs; a hook edited between `hooks status` and `approve` is approved unseen (approve prints the diffs it approved). `--expect <checksum>` would bind approval to what the human reviewed.
+- Only `git clone` runs asynchronously; other git calls are short local operations and stay synchronous, briefly blocking the MCP server.
+- Spec §15: confirm elicitation in headless `claude -p` and VS Code against a real `laines-mcp`; adjust only the fallback message if it differs.

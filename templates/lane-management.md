@@ -73,6 +73,13 @@ See `.laines/hooks/README.md`.
   are stable, a human locks them with `laines hooks approve --lock`; from then on a changed hook
   is refused until a human approves it.
 
+## MCP tools
+
+Sessions in this container and in its lanes have the `laines_*` MCP tools (registered in
+`.mcp.json`). They do what the CLI does and refuse what an agent may not do. `laines_teardown`
+asks a human to confirm first (setting `teardown.mcp`); if the client cannot ask, the request
+waits on the board for `laines teardown <lane>` in a terminal.
+
 ## Monitoring
 
     laines watch                 # follow the board

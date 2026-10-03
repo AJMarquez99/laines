@@ -5,7 +5,7 @@
 **Isolated parallel work lanes for coding agents.** One shared knowledge base, many independent
 clones of your project, each with its own local environment.
 
-> **Status: pre-release.** Containers, lanes and hooks work today. The MCP server is being built. See [Roadmap](#roadmap). The package is not on npm yet; install from source.
+> **Status: pre-release.** Containers, lanes, hooks and the MCP server work today. See [Roadmap](#roadmap). The package is not on npm yet; install from source.
 
 ## Why
 
@@ -112,6 +112,7 @@ human-readable output.
 |---|---|
 | `laines init <dir> --remote <url>` | Create a container. Options: `--id <id>`, `--agents claude,codex,gemini`, `--branch <name>` (default `main`), `--dry-run`. |
 | `laines config get [key]` | Print the container's settings, or one dotted key such as `hooks.policy`. |
+| `laines config set <key> <value> [--dry-run]` | Change one setting (human-only). The value is JSON when it parses (`true`, `20`, `["claude"]`), else a string. Only that key changes in the file; the whole config is validated first. |
 | `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board, locks, every open lane, and how each agent reaches the lanes. `--prune` removes machine-index entries for containers that no longer exist. |
 | `laines create [name] [--branch <b>] [--dry-run]` | Create a lane: clone the repository, allocate ports, write the lane's env file, identity and deny rules, run the `post-create` hook, and print its brief. If the hook fails the lane is kept, marked `setup-failed`, and `refresh` retries it. |
 | `laines refresh [lane] [--dry-run]` | Rewrite a lane's local files and `.laines.env` from scratch, then run `post-create` again. Recovers a `setup-failed` lane. |
@@ -137,7 +138,7 @@ Run commands from the container directory, or pass `--container <dir>`. A bare `
 | `1` | Unexpected or external failure |
 | `2` | Fixable input or config problem (bad option, not a container, malformed file) |
 | `3` | Blocked by a safety boundary, or a human needs to act |
-| `4` | Capability denied (planned, with the MCP server) |
+| `4` | Capability denied: a `capabilities.*` switch in `.laines/config.json` is off |
 
 ## Isolation model
 
@@ -194,6 +195,47 @@ Codex and Gemini stop reading instruction files at the git root, so they get the
 lane's `.ai/README.md`. `laines doctor` will tell you the one-line user setting that makes them
 read the container's instructions too.
 
+## MCP server
+
+`laines-mcp` serves the agent-safe commands as MCP tools: `laines_create`, `laines_refresh`,
+`laines_brief`, `laines_list`, `laines_status`, `laines_report`, `laines_keep`, `laines_teardown`,
+`laines_hooks_status`, `laines_config_get` and `laines_doctor`. Human-only commands (`init`,
+`release`, `hooks approve`, `hooks policy`, `config set`) are not exposed, no tool takes a `force`
+or `prune` argument, and the server only ever acts on the container it was started for.
+
+`laines init` registers it for Claude in the container's `.mcp.json`, and every lane gets its own
+(git-ignored) copy, so sessions started in the container or in a lane both see the tools. Claude
+asks you to approve a project MCP server the first time it starts. To register it by hand:
+
+```bash
+claude mcp add --scope project laines -- laines-mcp --container ~/work/myapp-lanes
+```
+
+`laines-mcp` takes `--container <dir>` as two arguments.
+
+**Teardown over MCP** follows `teardown.mcp` in `.laines/config.json`:
+
+| Value | Behaviour |
+|---|---|
+| `confirm` (default) | You are asked to confirm in your client, with the lane's branch, unpushed work and what will be archived and deleted. Declining, cancelling or not answering does nothing. A client that cannot ask leaves a request on the board; you finish it with `laines teardown <lane>` in a terminal. |
+| `auto` | No prompt; every other check still applies. |
+| `off` | The tool is not offered. |
+
+Every call checks the current setting; whether the tool is listed at all follows the setting the
+server started with, so restart the server (or the agent session) after switching to or from
+`off`. A kept lane is refused on every path, and unpushed work is never forced over MCP.
+
+`laines doctor` checks the registration. Containers made before the MCP server existed don't have
+one: run the `claude mcp add` command above in the container, and `laines refresh <lane>` for each
+lane.
+
+### Capabilities and locked mode
+
+`capabilities` in `.laines/config.json` switches off `create` (also `refresh`), `report`, `keep` or
+`teardown` for the CLI and MCP alike (exit `4`). `"locked": true` refuses `config set`,
+`hooks approve`, `hooks policy`, `release` and `teardown --force`, even from your own terminal
+(exit `3`); unlocking requires editing the file by hand.
+
 ## Roadmap
 
 | Milestone | Delivers | Status |
@@ -201,7 +243,7 @@ read the container's instructions too.
 | **M1: Foundation** | `init`, `config get`, `doctor`, machine index, board, agent wiring | ✅ Done |
 | **M2: Lanes** | `create`, `list`, `status`, `report`, `brief`, `keep` / `release`, `teardown` with unpushed-work safety checks, `watch` | ✅ Done |
 | **M3: Hooks** | hook runner, checksum approval (`hooks status / approve / policy`), `refresh` | ✅ Done |
-| **M4: MCP server** | `laines-mcp`, capabilities, locked mode, human confirmation for teardown over MCP | Planned |
+| **M4: MCP server** | `laines-mcp`, capabilities, locked mode, human confirmation for teardown over MCP | ✅ Done |
 | **M5: Release** | CI on macOS and Linux, security documentation, npm package | Planned |
 
 Out of scope for v1: Windows, several repositories in one lane, and adopting an existing `.ai/`

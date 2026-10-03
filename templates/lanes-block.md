@@ -21,7 +21,7 @@ working in.
    it only when the task is itself a change to the project's docs.
 3. Never run `dot-ai init` or `dot-ai sync` inside a lane.
 4. Report meaningful status changes with `laines report <lane> --status "..." --task "..."` or the
-   `laines_report` MCP tool.
+   `laines_report` MCP tool. Prefer the `laines_*` MCP tools when your session has them.
 5. Do not edit `.laines/` (except hook scripts in `.laines/hooks/`, which run only as the hook
    policy allows) or another lane's files. Teardown, release, hook approval, hook policy and config
    changes are for a human.
