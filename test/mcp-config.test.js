@@ -37,6 +37,16 @@ describe('mergeMcpConfig', () => {
   });
 });
 
+describe('hasMcpEntry on unreadable files', () => {
+  it('throws for malformed JSON but returns false for a missing file', () => {
+    const dir = tmp();
+    const file = join(dir, '.mcp.json');
+    writeFileSync(file, '{ nope');
+    expect(() => hasMcpEntry(file, '/c')).toThrow(MalformedConfigError);
+    expect(hasMcpEntry(join(dir, 'missing.json'), '/c')).toBe(false);
+  });
+});
+
 describe('MCP wiring', () => {
   it('init registers the server for the container, and create for each lane, hidden from git', async () => {
     const s = await setupContainer();

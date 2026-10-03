@@ -9,7 +9,7 @@ import { AGENT_FILES, LANES_BEGIN, denyRules } from '../lib/agent-files.js';
 import { readLanes } from '../lib/lanes-store.js';
 import { spinUpState } from '../lib/lanes-state.js';
 import { EXCLUDE_BEGIN, isTracked } from '../lib/lane-files.js';
-import { NotAContainerError } from '../lib/errors.js';
+import { MalformedConfigError, NotAContainerError } from '../lib/errors.js';
 import { hookStates, isExecutable } from '../lib/hooks.js';
 import { hasMcpEntry, mcpAddCommand } from '../lib/mcp-config.js';
 import { lockSuggested } from '../lib/hook-events.js';
@@ -44,8 +44,13 @@ function laneProblems(root, containerId, name, lane, agents, deps) {
     })();
     if (denyRules().some((r) => !deny.includes(r))) problems.push('Claude deny rules missing from .claude/settings.local.json');
   }
-  if (agents.includes('claude') && !isTracked(deps, dir, '.mcp.json') && !hasMcpEntry(join(dir, '.mcp.json'), root)) {
-    problems.push(`laines MCP server missing from .mcp.json: run \`laines refresh ${name}\``);
+  if (agents.includes('claude') && !isTracked(deps, dir, '.mcp.json')) {
+    try {
+      if (!hasMcpEntry(join(dir, '.mcp.json'), root)) problems.push(`laines MCP server missing from .mcp.json: run \`laines refresh ${name}\``);
+    } catch (err) {
+      if (!(err instanceof MalformedConfigError)) throw err;
+      problems.push(`.mcp.json is malformed: fix or delete it, then run \`laines refresh ${name}\``);
+    }
   }
   const stray = ['knowledge', 'guidelines', 'lessons'].filter((f) => has(join('.ai', f)) && !isTracked(deps, dir, `.ai/${f}`));
   if (stray.length) problems.push(`a full .ai/ layer was scaffolded in the lane (${stray.join(', ')}): dot-ai init/sync was run there; move anything useful to the container's .ai/ and delete them`);

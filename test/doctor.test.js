@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { runInit } from '../src/commands/init.js';
 import { runDoctor } from '../src/commands/doctor.js';
 import { runCreate } from '../src/commands/create.js';
+import { formatDoctor } from '../src/lib/format.js';
 import { runDotAi } from '../src/lib/dotai.js';
 import { claimContainer, loadIndex } from '../src/lib/machine-index.js';
 import { NotAContainerError } from '../src/lib/errors.js';
@@ -205,5 +206,18 @@ describe('doctor lane checks', () => {
     expect(check).toMatchObject({ ok: true, warn: true });
     expect(check.detail).toContain(settings);
     expect(r.ok).toBe(true);
+    expect(formatDoctor(r).split('\n').some((l) => l.startsWith('! elicitation-hooks'))).toBe(true);
+  });
+
+  it('reports a malformed .mcp.json as malformed, not missing', async () => {
+    const s = await setupContainer();
+    const lane = await runCreate({ container: s.container }, s.deps);
+    writeFileSync(join(s.container, '.mcp.json'), '{ nope');
+    writeFileSync(join(lane.path, '.mcp.json'), '{ nope');
+    const r = byName(await runDoctor({ container: s.container }, s.deps));
+    expect(r.mcp.ok).toBe(false);
+    expect(r.mcp.detail).toContain('Malformed file');
+    expect(r['lane:lane_1'].detail).toContain('malformed');
+    expect(r['lane:lane_1'].detail).not.toContain('missing from');
   });
 });
