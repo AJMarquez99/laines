@@ -1,6 +1,6 @@
-# M2 carry-overs (input for the M3, M4 and M5 plans)
+# M2–M4 carry-overs (input for the M5 plan)
 
-Findings from the M2 (lanes) reviews that belong to later milestones. Fold each into the plan
+Findings from the M2–M4 reviews that belong to later milestones. Fold each into the plan
 that owns it, then delete this note.
 
 ## M5 (release, SECURITY.md residual risks)

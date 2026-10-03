@@ -76,7 +76,7 @@ See `.laines/hooks/README.md`.
 ## MCP tools
 
 Sessions in this container and in its lanes have the `laines_*` MCP tools (registered in
-`.mcp.json`). They do what the CLI does and refuse what an agent may not do. `laines_teardown`
+`.mcp.json`, which is written when Claude is a configured agent). They do what the CLI does and refuse what an agent may not do. `laines_teardown`
 asks a human to confirm first (setting `teardown.mcp`); if the client cannot ask, the request
 waits on the board for `laines teardown <lane>` in a terminal.
 

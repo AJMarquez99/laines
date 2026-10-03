@@ -211,7 +211,8 @@ asks you to approve a project MCP server the first time it starts. To register i
 claude mcp add --scope project laines -- laines-mcp --container ~/work/myapp-lanes
 ```
 
-`laines-mcp` takes `--container <dir>` as two arguments.
+`laines-mcp` takes `--container <dir>` as two arguments. It must be on your `PATH` for Claude to
+start it: installing the package globally provides both `laines` and `laines-mcp`.
 
 **Teardown over MCP** follows `teardown.mcp` in `.laines/config.json`:
 

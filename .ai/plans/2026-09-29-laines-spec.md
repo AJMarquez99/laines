@@ -243,7 +243,7 @@ Agents in a lane must not run `dot-ai init` or `dot-ai sync` (they would scaffol
   setting that fixes it (`project_root_markers`, `context.includeDirectories`). L.AI.nes never
   edits user-level agent config.
 - The lane `.ai/README.md` carries the same rules for any agent.
-- **MCP:** `init` writes the container's `.mcp.json`, and `create`/`refresh` write an excluded one in each lane, registering `laines-mcp --container <container>` as server `laines`. A repo-tracked `.mcp.json` is never overwritten.
+- **MCP:** `init` writes the container's `.mcp.json`, and `create`/`refresh` write an excluded one in each lane, registering `laines-mcp --container <container>` as server `laines`, when Claude is a configured agent. A repo-tracked `.mcp.json` is never overwritten.
 
 ### 7.4 Workflows and `brief`
 
