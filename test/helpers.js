@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { vi } from 'vitest';
-import { runGit } from '../src/lib/git.js';
+import { runGit, runGitAsync } from '../src/lib/git.js';
 import { runInit } from '../src/commands/init.js';
 import { runDotAi } from '../src/lib/dotai.js';
 import { runHookFile } from '../src/lib/hook-runner.js';
@@ -31,6 +31,7 @@ export function testDeps(root, overrides = {}) {
       throw new Error('runDotAi not stubbed in this test');
     },
     git: runGit,
+    gitAsync: runGitAsync,
     busyPorts: async () => [],
     runHook: runHookFile,
     warn: () => {},

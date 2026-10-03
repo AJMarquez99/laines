@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { laneFrom, loadContainer } from '../lib/container.js';
 import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
-import { dropRequests, putRequest, requestId } from '../lib/lanes-state.js';
+import { dropRequests, putRequest, requestId, spinUpState } from '../lib/lanes-state.js';
 import { assertLaneDir } from '../lib/containment.js';
 import { writeLaneFiles } from '../lib/lane-files.js';
 import { hookStates } from '../lib/hooks.js';
@@ -51,6 +51,9 @@ export async function runRefresh(opts, deps) {
   // A malformed hooks.lock.json fails here, before anything is written.
   hookStates(ctx.paths);
   if (lane.state === 'closed') throw new InvalidInputError(`Lane ${name} is closed. Create a new lane instead.`);
+  if (spinUpState(lane, ctx.config, deps.now()) === 'running') {
+    throw new InvalidInputError(`Lane ${name} is still being created (spinning up since ${lane.updated}). Wait for \`laines create\` to finish; if it was interrupted, \`laines doctor\` says when it is safe to refresh.`);
+  }
   const laneDir = join(ctx.root, lane.repos[0].path);
   const real = assertLaneDir(ctx.root, laneDir, lane.repos[0].path);
   if (!real || !existsSync(join(real, '.git'))) {

@@ -20,12 +20,16 @@ export function readJson(path, { onMissing } = {}) {
   }
 }
 
-// Atomic write: a crash mid-write never leaves a truncated file behind.
-export function writeJson(path, obj) {
+// Temp file + rename: a crash never leaves a truncated file, and readers never see a partial one.
+export function writeFileAtomic(path, text) {
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
-  writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n');
+  writeFileSync(tmp, text);
   renameSync(tmp, path);
+}
+
+export function writeJson(path, obj) {
+  writeFileAtomic(path, JSON.stringify(obj, null, 2) + '\n');
 }
 
 // Own properties only: `__proto__` or `constructor` in a user-supplied key never reaches Object.prototype.

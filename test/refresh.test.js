@@ -101,10 +101,24 @@ describe('refresh', () => {
     await runCreate({ container: s.container }, s.deps);
     await updateLanes(ctxOf(s), s.deps, (st) => {
       st.lanes.lane_1.status = 'spinning up';
+      st.lanes.lane_1.updated = '2026-09-29T10:00:00.000Z';
       return { state: st, result: null };
     });
     await runRefresh({ lane: 'lane_1', container: s.container }, s.deps);
     expect(lane1(s)).toMatchObject({ state: 'active', status: 'idle' });
+  });
+
+  it('refuses a lane whose create may still be running', async () => {
+    const s = await setupContainer();
+    await runCreate({ container: s.container }, s.deps);
+    await updateLanes(ctxOf(s), s.deps, (st) => {
+      st.lanes.lane_1.status = 'spinning up';
+      st.lanes.lane_1.updated = '2026-09-29T11:59:00.000Z';
+      return { state: st, result: null };
+    });
+    const err = await runRefresh({ lane: 'lane_1', container: s.container }, s.deps).catch((e) => e);
+    expect(err).toBeInstanceOf(InvalidInputError);
+    expect(err.message).toContain('still being created');
   });
 
   it('records the branch the clone is on now', async () => {

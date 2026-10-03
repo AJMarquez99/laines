@@ -28,15 +28,31 @@ const readJsonQuiet = (file) => {
   }
 };
 
+const LANE_NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+
 // Spec §7.1: lane mode only when the lane marker sits at the repo root AND the container it names
-// carries a marker with the same id. The container is never searched for.
+// carries a marker with the same id AND the repo root really is <container>/<lane> (a copied lane
+// directory carries a valid-looking marker). The container is never searched for.
 export function detectLane(start) {
   const root = findRepoRoot(start);
   if (!root) return null;
   const m = readJsonQuiet(join(root, '.ai', '.lane.json'));
-  if (!m || typeof m.lane !== 'string' || typeof m.container !== 'string' || typeof m.containerId !== 'string') return null;
+  if (
+    !m ||
+    typeof m.lane !== 'string' || !LANE_NAME.test(m.lane) ||
+    typeof m.container !== 'string' || !isAbsolute(m.container) ||
+    typeof m.containerId !== 'string' ||
+    !Number.isInteger(m.number) || m.number < 1
+  ) {
+    return null;
+  }
   const c = readJsonQuiet(join(m.container, '.laines', 'container.json'));
   if (!c || c.id !== m.containerId) return null;
+  try {
+    if (realpathSync(root) !== join(realpathSync(m.container), m.lane)) return null;
+  } catch {
+    return null;
+  }
   return { lane: m.lane, number: m.number, containerId: m.containerId, container: m.container, root };
 }
 

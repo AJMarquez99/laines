@@ -1,6 +1,6 @@
-import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { readJson, writeJson } from './jsonfile.js';
+import { readJson, writeFileAtomic, writeJson } from './jsonfile.js';
 import { withLock } from './lock.js';
 import { addActivity, emptyLanesState, parseLanesState } from './lanes-state.js';
 import { fmtTs, renderBoard, safe } from './board.js';
@@ -19,7 +19,7 @@ export function writeBoard(ctx, state) {
     hooksPolicy: ctx.config.hooks.policy,
     teardownMcp: ctx.config.teardown.mcp,
   };
-  writeFileSync(ctx.paths.board, renderBoard({ container, state }));
+  writeFileAtomic(ctx.paths.board, renderBoard({ container, state }));
 }
 
 function archiveOverflow(ctx, overflow, now) {

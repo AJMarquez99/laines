@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   findRepoRoot, detectLane, containerDirFrom, loadContainer, laneFrom,
@@ -44,6 +44,20 @@ describe('lane detection', () => {
     expect(detectLane(fakeLane(c, 'lane_2', { containerId: 'other' }))).toBeNull();
     expect(detectLane(fakeLane(c, 'lane_3', { container: join(root, 'gone') }))).toBeNull();
     expect(findRepoRoot(tmp())).toBeNull();
+  });
+
+  it('rejects a copied lane directory and malformed markers', () => {
+    const root = tmp();
+    const c = fakeContainer(root);
+    const lane = fakeLane(c, 'lane_1');
+    const copy = join(root, 'elsewhere', 'lane_1');
+    cpSync(lane, copy, { recursive: true });
+    expect(detectLane(copy)).toBeNull();
+    expect(detectLane(fakeLane(c, 'lane_4', { number: '4' }))).toBeNull();
+    expect(detectLane(fakeLane(c, 'lane_5', { number: 0 }))).toBeNull();
+    expect(detectLane(fakeLane(c, 'lane_6', { container: 'relative/c' }))).toBeNull();
+    expect(detectLane(fakeLane(c, 'lane_7', { lane: 'Bad Name' }))).toBeNull();
+    expect(detectLane(lane)).toMatchObject({ lane: 'lane_1' });
   });
 });
 

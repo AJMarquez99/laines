@@ -3,7 +3,7 @@ import { dirname, join, parse, relative, resolve } from 'node:path';
 import { VERSION } from '../version.js';
 import { buildConfig } from '../config.js';
 import { InvalidInputError, LainesError } from '../lib/errors.js';
-import { writeJson } from '../lib/jsonfile.js';
+import { writeFileAtomic, writeJson } from '../lib/jsonfile.js';
 import { configDir, containerPaths, shellQuote } from '../lib/paths.js';
 import { repoSlugFromRemote, uniqueId, validateId } from '../lib/ids.js';
 import { allocateBlock } from '../lib/ports.js';
@@ -97,7 +97,7 @@ function writeContainer({ path, entry, config, agents, deps }) {
   }
   appendOnce(join(p.ai, 'context', 'README.md'), 'board-note', readTemplate('context-board-note.md'));
   mkdirSync(dirname(p.board), { recursive: true });
-  writeFileSync(
+  writeFileAtomic(
     p.board,
     renderBoard({
       container: { id: entry.id, portRange: entry.portRange, hooksPolicy: config.hooks.policy, teardownMcp: config.teardown.mcp },

@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { readJson, writeJson, getPath } from '../src/lib/jsonfile.js';
+import { readJson, writeJson, writeFileAtomic, getPath } from '../src/lib/jsonfile.js';
 import { parseWith } from '../src/lib/schema.js';
 import { MalformedConfigError } from '../src/lib/errors.js';
 import { tmp, cleanupTmp } from './helpers.js';
@@ -52,5 +52,16 @@ describe('parseWith', () => {
       expect(e).toBeInstanceOf(MalformedConfigError);
       expect(e.message).toContain('n:');
     }
+  });
+});
+
+describe('writeFileAtomic', () => {
+  it('writes through a temp file and leaves none behind', () => {
+    const dir = tmp();
+    const file = join(dir, 'board.md');
+    writeFileAtomic(file, 'one\n');
+    writeFileAtomic(file, 'two\n');
+    expect(readFileSync(file, 'utf8')).toBe('two\n');
+    expect(readdirSync(dir)).toEqual(['board.md']);
   });
 });

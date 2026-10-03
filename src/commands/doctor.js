@@ -7,6 +7,7 @@ import { indexFiles, loadIndex, pruneIndex } from '../lib/machine-index.js';
 import { containerDirFrom, resolveContainer } from '../lib/container.js';
 import { AGENT_FILES, LANES_BEGIN, denyRules } from '../lib/agent-files.js';
 import { readLanes } from '../lib/lanes-store.js';
+import { spinUpState } from '../lib/lanes-state.js';
 import { EXCLUDE_BEGIN, isTracked } from '../lib/lane-files.js';
 import { NotAContainerError } from '../lib/errors.js';
 import { hookStates, isExecutable } from '../lib/hooks.js';
@@ -50,10 +51,7 @@ function laneProblems(root, containerId, name, lane, agents, deps) {
 function laneStateProblems(name, lane, config, deps) {
   const problems = [];
   if (lane.state === 'setup-failed') problems.push(`setup failed: fix the hook, then run \`laines refresh ${name}\``);
-  // A create in progress is "spinning up" too: only one older than a slow clone plus a full hook
-  // timeout is treated as interrupted.
-  const staleMs = ((config?.hooks.timeoutSec ?? 300) + 1800) * 1000;
-  if (lane.status === 'spinning up' && Date.parse(deps.now()) - Date.parse(lane.updated) > staleMs) {
+  if (spinUpState(lane, config, deps.now()) === 'interrupted') {
     problems.push(`create was interrupted (spinning up since ${lane.updated}): if the clone is complete, run \`laines refresh ${name}\`; otherwise run \`laines teardown ${name} --remove-dir --force\` and create it again`);
   }
   return problems;

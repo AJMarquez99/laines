@@ -58,7 +58,7 @@ describe('create', () => {
     const s = await setupContainer();
     const busy = { ...s.deps, busyPorts: async ([a]) => [a] };
     await expect(runCreate({ container: s.container }, busy)).rejects.toThrow(/Ports already in use: 20000/);
-    const failingGit = { ...s.deps, git: (args, o) => (args[0] === 'clone' ? { status: 128, stdout: '', stderr: 'fatal: repository not found' } : s.deps.git(args, o)) };
+    const failingGit = { ...s.deps, gitAsync: async (args, o) => (args[0] === 'clone' ? { status: 128, stdout: '', stderr: 'fatal: repository not found' } : s.deps.gitAsync(args, o)) };
     await expect(runCreate({ container: s.container }, failingGit)).rejects.toBeInstanceOf(GitError);
     const ctx = loadContainer({ container: s.container }, s.deps);
     expect(readLanes(ctx).lanes).toEqual({});
@@ -82,8 +82,8 @@ describe('create', () => {
     const warnings = [];
     const deps = {
       ...s.deps,
-      git: (args, o) => {
-        if (args[0] !== 'clone') return s.deps.git(args, o);
+      gitAsync: async (args, o) => {
+        if (args[0] !== 'clone') return s.deps.gitAsync(args, o);
         cloned = true;
         return { status: 128, stdout: '', stderr: 'fatal: repository not found' };
       },
@@ -155,6 +155,12 @@ describe('create', () => {
     expect(r.code).toBe(0);
     expect(r.stdout).toContain('lane lane_1 created');
     expect(r.stdout).toContain('# Lane brief: lane_1');
+  });
+
+  it('clones asynchronously, so a long-lived server keeps answering', async () => {
+    const { deps, container } = await setupContainer();
+    const sync = { ...deps, git: (args, o) => (args[0] === 'clone' ? { status: 1, stdout: '', stderr: 'sync clone used' } : deps.git(args, o)) };
+    expect(await runCreate({ container }, sync)).toMatchObject({ lane: 'lane_1' });
   });
 });
 

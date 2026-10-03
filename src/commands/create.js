@@ -5,7 +5,7 @@ import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
 import { assertLaneDir, removeLaneDir } from '../lib/containment.js';
 import { writeLaneFiles } from '../lib/lane-files.js';
 import { buildBrief } from '../lib/brief.js';
-import { gitOut } from '../lib/git.js';
+import { gitOut, gitOutAsync } from '../lib/git.js';
 import { lanePorts } from '../lib/ports.js';
 import { laneId } from '../lib/ids.js';
 import { shellQuote } from '../lib/paths.js';
@@ -129,7 +129,7 @@ export async function runCreate(opts, deps) {
 
   let files;
   try {
-    gitOut(deps, ['clone', '--origin', 'origin', '--', repo.remote, plan.laneDir], ctx.root);
+    await gitOutAsync(deps, ['clone', '--origin', 'origin', '--', repo.remote, plan.laneDir], ctx.root);
     const current = gitOut(deps, ['branch', '--show-current'], plan.laneDir).trim();
     if (current !== branch) {
       const onRemote = deps.git(['show-ref', '--verify', '--quiet', `refs/remotes/origin/${branch}`], { cwd: plan.laneDir }).status === 0;

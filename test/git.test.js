@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
-import { runGit, gitOut } from '../src/lib/git.js';
+import { runGit, runGitAsync, gitOut } from '../src/lib/git.js';
 import { busyPorts } from '../src/lib/netports.js';
 import { GitError } from '../src/lib/errors.js';
 import { tmp, cleanupTmp, testDeps, gitIn, makeRemote } from './helpers.js';
@@ -80,5 +80,24 @@ describe('fixtures', () => {
     gitIn(root, 'clone', '-q', remote, join(root, 'check'));
     expect(gitIn(join(root, 'check'), 'ls-files').split('\n')).toEqual(expect.arrayContaining(['a.txt', 'docs/b.md']));
     expect(gitIn(join(root, 'check'), 'branch', '-r')).toContain('origin/feature');
+  });
+});
+
+describe('runGitAsync', () => {
+  it('resolves with status and output, never prompts, and ignores GIT_DIR', async () => {
+    const ok = await runGitAsync(['--version']);
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toMatch(/^git version/);
+    const prompt = await runGitAsync(['-c', 'alias.promptcheck=!printenv GIT_TERMINAL_PROMPT', 'promptcheck'], { cwd: tmp() });
+    expect(prompt.stdout.trim()).toBe('0');
+    process.env.GIT_DIR = '/nonexistent';
+    try {
+      const r = await runGitAsync(['-c', 'alias.gd=!printenv GIT_DIR || echo unset', 'gd'], { cwd: tmp() });
+      expect(r.stdout.trim()).toBe('unset');
+    } finally {
+      delete process.env.GIT_DIR;
+    }
+    const bad = await runGitAsync(['definitely-not-a-git-command']);
+    expect(bad.status).not.toBe(0);
   });
 });

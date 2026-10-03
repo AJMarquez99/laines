@@ -53,3 +53,11 @@ export function putRequest(state, { ts, lane = null, kind, text, command }) {
 }
 
 export const dropRequests = (state, match) => ({ ...state, requests: state.requests.filter((r) => !match(r)) });
+
+// A create in progress is "spinning up" too: only one older than a slow clone plus a full hook
+// timeout counts as interrupted.
+export function spinUpState(lane, config, now) {
+  if (lane.status !== 'spinning up') return null;
+  const staleMs = ((config?.hooks.timeoutSec ?? 300) + 1800) * 1000;
+  return Date.parse(now) - Date.parse(lane.updated) > staleMs ? 'interrupted' : 'running';
+}
