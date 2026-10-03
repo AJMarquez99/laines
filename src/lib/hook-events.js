@@ -17,6 +17,7 @@ export function laneHookVars(ctx, name, lane) {
     containerDir: ctx.root,
     ports: lane.ports,
     branch: lane.repos[0].branch,
+    compose: lane.compose,
   });
 }
 

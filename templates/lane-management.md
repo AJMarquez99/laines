@@ -93,6 +93,7 @@ overwrite its untracked copies of those files: remove the untracked copies (they
 
 If this container was made with `laines adopt <dir>`, the original project folder became its first
 lane and the project's `.ai/` became this shared layer. Recreate Python virtualenvs in the lane after a move.
+`lane_1` keeps the project's Docker Compose project name, so existing volumes and containers stay attached; other lanes get their own (`<id>-l<n>`).
 
 ## Monitoring
 

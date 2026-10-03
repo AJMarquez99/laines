@@ -82,7 +82,7 @@ export async function runRefresh(opts, deps) {
     await recordRun(ctx, deps, run, name, branch);
     throw hookError(run, setupFailedNext(run, name));
   }
-  const files = writeLaneFiles(ctx, deps, { name, number: lane.number, laneDir, branch, ports: lane.ports });
+  const files = writeLaneFiles(ctx, deps, { name, number: lane.number, laneDir, branch, ports: lane.ports, compose: lane.compose });
   const run = await runEvent(ctx, deps, event);
   const ok = await recordRun(ctx, deps, run, name, branch);
   if (!ok) throw hookError(run, setupFailedNext(run, name));

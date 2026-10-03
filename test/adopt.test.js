@@ -119,6 +119,51 @@ describe('adopt refuses', () => {
   });
 });
 
+describe('adopt keeps the Compose project', () => {
+  const laneEnvOf = (w) => readFileSync(join(w.dir, 'lane_1', '.laines.env'), 'utf8');
+  const laneCompose = (w) => readLanes(loadContainer({ container: w.dir }, w.deps)).lanes.lane_1.compose;
+
+  it("defaults to Docker Compose's name for the folder: lowercased, other characters removed", async () => {
+    const w = world({ path: 'Code/My App' });
+    const dry = await w.adopt({ dryRun: true });
+    expect(dry.compose).toBe('myapp');
+    const r = await w.adopt();
+    expect(r.compose).toBe('myapp');
+    expect(laneCompose(w)).toBe('myapp');
+    expect(laneEnvOf(w)).toContain('COMPOSE_PROJECT_NAME="myapp"');
+  });
+
+  it('prefers COMPOSE_PROJECT_NAME in .env, quotes stripped', async () => {
+    const w = world({ files: { '.env': 'A=1\nCOMPOSE_PROJECT_NAME="custom"\nCOMPOSE_PROJECT_NAME=other\n', 'compose.yaml': 'name: fromfile\n' } });
+    expect((await w.adopt()).compose).toBe('custom');
+    expect(laneEnvOf(w)).toContain('COMPOSE_PROJECT_NAME="custom"');
+  });
+
+  it('uses a top-level name: in the compose file when .env does not name it', async () => {
+    const w = world({ files: { 'docker-compose.yml': 'services:\n  a:\n    name: nested\nname: "fromfile"\n' } });
+    expect((await w.adopt()).compose).toBe('fromfile');
+    expect(laneEnvOf(w)).toContain('COMPOSE_PROJECT_NAME="fromfile"');
+  });
+
+  it('leaves it unset when the folder name leaves nothing, and later lanes get their own', async () => {
+    const w = world({ path: 'Code/ÄÖ' });
+    expect((await w.adopt()).compose).toBeNull();
+    expect(laneCompose(w)).toBeUndefined();
+    const id = loadContainer({ container: w.dir }, w.deps).id;
+    expect(laneEnvOf(w)).toContain(`COMPOSE_PROJECT_NAME="${id}-l1"`);
+  });
+
+  it('keeps it through refresh, while a created lane gets <id>-l<n>', async () => {
+    const w = world({ files: { '.env': 'COMPOSE_PROJECT_NAME=custom\n' } });
+    await w.adopt();
+    await invoke('refresh', { lane: 'lane_1', container: w.dir }, w.deps);
+    expect(laneEnvOf(w)).toContain('COMPOSE_PROJECT_NAME="custom"');
+    const two = await invoke('create', { container: w.dir }, w.deps);
+    const id = loadContainer({ container: w.dir }, w.deps).id;
+    expect(readFileSync(join(two.path, '.laines.env'), 'utf8')).toContain(`COMPOSE_PROJECT_NAME="${id}-l2"`);
+  });
+});
+
 describe('adopt', () => {
   it('turns the folder into a container whose lane_1 is the original checkout, losing nothing', async () => {
     const w = world({ files: { 'README.md': '# app\n', '.gitignore': 'node_modules/\n' } });

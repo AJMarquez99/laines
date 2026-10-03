@@ -38,6 +38,12 @@ describe('laneEnv', () => {
     const out = execFileSync('sh', ['-c', `set -a; . /dev/stdin; printf '%s|%s' "$LANE_DIR" "$LANE_BRANCH"`], { input: env, encoding: 'utf8' });
     expect(out).toBe('/tmp/my lanes/lane_2|feat/$x');
   });
+
+  it("uses the lane's own compose project name when it has one", () => {
+    const base = { lane: 'lane_1', number: 1, containerId: 'my-app', laneDir: '/t/lane_1', containerDir: '/t', ports: [20000, 20009], branch: 'main' };
+    expect(laneEnv({ ...base, compose: 'myapp' })).toContain('COMPOSE_PROJECT_NAME="myapp"');
+    expect(laneEnv(base)).toContain('COMPOSE_PROJECT_NAME="my-app-l1"');
+  });
 });
 
 describe('writeLaneFiles', () => {

@@ -289,7 +289,7 @@ Environment: `LANE_NAME`, `LANE_NUMBER`, `LANE_ID`, `LANE_DIR`, `CONTAINER_DIR`,
 `LANE_ENV_FILE`, `LAINES_HOOK`, `LAINES_DRY_RUN`.
 
 `.laines.env` is written before `post-create` and contains `LANE_*`, `PORT` (first port of the
-block), and `COMPOSE_PROJECT_NAME`. Hooks may append to it. `refresh` rewrites it from scratch before re-running `post-create`, so appended lines come back exactly once; hand edits are lost.
+block), and `COMPOSE_PROJECT_NAME` (`<id>-l<n>`, or the lane's recorded `compose` name: `adopt` keeps the project's own for `lane_1`). Hooks may append to it. `refresh` rewrites it from scratch before re-running `post-create`, so appended lines come back exactly once; hand edits are lost.
 
 Exit `0` ok · `3` blocked, needs a human (becomes a board request, not a failure) · anything
 else fails. Default timeout 300s. Output is captured and returned to agents marked untrusted.
@@ -412,7 +412,7 @@ Human-only, CLI only. Detail in `2026-10-02-laines-m4.5-adopt-design.md`.
 1. Check the directory (git checkout with a reachable `origin`, not already a container, not inside a lane) and plan; `--dry-run` stops here.
 2. Claim the container id and port block in the machine index, then move the checkout into `<dir>/lane_1` with a two-rename move so the folder becomes the container.
 3. Copy the project's `.ai/` into the container as the shared layer, write container files, and record `lane_1`'s `ai sync` base from its tracked `.ai/` files.
-4. Register the lane in `lanes.json`: this is the commit point. Before it, everything rolls back exactly (including releasing the machine-index claim).
+4. Register the lane in `lanes.json` with a `compose` name (the project's current Compose project: `COMPOSE_PROJECT_NAME` in `.env`, else a top-level `name:` in its compose file, else the folder name lowercased minus characters outside `[a-z0-9_-]`; unset if empty), which `.laines.env` uses instead of `<id>-l<n>`: this is the commit point. Before it, everything rolls back exactly (including releasing the machine-index claim).
 5. After it, write lane files, rename untracked collisions to `<name>.pre-laines`, and remove untracked `.ai/` files already copied. A later failure keeps the container and says to run `laines refresh <lane>`.
 
 ### 10.5 `ai sync`

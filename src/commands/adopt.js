@@ -158,6 +158,20 @@ function backupName(dir, file) {
   return to;
 }
 
+const unquote = (v) => v.trim().replace(/^(["'])(.*)\1$/, '$2');
+
+// The Compose project name the checkout uses today (.env, then the compose file's top-level name:,
+// then Compose's default: the folder name lowercased, minus anything outside [a-z0-9_-]).
+function composeName(dir, folder) {
+  const read = (f) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8') : null);
+  const fromEnv = read('.env')?.match(/^COMPOSE_PROJECT_NAME=(.*)$/m);
+  if (fromEnv && unquote(fromEnv[1])) return unquote(fromEnv[1]);
+  const file = ['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml'].find((f) => existsSync(join(dir, f)));
+  const named = file && read(file).match(/^name:[ \t]*(.*?)[ \t]*(?:#.*)?$/m);
+  if (named && unquote(named[1])) return unquote(named[1]);
+  return folder.toLowerCase().replace(/[^a-z0-9_-]/g, '') || null;
+}
+
 function plan(insp, opts, deps) {
   const { dir, remote } = insp;
   const branchNow = deps.git(['branch', '--show-current'], { cwd: dir }).stdout.trim();
@@ -184,6 +198,7 @@ function plan(insp, opts, deps) {
     repoName,
     config,
     lane,
+    compose: composeName(dir, insp.name),
     ai: { mode: hasAi ? 'seed' : 'fresh', files: aiWalk.files.length },
     backups: collisions.map((f) => ({ from: f, to: backupName(dir, f) })),
     warnings,
@@ -210,7 +225,7 @@ export async function runAdopt(opts, deps) {
   const blockSize = p.config.maxLanes * p.config.ports.stride;
   const laneDir = join(insp.dir, p.lane);
   const summary = (id, portRange, ports, backups) => ({
-    id, path: insp.dir, portRange, lane: p.lane, lanePath: laneDir, branch: p.branch, ports,
+    id, path: insp.dir, portRange, lane: p.lane, compose: p.compose, lanePath: laneDir, branch: p.branch, ports,
     remote: insp.remote, ai: p.ai, backups, warnings: p.warnings,
   });
 
@@ -317,6 +332,7 @@ export async function runAdopt(opts, deps) {
         created: now,
         updated: now,
         closed: null,
+        ...(p.compose ? { compose: p.compose } : {}),
       };
       return { state, result: null, activity: [{ ts: now, lane: p.lane, text: `lane adopted from the existing checkout (branch ${p.branch})` }] };
     });
@@ -364,7 +380,7 @@ export async function runAdopt(opts, deps) {
       }
     }
     const ctx = loadContainer({ container: insp.dir }, deps);
-    writeLaneFiles(ctx, deps, { name: p.lane, number: 1, laneDir, branch: p.branch, ports });
+    writeLaneFiles(ctx, deps, { name: p.lane, number: 1, laneDir, branch: p.branch, ports, compose: p.compose ?? undefined });
     const busy = await deps.busyPorts(ports);
     if (busy.length) warnings.push(`lane ports already in use: ${busy.join(', ')}`);
   } catch (err) {

@@ -28,7 +28,7 @@ export const LANE_EXCLUDES = [
 const q = (value) => `"${String(value).replace(/[\\"$`]/g, (c) => `\\${c}`)}"`;
 
 // Spec §8.3: the lane's variables, shared by .laines.env and the hook environment.
-export function laneVars({ lane, number, containerId, laneDir, containerDir, ports, branch }) {
+export function laneVars({ lane, number, containerId, laneDir, containerDir, ports, branch, compose }) {
   const vars = {
     LANE_NAME: lane,
     LANE_NUMBER: number,
@@ -42,7 +42,7 @@ export function laneVars({ lane, number, containerId, laneDir, containerDir, por
     LANE_BRANCH: branch,
     LANE_ENV_FILE: join(laneDir, '.laines.env'),
     PORT: ports[0],
-    COMPOSE_PROJECT_NAME: composeProject(containerId, number),
+    COMPOSE_PROJECT_NAME: compose ?? composeProject(containerId, number),
   };
   return Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, String(v)]));
 }
@@ -96,7 +96,7 @@ export function untrackedEntries(deps, repoDir, relDir) {
 // Spec §4. Never overwrites a file the repository tracks: a lane must not change project files
 // behind the developer's back. Those are skipped and reported.
 export function writeLaneFiles(ctx, deps, lane) {
-  const { name, number, laneDir, branch, ports } = lane;
+  const { name, number, laneDir, branch, ports, compose } = lane;
   const vars = {
     lane: name,
     laneId: laneId(ctx.id, name),
@@ -138,7 +138,7 @@ export function writeLaneFiles(ctx, deps, lane) {
   put('.ai/README.md', template('lane-ai-readme.md'));
   put('.ai/context/README.md', template('lane-context-readme.md'));
   put('.ai/plans/README.md', template('lane-plans-readme.md'));
-  put('.laines.env', laneEnv({ lane: name, number, containerId: ctx.id, laneDir, containerDir: ctx.root, ports, branch }));
+  put('.laines.env', laneEnv({ lane: name, number, containerId: ctx.id, laneDir, containerDir: ctx.root, ports, branch, compose }));
 
   const local = template('lane-local-instructions.md');
   const agents = ctx.config.agents;

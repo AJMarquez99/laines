@@ -13,6 +13,8 @@ const Lane = z.strictObject({
   created: z.string(),
   updated: z.string(),
   closed: z.string().nullable().optional(),
+  // Set by `laines adopt`: the project's own Docker Compose project name, kept for lane_1.
+  compose: z.string().optional(),
 });
 
 export const LanesStateSchema = z.strictObject({

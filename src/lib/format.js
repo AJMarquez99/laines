@@ -170,6 +170,7 @@ export function formatAdopt(r) {
     r.dryRun ? `dry run: would adopt ${r.path}` : `adopted ${r.path}`,
     `container: ${r.id} · ports ${r.portRange[0]}–${r.portRange[1]}`,
     `lane:      ${r.lanePath} (branch ${r.branch}, ports ${r.ports[0]}–${r.ports[1]})`,
+    ...(r.compose ? [`compose:   ${r.compose} (kept from the original checkout)`] : []),
     `.ai/:      ${r.ai.mode === 'seed' ? `the project's .ai/ becomes the container's shared layer (${r.ai.files} file(s))` : 'a fresh shared layer'}`,
   ];
   for (const b of r.backups) lines.push(`kept:      ${b.from} → ${b.to}`);
