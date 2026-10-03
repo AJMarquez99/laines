@@ -169,7 +169,9 @@ export async function runInit(opts, deps) {
   let seed;
   try {
     // dot-ai init is additive, so a seeded .ai/ keeps its content and gains only missing scaffold.
-    seed = await seedFromRemote(deps, opts.remote, config.repos[repoName].defaultBranch, join(path, '.ai'));
+    seed = opts.seed === false
+      ? { seeded: false, files: 0, base: {}, warning: null, skipped: [] }
+      : await seedFromRemote(deps, opts.remote, config.repos[repoName].defaultBranch, join(path, '.ai'));
     writeContainer({ path, entry, config, agents, deps });
     if (seed.seeded) writeAiBase(containerPaths(path), seed.base);
   } catch (err) {
@@ -185,7 +187,10 @@ export async function runInit(opts, deps) {
   return {
     dryRun: false, id: entry.id, path, portRange: entry.portRange, repo, agents, files,
     ai: { seeded: seed.seeded, files: seed.files },
-    warnings: seed.warning ? [seed.warning] : [],
+    warnings: [
+      ...(seed.warning ? [seed.warning] : []),
+      ...(seed.skipped.length ? [`${seed.skipped.length} symbolic link(s) in the remote's .ai/ were not copied: ${seed.skipped.join(', ')}`] : []),
+    ],
     next: nextSteps(path),
   };
 }

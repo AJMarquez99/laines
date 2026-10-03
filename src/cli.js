@@ -61,6 +61,7 @@ export function buildProgram(deps = defaultDeps) {
     .option('--id <id>', 'machine-unique container id (default: from the repo name)')
     .option('--agents <list>', 'agents to wire: claude,codex,gemini', 'claude')
     .option('--branch <name>', 'default branch for new lanes', 'main')
+    .option('--no-seed', 'start the container with a fresh .ai/ layer, without reading the remote')
     .option('--dry-run', 'show what would be created without writing anything')
     .action(handle('init', { table: formatInit, args: ['dir'] }, deps));
 
