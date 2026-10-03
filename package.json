@@ -4,7 +4,8 @@
   "type": "module",
   "description": "L.AI.nes: isolated parallel work lanes for coding agents. One shared .ai/ knowledge base, many independent clones, each with its own local environment.",
   "bin": {
-    "laines": "./bin/laines.js"
+    "laines": "./bin/laines.js",
+    "laines-mcp": "./bin/laines-mcp.js"
   },
   "files": [
     "bin/",
@@ -26,7 +27,16 @@
   "bugs": {
     "url": "https://github.com/AJMarquez99/laines/issues"
   },
-  "keywords": ["ai", "agents", "claude", "parallel", "lanes", "git", "cli", "mcp"],
+  "keywords": [
+    "ai",
+    "agents",
+    "claude",
+    "parallel",
+    "lanes",
+    "git",
+    "cli",
+    "mcp"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -38,6 +48,7 @@
   },
   "dependencies": {
     "@ajmarquez99/dot-ai": "^1.1.1",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "commander": "^12.1.0",
     "zod": "^4.4.3"
   },

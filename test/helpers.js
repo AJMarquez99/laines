@@ -7,6 +7,10 @@ import { runGit, runGitAsync } from '../src/lib/git.js';
 import { runInit } from '../src/commands/init.js';
 import { runDotAi } from '../src/lib/dotai.js';
 import { runHookFile } from '../src/lib/hook-runner.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { createServer } from '../src/mcp/server.js';
 
 const made = [];
 
@@ -114,4 +118,15 @@ export function setConfig(container, mutate) {
   const config = JSON.parse(readFileSync(file, 'utf8'));
   mutate(config);
   writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
+}
+
+// An in-process MCP client connected to a fresh server. Pass `elicit` to declare the elicitation
+// capability and answer prompts; omit it for a client that cannot elicit.
+export async function connectMcp(deps, { container, elicit } = {}) {
+  const server = createServer(deps, { container });
+  const client = new Client({ name: 'test', version: '0' }, { capabilities: elicit ? { elicitation: {} } : {} });
+  if (elicit) client.setRequestHandler(ElicitRequestSchema, (req) => elicit(req.params));
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+  return { client, server, call: (name, args = {}) => client.callTool({ name, arguments: args }), close: () => client.close() };
 }
