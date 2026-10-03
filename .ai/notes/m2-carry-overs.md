@@ -35,3 +35,10 @@ that owns it, then delete this note.
 - `ai sync` TOCTOU: a lane `.ai/<dir>` swapped for a symlink between planning and writing is followed (assert `realpath(dirname(target))` inside the `.ai` root); lane-side symlink tests.
 - `init` has no signal handling: Ctrl-C during seeding leaks the `seed-*` temp dir and the machine-index claim.
 - Cosmetic: `copyOrDelete` leaves empty dirs and drops the mode bit; refused rows all read "(symbolic link)"; doctor runs `repoCommitsAi` twice per lane; design §3.2 lists lane_1's base after registration (code records it before).
+
+## From M4.6 (myapp adoption fixes)
+
+- `LAINES_OWNED` keeps excluding the pre-M4.6 plain names even at layout 2, so a project's own `.ai/runbooks/lane-management.md` (or `templates/lane-*.md`) never syncs. Gate the old names on the container's layout.
+- `laneExcludes` runs one `git ls-files` per exact entry (≤8 per lane per doctor/refresh); one call would do.
+- The M4.5 design doc's §4.3 result shape lacks `why` and §5 still calls the drift text a "detail" (it is a doctor `note` since M4.6).
+- No concurrency test for refresh's locked migration.
