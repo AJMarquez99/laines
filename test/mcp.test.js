@@ -37,6 +37,13 @@ describe('MCP tools table', () => {
       for (const k of keys) expect(k, t.name).toMatch(/^[a-z]+(_[a-z]+)*$/);
     }
   });
+
+  it('mapArgs never passes a bypass or container argument through', () => {
+    for (const t of TOOLS) {
+      const mapped = t.mapArgs({ force: true, prune: true, container: '/x', unrestricted: true });
+      for (const k of ['force', 'prune', 'container', 'unrestricted']) expect(Object.keys(mapped), t.name).not.toContain(k);
+    }
+  });
 });
 
 describe('MCP server', () => {
@@ -75,6 +82,20 @@ describe('MCP server', () => {
     setConfig(s.container, (c) => { c.capabilities.create = false; });
     const denied = await m.call('laines_create');
     expect(denied.structuredContent.error.exitCode).toBe(4);
+    expect((await m.call('laines_list')).isError).toBeFalsy();
+    await m.close();
+  });
+
+  it('logs an unexpected error server-side and still answers with isError', async () => {
+    const s = await setupContainer();
+    const warnings = [];
+    const deps = { ...s.deps, warn: (m) => warnings.push(m), now: () => { throw new Error('clock broke'); } };
+    const m = await connectMcp(deps, { container: s.container });
+    const r = await m.call('laines_create');
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent.error.exitCode).toBe(1);
+    expect(r.structuredContent.error.message).toContain('clock broke');
+    expect(warnings.some((w) => w.includes('Error: clock broke') && w.includes('    at '))).toBe(true);
     expect((await m.call('laines_list')).isError).toBeFalsy();
     await m.close();
   });

@@ -4,7 +4,7 @@ import { defaultDeps } from '../src/deps.js';
 import { createServer, parseServerArgs } from '../src/mcp/server.js';
 
 // stdout carries the MCP protocol: anything else that prints goes to stderr.
-console.log = console.error;
+for (const k of ['log', 'info', 'debug', 'table', 'dir']) console[k] = console.error;
 
 try {
   const { container } = parseServerArgs(process.argv);

@@ -73,6 +73,18 @@ describe('teardown over MCP: confirm', () => {
     await m.close();
   });
 
+  it('leaves a board request when the client offers only URL elicitation', async () => {
+    const s = await withLane();
+    const m = await connectMcp(s.deps, { container: s.container, capabilities: { elicitation: { url: {} } }, elicit: neverPrompted });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent.error.exitCode).toBe(3);
+    expect(r.structuredContent.error.message).not.toContain('Declined');
+    expect(s.state().requests.map((q) => q.id)).toContain('teardown-confirm:lane_1');
+    expect(s.state().lanes.lane_1.state).toBe('active');
+    await m.close();
+  });
+
   it('treats a cancelled tool call as no answer, even if the human accepts later', async () => {
     const s = await withLane();
     let answer;
@@ -115,6 +127,8 @@ describe('teardown over MCP: confirm', () => {
     await m.close();
   });
 
+  // Relies on unpushedWork running `git status --porcelain` before `rev-list`: the second status
+  // call is the post-prompt re-check, so the push lands between the first check and the re-check.
   it('never runs the real teardown without an accept, even if the work gets pushed after the check', async () => {
     const s = await withLane();
     gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'local only');

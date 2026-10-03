@@ -122,9 +122,9 @@ export function setConfig(container, mutate) {
 
 // An in-process MCP client connected to a fresh server. Pass `elicit` to declare the elicitation
 // capability and answer prompts; omit it for a client that cannot elicit.
-export async function connectMcp(deps, { container, elicit } = {}) {
+export async function connectMcp(deps, { container, elicit, capabilities } = {}) {
   const server = createServer(deps, { container });
-  const client = new Client({ name: 'test', version: '0' }, { capabilities: elicit ? { elicitation: {} } : {} });
+  const client = new Client({ name: 'test', version: '0' }, { capabilities: capabilities ?? (elicit ? { elicitation: {} } : {}) });
   if (elicit) client.setRequestHandler(ElicitRequestSchema, (req) => elicit(req.params));
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);

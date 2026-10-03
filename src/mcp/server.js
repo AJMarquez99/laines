@@ -38,7 +38,9 @@ export function parseServerArgs(argv) {
 // command the CLI does; the bound container is added last, so no argument can point elsewhere.
 export function createServer(baseDeps, { container } = {}) {
   const server = new McpServer({ name: 'laines', version: VERSION });
-  const deps = { ...baseDeps, canElicit: () => Boolean(server.server.getClientCapabilities()?.elicitation) };
+  // Teardown asks with a form; a client that offers only URL elicitation cannot answer one.
+  // (The SDK normalises a legacy `elicitation: {}` to `{ form: {} }`.)
+  const deps = { ...baseDeps, canElicit: () => server.server.getClientCapabilities()?.elicitation?.form !== undefined };
   const bound = container ? { container } : {};
   let config = null;
   try {
@@ -60,6 +62,7 @@ export function createServer(baseDeps, { container } = {}) {
       try {
         return toolResult(await run({ ...tool.mapArgs(args ?? {}), ...bound }, callDeps));
       } catch (err) {
+        if (!(err instanceof LainesError)) deps.warn?.(err?.stack ?? String(err));
         return errorResult(err);
       }
     });
