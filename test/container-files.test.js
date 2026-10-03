@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { invoke } from '../src/commands/registry.js';
 import { runDoctor } from '../src/commands/doctor.js';
@@ -24,6 +24,10 @@ function downgrade(container) {
     const readme = join(ai, dir, 'README.md');
     writeFileSync(readme, `${read(readme).replace(/\n*$/, '\n')}| [${name}](${name}) | old row |\n`);
   }
+  const marker = join(container, '.laines', 'container.json');
+  const m = JSON.parse(read(marker));
+  delete m.layout;
+  writeFileSync(marker, JSON.stringify(m));
   for (const dir of ['runbooks', 'templates']) renameSync(join(ai, dir, '_README.md'), join(ai, dir, '_gone.txt'));
 }
 
@@ -76,6 +80,8 @@ describe('laines container files', () => {
   it('never overwrites: with both names present, refresh leaves both and warns; doctor reports it', async () => {
     const s = await setupContainer();
     await lane1(s);
+    const marker = join(s.container, '.laines', 'container.json');
+    writeFileSync(marker, JSON.stringify({ ...JSON.parse(read(marker)), layout: undefined }));
     const rb = join(s.container, '.ai', 'runbooks');
     writeFileSync(join(rb, 'lane-management.md'), 'user old\n');
     writeFileSync(join(rb, '_lane-management.md'), 'user new\n');
@@ -95,5 +101,74 @@ describe('laines container files', () => {
     writeFileSync(readme, `${read(readme)}| [mine.md](mine.md) | mine |\n`);
     await invoke('refresh', { lane: 'lane_1', container: s.container }, s.deps);
     expect(read(readme)).toContain('| [mine.md](mine.md) | mine |');
+  });
+
+  it('stamps layout 2 on a fresh container and on a migrated one', async () => {
+    const s = await setupContainer();
+    const marker = join(s.container, '.laines', 'container.json');
+    expect(JSON.parse(read(marker)).layout).toBe(2);
+    await lane1(s);
+    downgrade(s.container);
+    expect(JSON.parse(read(marker)).layout).toBeUndefined();
+    const dry = await invoke('refresh', { lane: 'lane_1', container: s.container, dryRun: true }, s.deps);
+    expect(dry.wouldMigrate).toHaveLength(5);
+    expect(existsSync(join(s.container, '.ai', 'runbooks', 'lane-management.md'))).toBe(true);
+    expect(JSON.parse(read(marker)).layout).toBeUndefined();
+    await invoke('refresh', { lane: 'lane_1', container: s.container }, s.deps);
+    expect(JSON.parse(read(marker))).toMatchObject({ layout: 2, id: 'my-app' });
+  });
+
+  it('pre-M4.6 with both names present: warns, does not stamp, and completes once the user removes one', async () => {
+    const s = await setupContainer();
+    await lane1(s);
+    downgrade(s.container);
+    const rb = join(s.container, '.ai', 'runbooks');
+    writeFileSync(join(rb, '_lane-management.md'), 'user new\n');
+    const marker = join(s.container, '.laines', 'container.json');
+    const r = await invoke('refresh', { lane: 'lane_1', container: s.container }, s.deps);
+    expect(r.warnings.join('\n')).toContain('keep one by hand');
+    expect(JSON.parse(read(marker)).layout).toBeUndefined();
+    expect(read(join(rb, '_README.md'))).toContain('(_lane-management.md)');
+    const d = (await runDoctor({ container: s.container }, s.deps)).checks.find((c) => c.name === 'agent-files');
+    expect(d.detail).toContain('keep one by hand, then run');
+    renameSync(join(rb, 'lane-management.md'), join(s.root, 'kept.md'));
+    await invoke('refresh', { lane: 'lane_1', container: s.container }, s.deps);
+    expect(JSON.parse(read(marker)).layout).toBe(2);
+    expect((await runDoctor({ container: s.container }, s.deps)).ok).toBe(true);
+  });
+
+  const ownFile = (container) => {
+    const rb = join(container, '.ai', 'runbooks');
+    expect(read(join(rb, 'lane-management.md'))).toBe('project runbook\n');
+    expect(read(join(rb, 'README.md'))).toContain('(lane-management.md)');
+  };
+
+  it('layout 2: a project\'s own plain lane-management.md (seeded from the remote) is left alone', async () => {
+    const s = await setupContainer({ files: {
+      'README.md': '# app\n',
+      '.ai/runbooks/lane-management.md': 'project runbook\n',
+      '.ai/runbooks/README.md': '# Runbooks\n\n## Index\n\n| File | Answers |\n|---|---|\n| [lane-management.md](lane-management.md) | theirs |\n',
+    } });
+    await lane1(s);
+    ownFile(s.container);
+    expect((await runDoctor({ container: s.container }, s.deps)).checks.find((c) => c.name === 'agent-files').ok).toBe(true);
+    const r = await invoke('refresh', { lane: 'lane_1', container: s.container }, s.deps);
+    expect(r.migrated).toEqual([]);
+    expect(r.warnings.join('\n')).not.toContain('keep one by hand');
+    ownFile(s.container);
+  });
+
+  it('layout 2: a user who deleted the _ file and kept their own plain file keeps it', async () => {
+    const s = await setupContainer();
+    await lane1(s);
+    const rb = join(s.container, '.ai', 'runbooks');
+    rmSync(join(rb, '_lane-management.md'));
+    writeFileSync(join(rb, 'lane-management.md'), 'project runbook\n');
+    writeFileSync(join(rb, 'README.md'), `${read(join(rb, 'README.md'))}| [lane-management.md](lane-management.md) | mine |\n`);
+    expect((await runDoctor({ container: s.container }, s.deps)).checks.find((c) => c.name === 'agent-files').ok).toBe(true);
+    const r = await invoke('refresh', { lane: 'lane_1', container: s.container }, s.deps);
+    expect(r.migrated).toEqual([]);
+    ownFile(s.container);
+    expect(existsSync(join(rb, '_lane-management.md'))).toBe(false);
   });
 });

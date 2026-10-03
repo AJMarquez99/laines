@@ -77,7 +77,7 @@ export function writeContainer({ path, entry, config, agents, deps }) {
   }
   const p = containerPaths(path);
   const state = emptyLanesState();
-  writeJson(p.marker, { id: entry.id, lainesVersion: VERSION, created: deps.now() });
+  writeJson(p.marker, { id: entry.id, lainesVersion: VERSION, layout: 2, created: deps.now() });
   writeJson(p.config, config);
   writeJson(p.lanes, state);
   writeJson(p.hooksLock, { version: 1, hooks: {} });

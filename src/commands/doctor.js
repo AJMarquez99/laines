@@ -139,9 +139,11 @@ export async function runDoctor(opts, deps) {
       return !existsSync(f) || !readFileSync(f, 'utf8').includes(LANES_BEGIN);
     });
     if (missing.length) throw new Error(`laines-lanes block missing for: ${missing.map((a) => AGENT_FILES[a]).join(', ')}`);
-    const old = unmigratedFiles(p.ai);
+    const old = unmigratedFiles(p.ai, marker?.layout ?? 1);
     if (old.length) {
-      throw new Error(`laines' files still use plain names (${old.map((f) => `${f.dir}/${f.name}${f.both ? ', also _' + f.name : ''}`).join(', ')}): run \`laines refresh <lane>\` to move laines' files to \`_\` names`);
+      const both = old.filter((f) => f.both).map((f) => `${f.dir}/${f.name} and ${f.dir}/_${f.name}`);
+      if (both.length) throw new Error(`both ${both.join('; ')} exist: keep one by hand, then run \`laines refresh <lane>\``);
+      throw new Error(`laines' files still use plain names (${old.map((f) => `${f.dir}/${f.name}`).join(', ')}): run \`laines refresh <lane>\` to move laines' files to \`_\` names`);
     }
     return agents.map((a) => AGENT_FILES[a]).join(', ');
   });

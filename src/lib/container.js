@@ -79,7 +79,7 @@ export function loadContainer(opts, deps) {
   if (!entry) {
     throw new MalformedConfigError(join(indexDir, 'containers.json'), `container ${root} is not registered; run \`laines doctor\``);
   }
-  return { root, paths, id: marker.id, config, portRange: entry.portRange };
+  return { root, paths, id: marker.id, layout: marker.layout ?? 1, config, portRange: entry.portRange };
 }
 
 const realpathQuiet = (p) => {

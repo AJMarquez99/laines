@@ -254,6 +254,19 @@ describe('adopt', () => {
     expect(r.warnings.join('\n')).toMatch(/kept in lane_1\/\.ai\/.*runbooks\/_lane-management\.md/);
   });
 
+  it('leaves a project\'s own plain runbooks/lane-management.md alone: laines writes only its _ file', async () => {
+    const w = world({ files: { 'README.md': '#\n' } });
+    put(w.dir, '.ai/runbooks/lane-management.md', 'my own runbook\n');
+    await w.adopt();
+    const c = join(w.dir, '.ai', 'runbooks');
+    expect(readFileSync(join(c, 'lane-management.md'), 'utf8')).toBe('my own runbook\n');
+    expect(existsSync(join(c, '_lane-management.md'))).toBe(true);
+    const doctor = await invoke('doctor', { container: w.dir }, w.deps);
+    expect(doctor.checks.find((x) => x.name === 'agent-files').ok).toBe(true);
+    await invoke('refresh', { lane: 'lane_1', container: w.dir }, w.deps);
+    expect(readFileSync(join(c, 'lane-management.md'), 'utf8')).toBe('my own runbook\n');
+  });
+
   it('keeps a tracked .ai/ file whose name readdir returns decomposed (NFD)', async () => {
     const nfcName = 'caf\u00e9.md';
     const nfdName = nfcName.normalize('NFD');

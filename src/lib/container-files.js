@@ -26,7 +26,12 @@ const present = (p) => {
 export const indexPrivate = (ai, [dir, name, answers]) => addPrivateIndexRow(join(ai, dir), `_${name}`, answers);
 
 // Old-layout leftovers in a container's .ai/: an old-name file, or a laines row in README.md.
-export function unmigratedFiles(ai) {
+// Layout 2 (M4.6+) containers were written with `_` names from the start: any plain-named file is the
+// project's own, so nothing is flagged or moved.
+export const CURRENT_LAYOUT = 2;
+
+export function unmigratedFiles(ai, layout = 1) {
+  if (layout >= CURRENT_LAYOUT) return [];
   return ALL.flatMap(([dir, name]) => {
     const old = present(join(ai, dir, name));
     const row = hasIndexRow(join(ai, dir, 'README.md'), name);
@@ -38,7 +43,8 @@ export function unmigratedFiles(ai) {
 
 // Moves a pre-M4.6 container's laines files to their `_` names. Never overwrites: when both names
 // exist it leaves both and warns. Safe to run repeatedly.
-export function migrateContainerFiles(ai) {
+export function migrateContainerFiles(ai, layout = 1) {
+  if (layout >= CURRENT_LAYOUT) return { migrated: [], warnings: [] };
   const migrated = [];
   const warnings = [];
   for (const entry of ALL) {
@@ -48,6 +54,7 @@ export function migrateContainerFiles(ai) {
     if (present(old)) {
       if (present(next)) {
         warnings.push(`both ${dir}/${name} and ${dir}/_${name} exist: keep one by hand`);
+        addPrivateIndexRow(join(ai, dir), `_${name}`, answers);
         continue;
       }
       renameSync(old, next);

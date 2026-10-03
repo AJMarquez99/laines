@@ -27,6 +27,7 @@ async function synced() {
 }
 
 describe('ai sync and laines container files', () => {
+  // Uses init + create (not adopt): both go through the shared writeContainer, which writes the container files.
   it('a repo that commits .ai/ indexes: every README row in the lane links to a file that exists there, and _README.md is not synced', async () => {
     const readme = (n) => `# ${n}\n\n## Index\n\n| File | Answers |\n|---|---|\n| [x.md](x.md) | x |\n`;
     const s = await setupContainer({ files: {

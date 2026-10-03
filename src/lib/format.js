@@ -42,12 +42,20 @@ export function formatDryHooks(h) {
 }
 
 export function formatRefresh(r) {
-  if (r.dryRun) return [`dry run: would refresh ${r.lane}`, `path:    ${r.path}`, formatDryHooks(r.hooks)].join('\n');
+  if (r.dryRun) {
+    return [
+      `dry run: would refresh ${r.lane}`,
+      `path:    ${r.path}`,
+      ...(r.wouldMigrate?.length ? [`migrate: ${r.wouldMigrate.join(', ')}`] : []),
+      formatDryHooks(r.hooks),
+    ].join('\n');
+  }
   return [
     `lane ${r.lane} refreshed`,
     `path:    ${r.path}`,
     `branch:  ${r.branch}`,
     `hooks:   post-create: ${runSummary(r.hooks)}`,
+    ...(r.migrated?.length ? [`migrated: ${r.migrated.join(', ')}`] : []),
     ...r.warnings.map((w) => `warning: ${w}`),
   ].join('\n');
 }

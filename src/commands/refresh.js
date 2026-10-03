@@ -10,7 +10,8 @@ import { hookStates } from '../lib/hooks.js';
 import {
   dryRunHooks, hookBoardEntries, hookError, runEvent, runSummary, setupFailedNext, setupFailedRequest, unapprovedWarnings,
 } from '../lib/hook-events.js';
-import { migrateContainerFiles } from '../lib/container-files.js';
+import { readJson, writeJson } from '../lib/jsonfile.js';
+import { CURRENT_LAYOUT, migrateContainerFiles, unmigratedFiles } from '../lib/container-files.js';
 import { appendAudit } from '../lib/audit.js';
 import { InvalidInputError, MalformedConfigError } from '../lib/errors.js';
 
@@ -61,16 +62,17 @@ export async function runRefresh(opts, deps) {
   if (!real || !existsSync(join(real, '.git'))) {
     throw new InvalidInputError(`${laneDir} is missing or not a git clone. Tear the lane down (\`laines teardown ${name} --remove-dir --force\`) and create it again.`);
   }
-  if (opts.dryRun) return { dryRun: true, lane: name, path: laneDir, hooks: dryRunHooks(ctx, 'post-create') };
+  if (opts.dryRun) return { dryRun: true, lane: name, path: laneDir, hooks: dryRunHooks(ctx, 'post-create'), wouldMigrate: unmigratedFiles(ctx.paths.ai, ctx.layout).map((f) => `${f.dir}/${f.name}`) };
   // Containers made before a new human-only command existed get its deny rules here. A malformed
   // container settings file is the container's problem (doctor reports it), not this lane's.
   const warnings = [];
   // Containers made before M4.6 keep laines' files under plain names; move them to `_` names.
   let migrated = [];
   try {
-    const m = migrateContainerFiles(ctx.paths.ai);
+    const m = migrateContainerFiles(ctx.paths.ai, ctx.layout);
     migrated = m.migrated;
     warnings.push(...m.warnings);
+    if (ctx.layout < CURRENT_LAYOUT && !m.warnings.length) writeJson(ctx.paths.marker, { ...readJson(ctx.paths.marker), layout: CURRENT_LAYOUT });
   } catch (err) {
     warnings.push(`container files not migrated to _ names: ${err.message}`);
   }
