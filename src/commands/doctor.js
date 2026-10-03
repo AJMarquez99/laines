@@ -11,6 +11,7 @@ import { spinUpState } from '../lib/lanes-state.js';
 import { EXCLUDE_BEGIN, isTracked } from '../lib/lane-files.js';
 import { NotAContainerError } from '../lib/errors.js';
 import { hookStates, isExecutable } from '../lib/hooks.js';
+import { hasMcpEntry, mcpAddCommand } from '../lib/mcp-config.js';
 import { lockSuggested } from '../lib/hook-events.js';
 
 function laneProblems(root, containerId, name, lane, agents, deps) {
@@ -42,6 +43,9 @@ function laneProblems(root, containerId, name, lane, agents, deps) {
       }
     })();
     if (denyRules().some((r) => !deny.includes(r))) problems.push('Claude deny rules missing from .claude/settings.local.json');
+  }
+  if (agents.includes('claude') && !isTracked(deps, dir, '.mcp.json') && !hasMcpEntry(join(dir, '.mcp.json'), root)) {
+    problems.push(`laines MCP server missing from .mcp.json: run \`laines refresh ${name}\``);
   }
   const stray = ['knowledge', 'guidelines', 'lessons'].filter((f) => has(join('.ai', f)) && !isTracked(deps, dir, `.ai/${f}`));
   if (stray.length) problems.push(`a full .ai/ layer was scaffolded in the lane (${stray.join(', ')}): dot-ai init/sync was run there; move anything useful to the container's .ai/ and delete them`);
@@ -119,6 +123,14 @@ export async function runDoctor(opts, deps) {
     if (missing.length) throw new Error(`${missing.length} human-only deny rule(s) missing from .claude/settings.json`);
     return `${denyRules().length} rules present`;
   });
+  check('mcp', () => {
+    const agentsNow = config ? config.agents : ['claude'];
+    if (!agentsNow.includes('claude')) return 'not wired (Claude is not a configured agent)';
+    const file = join(root, '.mcp.json');
+    // Containers made before the MCP server existed have no entry; this is how they get one.
+    if (!hasMcpEntry(file, root)) throw new Error(`laines MCP server not registered in ${file}: run \`${mcpAddCommand(root)}\` in ${root}`);
+    return 'laines-mcp registered in .mcp.json';
+  });
   check('board', () => {
     if (!existsSync(p.board)) throw new Error(`missing ${p.board}`);
     return '.ai/context/LANES_BOARD.md';
@@ -189,6 +201,30 @@ export async function runDoctor(opts, deps) {
     reach.push(`${agent}: ${local}/${dirs.length} lane(s) have ${file}; the rest rely on .ai/README.md`);
   }
   result.checks.push({ name: 'agent-reach', ok: true, detail: reach.join('; ') });
+
+  // Spec §9.5: a Claude Elicitation/ElicitationResult hook can answer or alter a teardown confirmation.
+  const settingsFiles = [
+    join(root, '.claude', 'settings.json'),
+    join(root, '.claude', 'settings.local.json'),
+    ...openLanes.flatMap(([, l]) => ['settings.json', 'settings.local.json'].map((f) => join(root, l.repos[0].path, '.claude', f))),
+    join(deps.homedir(), '.claude', 'settings.json'),
+  ];
+  const withElicitationHooks = settingsFiles.filter((f) => {
+    try {
+      const hooks = JSON.parse(readFileSync(f, 'utf8'))?.hooks;
+      return hooks !== null && typeof hooks === 'object' && ['Elicitation', 'ElicitationResult'].some((k) => Object.hasOwn(hooks, k));
+    } catch {
+      return false;
+    }
+  });
+  result.checks.push({
+    name: 'elicitation-hooks',
+    ok: true,
+    warn: withElicitationHooks.length > 0,
+    detail: withElicitationHooks.length
+      ? `Claude Elicitation hooks can answer or change teardown confirmations: ${withElicitationHooks.join(', ')}`
+      : 'none visible to the lanes',
+  });
 
   result.container = { id: marker?.id ?? null, path: root };
   return result;

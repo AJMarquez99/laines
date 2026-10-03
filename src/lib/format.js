@@ -26,7 +26,7 @@ export function formatConfig(r) {
 export function formatDoctor(r) {
   const lines = [];
   if (r.container) lines.push(`container: ${r.container.id ?? '(unknown)'} at ${r.container.path}`);
-  for (const c of r.checks) lines.push(`${c.ok ? '✓' : '✗'} ${c.name}${c.detail ? ` — ${c.detail}` : ''}`);
+  for (const c of r.checks) lines.push(`${c.ok ? (c.warn ? '!' : '✓') : '✗'} ${c.name}${c.detail ? ` — ${c.detail}` : ''}`);
   if (r.pruned) lines.push(`pruned: ${r.pruned.length ? r.pruned.map((p) => `${p.id} (${p.path})`).join(', ') : 'nothing'}`);
   lines.push(r.ok ? 'status: ok' : 'status: problems found');
   return lines.join('\n');

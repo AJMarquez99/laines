@@ -5,6 +5,7 @@ import { GitError } from './errors.js';
 import { readJson, writeJson } from './jsonfile.js';
 import { readTemplate, renderTemplate } from './templates.js';
 import { denyRules, mergeDenyRules } from './agent-files.js';
+import { mergeMcpConfig } from './mcp-config.js';
 import { composeProject, laneId, laneSuffix } from './ids.js';
 
 export const EXCLUDE_BEGIN = '# BEGIN laines lane (lane-local files, never committed)';
@@ -19,6 +20,7 @@ export const LANE_EXCLUDES = [
   '/AGENTS.md',
   '/GEMINI.md',
   '/.claude/settings.local.json',
+  '/.mcp.json',
 ];
 
 // Double-quoted and escaped, so `source .laines.env` survives spaces and shell characters.
@@ -148,6 +150,10 @@ export function writeLaneFiles(ctx, deps, lane) {
       const data = readJson(file);
       if (data.plansDirectory === undefined) writeJson(file, { ...data, plansDirectory: '.ai/plans' });
       written.push(rel);
+    }
+    if (!tracked('.mcp.json')) {
+      mergeMcpConfig(join(laneDir, '.mcp.json'), ctx.root);
+      written.push('.mcp.json');
     }
   }
   if (agents.includes('codex')) put('AGENTS.md', local);

@@ -14,6 +14,7 @@ import { readTemplate, renderTemplate } from '../lib/templates.js';
 import {
   AGENT_FILES, AGENT_FLAGS, addIndexRow, appendOnce, denyRules, mergeDenyRules, upsertBlock,
 } from '../lib/agent-files.js';
+import { mergeMcpConfig } from '../lib/mcp-config.js';
 import { appendAudit } from '../lib/audit.js';
 
 const LANE_TEMPLATES = [
@@ -33,6 +34,7 @@ export const CONTAINER_FILES = (agents) => [
   '.ai/runbooks/lane-management.md',
   ...LANE_TEMPLATES.map(([name]) => `.ai/templates/${name}`),
   '.claude/settings.json',
+  ...(agents.includes('claude') ? ['.mcp.json'] : []),
   ...agents.map((a) => AGENT_FILES[a]),
 ];
 
@@ -108,6 +110,7 @@ function writeContainer({ path, entry, config, agents, deps }) {
   const block = renderTemplate(readTemplate('lanes-block.md'), { containerId: entry.id });
   for (const a of agents) upsertBlock(join(path, AGENT_FILES[a]), block);
   mergeDenyRules(p.claudeSettings, denyRules());
+  if (agents.includes('claude')) mergeMcpConfig(join(path, '.mcp.json'), path);
 }
 
 const nextSteps = (path) => [

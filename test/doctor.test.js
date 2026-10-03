@@ -30,7 +30,7 @@ describe('doctor', () => {
     const r = await runDoctor({ container: c }, deps);
     expect(r.ok).toBe(true);
     expect(r.container).toEqual({ id: 'my-app', path: c });
-    expect(r.checks.map((x) => x.name)).toEqual(['container-marker', 'config', 'machine-index', 'dot-ai', 'agent-files', 'deny-rules', 'board', 'lock', 'machine-lock', 'lanes-state', 'hooks', 'agent-reach']);
+    expect(r.checks.map((x) => x.name)).toEqual(['container-marker', 'config', 'machine-index', 'dot-ai', 'agent-files', 'deny-rules', 'mcp', 'board', 'lock', 'machine-lock', 'lanes-state', 'hooks', 'agent-reach', 'elicitation-hooks']);
   });
 
   it('reports each broken piece without throwing', async () => {
@@ -182,5 +182,28 @@ describe('doctor lane checks', () => {
     expect(r['lane:lane_2'].detail).toContain('create was interrupted');
     expect(r['lane:lane_2'].detail).toContain('laines refresh lane_2');
     expect(r['lane:lane_2'].detail).toContain('laines teardown lane_2 --remove-dir --force');
+  });
+
+  it('flags a container or lane whose MCP wiring is missing', async () => {
+    const s = await setupContainer();
+    const lane = await runCreate({ container: s.container }, s.deps);
+    writeFileSync(join(s.container, '.mcp.json'), '{}');
+    writeFileSync(join(lane.path, '.mcp.json'), '{}');
+    const r = byName(await runDoctor({ container: s.container }, s.deps));
+    expect(r.mcp.ok).toBe(false);
+    expect(r.mcp.detail).toContain('laines-mcp');
+    expect(r['lane:lane_1'].detail).toContain('laines refresh lane_1');
+  });
+
+  it('warns when a Claude Elicitation hook could answer teardown confirmations', async () => {
+    const s = await setupContainer();
+    const settings = join(s.root, 'home', '.claude', 'settings.json');
+    mkdirSync(join(s.root, 'home', '.claude'), { recursive: true });
+    writeFileSync(settings, JSON.stringify({ hooks: { Elicitation: [{ hooks: [{ type: 'command', command: 'true' }] }] } }));
+    const r = await runDoctor({ container: s.container }, s.deps);
+    const check = byName(r)['elicitation-hooks'];
+    expect(check).toMatchObject({ ok: true, warn: true });
+    expect(check.detail).toContain(settings);
+    expect(r.ok).toBe(true);
   });
 });
