@@ -1,18 +1,10 @@
 import { Command } from 'commander';
 import { defaultDeps } from './deps.js';
 import { VERSION } from './version.js';
-import { runInit } from './commands/init.js';
-import { runConfigGet } from './commands/config.js';
-import { runDoctor } from './commands/doctor.js';
-import { runBrief } from './commands/brief.js';
-import { runCreate } from './commands/create.js';
-import { runRefresh } from './commands/refresh.js';
-import { runReport, runKeep, runRelease, runList, runStatus } from './commands/lanes.js';
-import { runTeardown } from './commands/teardown.js';
-import { runHooksStatus, runHooksApprove, runHooksPolicy } from './commands/hooks.js';
+import { invoke } from './commands/registry.js';
 import { runWatch } from './commands/watch.js';
 import { EXIT_CODES, InvalidInputError, LainesError } from './lib/errors.js';
-import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate, formatRefresh, formatReport, formatKeep, formatRelease, formatList, formatStatus, formatTeardown, formatHooksStatus, formatHooksApprove, formatHooksPolicy } from './lib/format.js';
+import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate, formatRefresh, formatReport, formatKeep, formatRelease, formatList, formatStatus, formatTeardown, formatHooksStatus, formatHooksApprove, formatHooksPolicy, formatConfigSet } from './lib/format.js';
 
 function reportError(err) {
   if (err instanceof LainesError) {
@@ -25,7 +17,7 @@ function reportError(err) {
 }
 
 // The single choke point: positionals → opts, global options, rendering, error → exit code.
-function handle(fn, { table, args } = {}, deps) {
+function handle(name, { table, args } = {}, deps) {
   return async (...actionArgs) => {
     const cmd = actionArgs[actionArgs.length - 1];
     const positionals = actionArgs.slice(0, -2);
@@ -35,7 +27,7 @@ function handle(fn, { table, args } = {}, deps) {
     });
     try {
       if (!['json', 'table'].includes(format)) throw new InvalidInputError(`--format must be json or table (got "${format}").`);
-      const result = await fn(opts, deps);
+      const result = await invoke(name, opts, deps);
       if (format === 'table' && table) process.stdout.write(table(result) + '\n');
       else printJson(result);
     } catch (err) {
@@ -70,36 +62,42 @@ export function buildProgram(deps = defaultDeps) {
     .option('--agents <list>', 'agents to wire: claude,codex,gemini', 'claude')
     .option('--branch <name>', 'default branch for new lanes', 'main')
     .option('--dry-run', 'show what would be created without writing anything')
-    .action(handle(runInit, { table: formatInit, args: ['dir'] }, deps));
+    .action(handle('init', { table: formatInit, args: ['dir'] }, deps));
 
-  const config = program.command('config').description('Read container settings');
+  const config = program.command('config').description('Read and change container settings');
   withGlobals(config.command('get'))
     .description('Print the container config, or one dotted key')
     .argument('[key]', 'dotted key, e.g. hooks.policy')
-    .action(handle(runConfigGet, { table: formatConfig, args: ['key'] }, deps));
+    .action(handle('config get', { table: formatConfig, args: ['key'] }, deps));
+  withGlobals(config.command('set'))
+    .description('Change one setting (human-only)')
+    .argument('<key>', 'dotted key, e.g. hooks.timeoutSec')
+    .argument('<value>', 'new value: JSON (true, 20, ["claude"]) or a plain string')
+    .option('--dry-run', 'show the change without writing it')
+    .action(handle('config set', { table: formatConfigSet, args: ['key', 'value'] }, deps));
 
   withGlobals(program.command('doctor'))
     .description('Check the container, its .ai/ layer, agent wiring and the machine index')
     .option('--prune', 'remove machine-index entries whose container no longer exists')
-    .action(handle(runDoctor, { table: formatDoctor }, deps));
+    .action(handle('doctor', { table: formatDoctor }, deps));
 
   withGlobals(program.command('brief'))
     .description('Print the handoff for an agent working in a lane')
     .argument('[lane]', 'lane name (default: the lane you are in)')
-    .action(handle(runBrief, { table: formatBrief, args: ['lane'] }, deps));
+    .action(handle('brief', { table: formatBrief, args: ['lane'] }, deps));
 
   withGlobals(program.command('create'))
     .description('Create a lane: an isolated clone with its own ports, env file and lane files')
     .argument('[name]', 'lane name (default: the next free <lanePrefix><N>)')
     .option('--branch <name>', 'branch to check out (default: the container default branch)')
     .option('--dry-run', 'show what would be created without cloning or reserving anything')
-    .action(handle(runCreate, { table: formatCreate, args: ['name'] }, deps));
+    .action(handle('create', { table: formatCreate, args: ['name'] }, deps));
 
   withGlobals(program.command('refresh'))
     .description("Rewrite a lane's local files and .laines.env, then run post-create again (recovers a setup-failed lane)")
     .argument('[lane]', 'lane name (default: the lane you are in)')
     .option('--dry-run', 'show which hooks would run without changing anything')
-    .action(handle(runRefresh, { table: formatRefresh, args: ['lane'] }, deps));
+    .action(handle('refresh', { table: formatRefresh, args: ['lane'] }, deps));
 
   withGlobals(program.command('report'))
     .description("Update a lane's board entry")
@@ -108,28 +106,28 @@ export function buildProgram(deps = defaultDeps) {
     .option('--task <text>', 'current task ("-" clears it)')
     .option('--blocked <text>', 'what the lane is blocked on ("-" clears it)')
     .option('--note <text>', 'a line for the Activity Log')
-    .action(handle(runReport, { table: formatReport, args: ['lane'] }, deps));
+    .action(handle('report', { table: formatReport, args: ['lane'] }, deps));
 
   withGlobals(program.command('keep'))
     .description('Pin a lane so it cannot be torn down until a human releases it')
     .argument('[lane]', 'lane name (default: the lane you are in)')
     .option('--reason <text>', 'what depends on this lane, e.g. "base of stacked PR #123"')
-    .action(handle(runKeep, { table: formatKeep, args: ['lane'] }, deps));
+    .action(handle('keep', { table: formatKeep, args: ['lane'] }, deps));
 
   withGlobals(program.command('release'))
     .description('Unpin a kept lane (human-only)')
     .argument('<lane>', 'lane name')
-    .action(handle(runRelease, { table: formatRelease, args: ['lane'] }, deps));
+    .action(handle('release', { table: formatRelease, args: ['lane'] }, deps));
 
   withGlobals(program.command('list'))
     .description('List lanes')
     .option('--all', 'include closed lanes')
-    .action(handle(runList, { table: formatList }, deps));
+    .action(handle('list', { table: formatList }, deps));
 
   withGlobals(program.command('status'))
     .description('Show the container overview, or one lane')
     .argument('[lane]', 'lane name (default: the lane you are in, else the overview)')
-    .action(handle(runStatus, { table: formatStatus, args: ['lane'] }, deps));
+    .action(handle('status', { table: formatStatus, args: ['lane'] }, deps));
 
   withGlobals(program.command('teardown'))
     .description('Close a lane: archive plans, delete context, and optionally remove the clone (human-only)')
@@ -137,24 +135,24 @@ export function buildProgram(deps = defaultDeps) {
     .option('--remove-dir', 'also delete the clone, after the unpushed-work checks')
     .option('--force', 'remove even if the lane holds unpushed work (never overrides keep)')
     .option('--dry-run', 'show what would happen without changing anything')
-    .action(handle(runTeardown, { table: formatTeardown, args: ['lane'] }, deps));
+    .action(handle('teardown', { table: formatTeardown, args: ['lane'] }, deps));
 
   // The group itself takes no options: `laines hooks --format json approve` must stay a usage error
   // so it cannot slip past the `Bash(laines hooks approve:*)` deny rule.
   const hooks = program.command('hooks').description('Review, approve and set the policy for lane hooks');
   withGlobals(hooks.command('status'))
     .description('List hooks as approved, changed or new, with diffs against the approved copies')
-    .action(handle(runHooksStatus, { table: formatHooksStatus }, deps));
+    .action(handle('hooks status', { table: formatHooksStatus }, deps));
   withGlobals(hooks.command('approve'))
     .description('Approve the current hooks (human-only)')
     .option('--lock', 'also set hook policy "approve", so later changes are refused until approved')
     .option('--dry-run', 'show what would be approved without changing anything')
-    .action(handle(runHooksApprove, { table: formatHooksApprove }, deps));
+    .action(handle('hooks approve', { table: formatHooksApprove }, deps));
   withGlobals(hooks.command('policy'))
     .description('Set the hook policy: approve, notify or open (human-only)')
     .argument('<policy>', 'approve | notify | open')
     .option('--dry-run', 'show the change without writing it')
-    .action(handle(runHooksPolicy, { table: formatHooksPolicy, args: ['policy'] }, deps));
+    .action(handle('hooks policy', { table: formatHooksPolicy, args: ['policy'] }, deps));
 
   program
     .command('watch')

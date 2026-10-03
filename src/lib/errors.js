@@ -66,3 +66,14 @@ export class HookError extends LainesError {
     this.run = run;
   }
 }
+
+export class CapabilityDeniedError extends LainesError {
+  constructor(capability, command) {
+    super(
+      `Capability "${capability}" is turned off for this container, so \`laines ${command}\` is refused. ` +
+        `A human can turn it on with \`laines config set capabilities.${capability} true\`.`,
+      EXIT_CODES.CAPABILITY_DENIED,
+    );
+    this.capability = capability;
+  }
+}

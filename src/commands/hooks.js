@@ -3,7 +3,7 @@ import { readLanes, updateLanes } from '../lib/lanes-store.js';
 import { dropRequests } from '../lib/lanes-state.js';
 import { approveHooks, hookDiff, hookStates, isExecutable } from '../lib/hooks.js';
 import { lockSuggested } from '../lib/hook-events.js';
-import { saveConfig } from '../config.js';
+import { patchConfig } from '../config.js';
 import { appendAudit } from '../lib/audit.js';
 import { InvalidInputError } from '../lib/errors.js';
 
@@ -11,8 +11,7 @@ const POLICIES = ['approve', 'notify', 'open'];
 
 // Mutates ctx.config too, so the board rendered afterwards shows the new policy.
 function setPolicy(ctx, policy) {
-  ctx.config = { ...ctx.config, hooks: { ...ctx.config.hooks, policy } };
-  saveConfig(ctx.paths.config, ctx.config);
+  ctx.config = patchConfig(ctx.paths.config, 'hooks.policy', policy);
 }
 
 export async function runHooksStatus(opts, deps) {

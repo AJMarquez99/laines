@@ -58,3 +58,14 @@ describe('config', () => {
     expect(() => buildConfig({ ...base, defaultBranch: '--orphan' })).toThrow(/must not start with "-"/);
   });
 });
+
+describe('config get with prototype keys', () => {
+  it('treats __proto__ and constructor as unknown keys', async () => {
+    const { setupContainer } = await import('./helpers.js');
+    const { runConfigGet } = await import('../src/commands/config.js');
+    const s = await setupContainer();
+    for (const key of ['__proto__', 'constructor', 'hooks.__proto__', 'hooks.toString']) {
+      await expect(runConfigGet({ key, container: s.container }, s.deps), key).rejects.toMatchObject({ exitCode: 2 });
+    }
+  });
+});

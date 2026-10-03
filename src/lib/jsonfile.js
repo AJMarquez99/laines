@@ -28,10 +28,11 @@ export function writeJson(path, obj) {
   renameSync(tmp, path);
 }
 
+// Own properties only: `__proto__` or `constructor` in a user-supplied key never reaches Object.prototype.
 export function getPath(obj, dotted) {
   let cur = obj;
   for (const key of dotted.split('.')) {
-    if (cur == null || typeof cur !== 'object') return undefined;
+    if (cur == null || typeof cur !== 'object' || !Object.hasOwn(cur, key)) return undefined;
     cur = cur[key];
   }
   return cur;

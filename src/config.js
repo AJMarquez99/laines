@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { readJson, writeJson } from './lib/jsonfile.js';
 import { parseWith } from './lib/schema.js';
-import { MalformedConfigError, NotAContainerError } from './lib/errors.js';
+import { InvalidInputError, MalformedConfigError, NotAContainerError } from './lib/errors.js';
 
 // Both end up as git arguments: a leading "-" would be parsed as an option.
 const gitArg = () => z.string().min(1).refine((s) => !s.startsWith('-'), 'must not start with "-"');
@@ -61,7 +61,37 @@ export function loadConfig(file) {
   return parseWith(ConfigSchema, raw, file);
 }
 
-// Validates before writing, so a bad value never reaches disk.
-export function saveConfig(file, config) {
-  writeJson(file, parseWith(ConfigSchema, config, file));
+const UNSAFE_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+function patched(file, dotted, value) {
+  const keys = String(dotted ?? '').split('.');
+  if (keys.some((k) => !k || UNSAFE_KEYS.has(k))) throw new InvalidInputError(`Invalid config key "${dotted}".`);
+  const raw = readJson(file, {
+    onMissing: () => {
+      throw new MalformedConfigError(file, 'missing');
+    },
+  });
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) throw new MalformedConfigError(file, 'expected a JSON object');
+  let cur = raw;
+  for (const k of keys.slice(0, -1)) {
+    if (!Object.hasOwn(cur, k) || cur[k] === null || typeof cur[k] !== 'object' || Array.isArray(cur[k])) cur[k] = {};
+    cur = cur[k];
+  }
+  cur[keys.at(-1)] = value;
+  const r = ConfigSchema.safeParse(raw);
+  if (!r.success) {
+    const why = r.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
+    throw new InvalidInputError(`Cannot set ${dotted}: ${why}`);
+  }
+  return { raw, config: r.data };
+}
+
+// Validates a one-key change and returns the resulting config, writing nothing.
+export const previewConfigPatch = (file, dotted, value) => patched(file, dotted, value).config;
+
+// Changes one key in the file as written (defaults stay implicit) after validating the whole config.
+export function patchConfig(file, dotted, value) {
+  const { raw, config } = patched(file, dotted, value);
+  writeJson(file, raw);
+  return config;
 }

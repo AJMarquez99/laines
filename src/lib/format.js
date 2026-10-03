@@ -146,3 +146,9 @@ export function formatHooksApprove(r) {
 
 export const formatHooksPolicy = (r) =>
   r.dryRun ? `dry run: hook policy ${r.from} → ${r.to}` : r.changed ? `hook policy ${r.from} → ${r.to}` : `hook policy already ${r.to}`;
+
+export function formatConfigSet(r) {
+  const change = `${r.key}: ${JSON.stringify(r.from)} → ${JSON.stringify(r.to)}`;
+  if (r.dryRun) return `dry run: ${change}`;
+  return r.changed ? change : `${r.key} is already ${JSON.stringify(r.to)}`;
+}
