@@ -72,8 +72,9 @@ export async function runKeep(opts, deps) {
     const l = openLane(state, name);
     l.kept = { reason, since: l.kept?.since ?? now };
     l.updated = now;
-    // A kept lane is not waiting on a teardown: withdraw its teardown-blocked request.
-    return { state: dropRequests(state, (q) => q.id === requestId('teardown-blocked', name)), result: { lane: name, kept: l.kept }, activity: [{ ts: now, lane: name, text: `kept: ${reason}` }] };
+    // A kept lane is not waiting on a teardown: withdraw its teardown-blocked and teardown-confirm requests.
+    const withdrawn = new Set([requestId('teardown-blocked', name), requestId('teardown-confirm', name)]);
+    return { state: dropRequests(state, (q) => withdrawn.has(q.id)), result: { lane: name, kept: l.kept }, activity: [{ ts: now, lane: name, text: `kept: ${reason}` }] };
   });
   appendAudit(ctx.paths.audit, { ts: now, action: 'keep', container: ctx.id, lane: name }, { warn: deps.warn });
   return r;

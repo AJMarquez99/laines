@@ -14,7 +14,7 @@ afterEach(cleanupTmp);
 const BIN = fileURLToPath(new URL('../bin/laines-mcp.js', import.meta.url));
 const TOOL_NAMES = [
   'laines_brief', 'laines_config_get', 'laines_create', 'laines_doctor', 'laines_hooks_status',
-  'laines_keep', 'laines_list', 'laines_refresh', 'laines_report', 'laines_status',
+  'laines_keep', 'laines_list', 'laines_refresh', 'laines_report', 'laines_status', 'laines_teardown',
 ];
 
 describe('MCP tools table', () => {

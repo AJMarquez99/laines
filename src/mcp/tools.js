@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { runTeardownMcp } from './teardown.js';
 
 export const pick = (obj) => Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
 
@@ -87,5 +88,18 @@ export const TOOLS = [
     description: 'Check the container, its lanes, hooks and agent wiring.',
     inputSchema: {},
     mapArgs: () => ({}),
+  },
+  {
+    name: 'laines_teardown',
+    command: 'teardown',
+    description: 'Close a lane: archive its plans, delete its context and, with remove_dir, its clone. A human confirms unless the container is set otherwise; a kept lane and unpushed work are always refused.',
+    inputSchema: {
+      lane: z.string().describe('lane name, e.g. lane_2'),
+      remove_dir: z.boolean().optional().describe('also delete the clone, after the unpushed-work checks'),
+      dry_run: dryRun(),
+    },
+    mapArgs: (a) => pick({ lane: a.lane, removeDir: a.remove_dir, dryRun: a.dry_run }),
+    handler: runTeardownMcp,
+    enabled: (config) => config.teardown.mcp !== 'off',
   },
 ];
