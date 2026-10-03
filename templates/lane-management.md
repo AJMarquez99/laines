@@ -89,8 +89,8 @@ a conflict: sync leaves both copies alone and tells you which file to reconcile.
 
 ## Adopting an existing checkout
 
-`laines adopt <dir>` turned the original project folder into this container's first lane; the
-project's `.ai/` became this shared layer. Recreate Python virtualenvs in the lane after a move.
+If this container was made with `laines adopt <dir>`, the original project folder became its first
+lane and the project's `.ai/` became this shared layer. Recreate Python virtualenvs in the lane after a move.
 
 ## Monitoring
 

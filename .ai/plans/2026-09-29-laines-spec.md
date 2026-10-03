@@ -49,7 +49,7 @@ people running several containers across several projects on one machine.
 
 | Term | Meaning |
 |---|---|
-| **Container** | Directory created by `laines init`. Holds `.laines/`, the shared `.ai/`, agent config, and lanes. Not a git repo. |
+| **Container** | Directory created by `laines init` or `laines adopt`. Holds `.laines/`, the shared `.ai/`, agent config, and lanes. Not a git repo. |
 | **Container ID** | Machine-unique slug (default: repo name; `myapp`, `myapp-2`, …). Scopes every machine-global name. |
 | **Lane** | `lane_N/` under the container: a standard `git clone` of the container's repo plus lane-local files. |
 | **Lane mode** | An agent session whose working tree is a lane (detected by markers, §7.1). |
@@ -225,7 +225,7 @@ upward search for containers.
 | Layer | Read | Write |
 |---|---|---|
 | Lane `.ai/context/`, `.ai/plans/` | yes | lane working state only |
-| Repo's committed `.ai/` (if any) | yes — project truth, wins on conflict | only when the task is itself a change to project docs |
+| Repo's committed `.ai/` in the lane (if any) | read the container's live `.ai/` instead | only through `laines ai sync <lane>` (§10.5), never by hand |
 | Container `.ai/` | yes | all new durable knowledge, guidelines, lessons, data, audits |
 | `~/.ai/` | index only | no |
 
