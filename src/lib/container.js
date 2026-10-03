@@ -82,9 +82,18 @@ export function loadContainer(opts, deps) {
   return { root, paths, id: marker.id, config, portRange: entry.portRange };
 }
 
-export function laneFrom(opts, deps) {
+const realpathQuiet = (p) => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return null;
+  }
+};
+
+// The cwd's lane counts only if it belongs to the container being operated on (ctx.root).
+export function laneFrom(opts, deps, ctx) {
   if (opts.lane) return opts.lane;
   const lane = detectLane(deps.cwd());
-  if (lane) return lane.lane;
+  if (lane && realpathQuiet(lane.container) === ctx.root) return lane.lane;
   throw new InvalidInputError('Name the lane (for example `laines report lane_2 ...`) or run the command inside a lane.');
 }

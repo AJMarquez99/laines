@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { cpSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   findRepoRoot, detectLane, containerDirFrom, loadContainer, laneFrom,
@@ -113,8 +113,10 @@ describe('loadContainer and laneFrom', () => {
   it('laneFrom uses the name, else the lane the cwd is in', () => {
     const c = fakeContainer(tmp());
     const lane = fakeLane(c, 'lane_1');
-    expect(laneFrom({ lane: 'x' }, testDeps(c))).toBe('x');
-    expect(laneFrom({}, testDeps(c, { cwd: () => lane }))).toBe('lane_1');
-    expect(() => laneFrom({}, testDeps(c))).toThrow(InvalidInputError);
+    const ctx = { root: realpathSync(c) };
+    expect(laneFrom({ lane: 'x' }, testDeps(c), ctx)).toBe('x');
+    expect(laneFrom({}, testDeps(c, { cwd: () => lane }), ctx)).toBe('lane_1');
+    expect(() => laneFrom({}, testDeps(c), ctx)).toThrow(InvalidInputError);
+    expect(() => laneFrom({}, testDeps(c, { cwd: () => lane }), { root: realpathSync(tmp()) })).toThrow(InvalidInputError);
   });
 });

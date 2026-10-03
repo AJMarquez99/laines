@@ -8,7 +8,7 @@ import { containerDirFrom, resolveContainer } from '../lib/container.js';
 import { AGENT_FILES, LANES_BEGIN, denyRules } from '../lib/agent-files.js';
 import { readLanes } from '../lib/lanes-store.js';
 import { spinUpState } from '../lib/lanes-state.js';
-import { EXCLUDE_BEGIN, isTracked } from '../lib/lane-files.js';
+import { EXCLUDE_BEGIN, EXCLUDE_END, LANE_EXCLUDES, isTracked } from '../lib/lane-files.js';
 import { MalformedConfigError, NotAContainerError } from '../lib/errors.js';
 import { hookStates, isExecutable } from '../lib/hooks.js';
 import { hasMcpEntry, mcpAddCommand } from '../lib/mcp-config.js';
@@ -29,8 +29,14 @@ function laneProblems(root, containerId, name, lane, agents, deps) {
   if (exclude.status !== 0) return ['clone is not a git repository'];
   const rel = exclude.stdout.trim();
   const excludeFile = isAbsolute(rel) ? rel : join(dir, rel);
-  if (!existsSync(excludeFile) || !readFileSync(excludeFile, 'utf8').includes(EXCLUDE_BEGIN)) {
+  const excludeText = existsSync(excludeFile) ? readFileSync(excludeFile, 'utf8') : '';
+  if (!excludeText.includes(EXCLUDE_BEGIN)) {
     problems.push('git exclude block missing (lane files may show in git status)');
+  } else {
+    const after = excludeText.slice(excludeText.indexOf(EXCLUDE_BEGIN));
+    const end = after.indexOf(EXCLUDE_END);
+    const block = new Set((end === -1 ? after : after.slice(0, end)).split('\n').map((l) => l.trim()));
+    if (LANE_EXCLUDES.some((l) => !block.has(l))) problems.push(`git exclude block outdated: run \`laines refresh ${name}\``);
   }
   const settingsTracked = agents.includes('claude') && isTracked(deps, dir, '.claude/settings.local.json');
   if (settingsTracked) problems.push('.claude/settings.local.json is tracked by the repository: lane deny rules cannot be written');

@@ -45,14 +45,14 @@ async function recordRun(ctx, deps, run, name, branch) {
 // recover a setup-failed lane, and to pick up changed hooks or templates.
 export async function runRefresh(opts, deps) {
   const ctx = loadContainer(opts, deps);
-  const name = laneFrom(opts, deps);
+  const name = laneFrom(opts, deps, ctx);
   const lane = getLane(readLanes(ctx), name);
   if (!lane) throw new InvalidInputError(`No lane named ${name}. See \`laines list\`.`);
   // A malformed hooks.lock.json fails here, before anything is written.
   hookStates(ctx.paths);
   if (lane.state === 'closed') throw new InvalidInputError(`Lane ${name} is closed. Create a new lane instead.`);
   if (spinUpState(lane, ctx.config, deps.now()) === 'running') {
-    throw new InvalidInputError(`Lane ${name} is still being created (spinning up since ${lane.updated}). Wait for \`laines create\` to finish; if it was interrupted, \`laines doctor\` says when it is safe to refresh.`);
+    throw new InvalidInputError(`Lane ${name} is still being created (spinning up since ${lane.updated}). Wait for \`laines create\` to finish; \`laines doctor\` reports it as interrupted once the create window has passed.`);
   }
   const laneDir = join(ctx.root, lane.repos[0].path);
   const real = assertLaneDir(ctx.root, laneDir, lane.repos[0].path);

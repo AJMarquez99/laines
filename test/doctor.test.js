@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { runInit } from '../src/commands/init.js';
 import { runDoctor } from '../src/commands/doctor.js';
@@ -129,6 +129,18 @@ describe('doctor lane checks', () => {
     const lane = r.checks.find((c) => c.name === 'lane:lane_1');
     expect(lane.ok).toBe(false);
     expect(lane.detail).toContain('.claude/settings.local.json is tracked by the repository: lane deny rules cannot be written');
+  });
+
+  it('flags a lane whose git exclude block is missing a line', async () => {
+    const { deps, container } = await setupContainer();
+    const one = await runCreate({ container }, deps);
+    await runCreate({ container }, deps);
+    const file = join(one.path, '.git', 'info', 'exclude');
+    writeFileSync(file, readFileSync(file, 'utf8').split('\n').filter((l) => l !== '/.mcp.json').join('\n'));
+    const r = byName(await runDoctor({ container }, deps));
+    expect(r['lane:lane_1'].ok).toBe(false);
+    expect(r['lane:lane_1'].detail).toContain('git exclude block outdated: run `laines refresh lane_1`');
+    expect(r['lane:lane_2'].ok).toBe(true);
   });
 
   it('flags a lane whose clone is not a git repository', async () => {

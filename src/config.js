@@ -17,7 +17,8 @@ export const ConfigSchema = z.strictObject({
   repos: z
     .record(z.string().regex(/^[a-z0-9][a-z0-9-]*$/, 'repo names use lowercase letters, digits and hyphens'), Repo)
     .refine((r) => Object.keys(r).length === 1, 'exactly one repo is supported in this version'),
-  lanePrefix: z.string().regex(/^[a-z][a-z0-9_-]*$/).default('lane_'),
+  // At most 28, so `<prefix><N>` always fits LANE_NAME (32).
+  lanePrefix: z.string().regex(/^[a-z][a-z0-9_-]*$/).max(28).default('lane_'),
   maxLanes: z.number().int().min(1).max(200).default(20),
   ports: z.strictObject({ stride: z.number().int().min(1).max(100).default(10) }).prefault({}),
   hooks: z

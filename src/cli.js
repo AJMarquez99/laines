@@ -22,8 +22,8 @@ function handle(name, { table, args } = {}, deps) {
     const cmd = actionArgs[actionArgs.length - 1];
     const positionals = actionArgs.slice(0, -2);
     const { format, ...opts } = cmd.opts();
-    (args || []).forEach((name, i) => {
-      if (positionals[i] !== undefined) opts[name] = positionals[i];
+    (args || []).forEach((key, i) => {
+      if (positionals[i] !== undefined) opts[key] = positionals[i];
     });
     try {
       if (!['json', 'table'].includes(format)) throw new InvalidInputError(`--format must be json or table (got "${format}").`);

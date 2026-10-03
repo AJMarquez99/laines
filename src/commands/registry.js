@@ -41,7 +41,7 @@ export const COMMANDS = {
 };
 
 // The single choke point both the CLI and the MCP server call.
-export async function invoke(name, opts, deps) {
+export async function invoke(name, opts = {}, deps) {
   const entry = Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : undefined;
   if (!entry) throw new InvalidInputError(`Unknown command "${name}".`);
   const lockable = entry.locked?.(opts) ?? false;

@@ -29,6 +29,16 @@ describe('report', () => {
     expect(readFileSync(ctx.paths.board, 'utf8')).toContain('- **Task:** webhooks');
   });
 
+  it('does not take the lane from the cwd when the cwd is a lane of another container', async () => {
+    const a = await oneLane();
+    const b = await oneLane();
+    const err = await runReport({ status: 'x', container: b.container }, { ...b.deps, cwd: () => a.lane.path }).catch((e) => e);
+    expect(err).toBeInstanceOf(InvalidInputError);
+    expect(err.exitCode).toBe(2);
+    expect(err.message).toContain('Name the lane');
+    expect(readLanes(loadContainer({ container: b.container }, b.deps)).lanes.lane_1.status).not.toBe('x');
+  });
+
   it('refuses nothing-to-report, empty or oversized text, and unknown lanes', async () => {
     const { deps, container } = await oneLane();
     const bad = [

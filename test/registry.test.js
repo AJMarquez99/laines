@@ -88,7 +88,7 @@ describe('config set', () => {
   it('rejects unknown keys, invalid values and prototype keys with exit 2, writing nothing', async () => {
     const s = await setupContainer();
     const before = readFileSync(file(s), 'utf8');
-    for (const [key, value] of [['hooks.nope', '1'], ['maxLanes', '0'], ['teardown.mcp', 'sometimes'], ['__proto__.x', '1'], ['hooks.constructor', '1'], ['', '1']]) {
+    for (const [key, value] of [['hooks.nope', '1'], ['maxLanes', '0'], ['teardown.mcp', 'sometimes'], ['lanePrefix', `l${'a'.repeat(28)}`], ['__proto__.x', '1'], ['hooks.constructor', '1'], ['', '1']]) {
       const err = await invoke('config set', { key, value, container: s.container }, s.deps).catch((e) => e);
       expect(err.exitCode, key).toBe(2);
     }

@@ -37,7 +37,7 @@ const summary = (ctx, name, l) => ({
 
 export async function runReport(opts, deps) {
   const ctx = loadContainer(opts, deps);
-  const name = laneFrom(opts, deps);
+  const name = laneFrom(opts, deps, ctx);
   const changes = ['status', 'task', 'blocked'].filter((k) => opts[k] !== undefined);
   if (!changes.length && opts.note === undefined) {
     throw new InvalidInputError('Nothing to report: pass --status, --task, --blocked or --note.');
@@ -64,7 +64,7 @@ export async function runReport(opts, deps) {
 
 export async function runKeep(opts, deps) {
   const ctx = loadContainer(opts, deps);
-  const name = laneFrom(opts, deps);
+  const name = laneFrom(opts, deps, ctx);
   if (opts.reason === undefined) throw new InvalidInputError('--reason is required: say what depends on this lane.');
   const reason = text(opts.reason, '--reason');
   const now = deps.now();

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runHookFile } from '../src/lib/hook-runner.js';
 import { tmp, cleanupTmp } from './helpers.js';
@@ -122,8 +122,9 @@ describe('runHookFile', () => {
   it('a second interrupt escalates to SIGKILL', async () => {
     const dir = tmp();
     const signals = new EventEmitter();
-    const pending = runHookFile({ file: script(dir, "trap '' TERM\nsleep 30"), cwd: dir, vars: {}, timeoutMs: 20000, signals });
-    await new Promise((r) => setTimeout(r, 200));
+    const ready = join(dir, 'ready');
+    const pending = runHookFile({ file: script(dir, `trap '' TERM\ntouch "${ready}"\nsleep 30`), cwd: dir, vars: {}, timeoutMs: 20000, signals });
+    expect(await until(() => existsSync(ready))).toBe(true);
     signals.emit('SIGINT');
     await new Promise((r) => setTimeout(r, 200));
     signals.emit('SIGINT');
