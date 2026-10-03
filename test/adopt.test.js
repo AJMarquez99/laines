@@ -162,7 +162,7 @@ describe('adopt', () => {
     expect(doctor.checks.find((c) => c.name === 'lane:lane_1').ok).toBe(true);
     expect(existsSync(join(laneDir, '.ai', 'context', 'handoff.md'))).toBe(false);
     expect(existsSync(join(laneDir, '.ai', 'context', 'README.md'))).toBe(true);
-    expect(Object.keys(readAiBase(loadContainer({ container: w.dir }, w.deps).paths))).toEqual(['knowledge/a.md']);
+    expect(Object.keys(readAiBase(loadContainer({ container: w.dir }, w.deps).paths, 'lane_1'))).toEqual(['knowledge/a.md']);
     expect(gitIn(laneDir, 'status', '--porcelain')).toBe('');
   });
 

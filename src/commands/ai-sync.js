@@ -7,6 +7,7 @@ import { planSync, readAiBase, repoCommitsAi, syncedState, writeAiBase } from '.
 import { operationInProgress } from '../lib/lane-git.js';
 import { writeFileAtomic } from '../lib/jsonfile.js';
 import { appendAudit } from '../lib/audit.js';
+import { withLock } from '../lib/lock.js';
 import { BlockedError, InvalidInputError } from '../lib/errors.js';
 
 function copyOrDelete(from, to) {
@@ -39,7 +40,7 @@ export async function runAiSync(opts, deps) {
 
   const c = syncedState(ctx.paths.ai);
   const l = syncedState(laneAi);
-  const base = readAiBase(ctx.paths);
+  const base = readAiBase(ctx.paths, name);
   const links = [...new Set([...c.symlinks, ...l.symlinks])].sort();
   const plan = planSync({ container: c.files, lane: l.files, base, refused: links });
   const refused = [...new Set([...links, ...plan.refused])].sort();
@@ -60,7 +61,7 @@ export async function runAiSync(opts, deps) {
 
   for (const rel of plan.toLane) copyOrDelete(join(ctx.paths.ai, rel), join(laneAi, rel));
   for (const rel of plan.toContainer) copyOrDelete(join(laneAi, rel), join(ctx.paths.ai, rel));
-  writeAiBase(ctx.paths, nextBase);
+  await withLock(ctx.paths.lock, () => writeAiBase(ctx.paths, name, nextBase));
   const moved = plan.toLane.length + plan.toContainer.length;
   if (moved || plan.conflicts.length) {
     const now = deps.now();

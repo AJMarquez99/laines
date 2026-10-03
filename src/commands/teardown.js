@@ -9,6 +9,8 @@ import { unpushedWork } from '../lib/lane-git.js';
 import { hookStates, listHooks } from '../lib/hooks.js';
 import { dryRunHooks, hookBoardEntries, hookError, runEvent, runSummary, unapprovedWarnings } from '../lib/hook-events.js';
 import { appendAudit } from '../lib/audit.js';
+import { withLock } from '../lib/lock.js';
+import { writeAiBase } from '../lib/ai-tree.js';
 import { BlockedError, InvalidInputError } from '../lib/errors.js';
 
 function archivePlans(ctx, deps, laneDir, name) {
@@ -151,6 +153,14 @@ export async function runTeardown(opts, deps) {
     // Second phase of a two-step teardown: anything written since the close is archived too.
     archivedTo = archivePlans(ctx, deps, real, name);
     contextDeleted = deleteContext(deps, real);
+  }
+  if (!closed) {
+    // A closed lane no longer syncs; a lane re-created under this name starts from its own clone.
+    try {
+      await withLock(ctx.paths.lock, () => writeAiBase(ctx.paths, name, null));
+    } catch (err) {
+      warnings.push(`.ai/ sync base for ${name} not removed: ${String(err.message).split('\n')[0]}`);
+    }
   }
   const removedDir = opts.removeDir ? removeLaneDir(ctx.root, laneDir, lane.repos[0].path) : false;
   if (closed && opts.removeDir) {

@@ -2,8 +2,6 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { seedFromRemote } from '../src/lib/ai-seed.js';
-import { readAiBase } from '../src/lib/ai-tree.js';
-import { containerPaths } from '../src/lib/paths.js';
 import { execFileSync } from 'node:child_process';
 import { tmp, cleanupTmp, testDeps, setupContainer, makeRemote, runCli } from './helpers.js';
 
@@ -13,14 +11,15 @@ afterEach(cleanupTmp);
 const seedDirs = (root) => (existsSync(join(root, 'config')) ? readdirSync(join(root, 'config')).filter((d) => d.startsWith('seed-')) : []);
 
 describe('seedFromRemote', () => {
-  it("copies the default branch's .ai/ and returns its synced set as the base", async () => {
+  it("copies the default branch's whole .ai/", async () => {
     const root = tmp();
     const remote = makeRemote(root, { files: { 'README.md': '#\n', '.ai/knowledge/a.md': 'A\n', '.ai/context/x.md': 'X\n' } });
     const dest = join(root, 'out', '.ai');
     const r = await seedFromRemote(testDeps(root), remote, 'main', dest);
     expect(r).toMatchObject({ seeded: true, files: 2, warning: null });
-    expect(Object.keys(r.base)).toEqual(['knowledge/a.md']);
+    expect(r).not.toHaveProperty('base');
     expect(readFileSync(join(dest, 'knowledge', 'a.md'), 'utf8')).toBe('A\n');
+    expect(readFileSync(join(dest, 'context', 'x.md'), 'utf8')).toBe('X\n');
     expect(existsSync(join(root, 'out', 'README.md'))).toBe(false);
     expect(seedDirs(root)).toEqual([]);
   });
@@ -61,11 +60,11 @@ describe('seedFromRemote', () => {
 });
 
 describe('init seeding', () => {
-  it("seeds a new container's shared .ai/ from the remote and records the base", async () => {
+  it("seeds a new container's shared .ai/ from the remote, recording no base until a lane exists", async () => {
     const s = await setupContainer({ files: { 'README.md': '#\n', '.ai/knowledge/a.md': 'A\n' } });
     expect(readFileSync(join(s.container, '.ai', 'knowledge', 'a.md'), 'utf8')).toBe('A\n');
     expect(existsSync(join(s.container, '.ai', 'runbooks', 'lane-management.md'))).toBe(true);
-    expect(Object.keys(readAiBase(containerPaths(s.container)))).toEqual(['knowledge/a.md']);
+    expect(existsSync(join(s.container, '.laines', 'ai-sync.json'))).toBe(false);
   });
 
   it('falls back to a fresh layer with a warning when the remote cannot be read', async () => {

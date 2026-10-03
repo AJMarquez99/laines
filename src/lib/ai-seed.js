@@ -1,6 +1,6 @@
 import { lstatSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { copyTree, syncedState } from './ai-tree.js';
+import { copyTree } from './ai-tree.js';
 import { configDir } from './paths.js';
 
 // The informative line of git's stderr: its trailing lines are often boilerplate ("and the repository exists.").
@@ -10,7 +10,7 @@ const reason = (stderr, error) => {
 };
 
 // Never prompt or stall: no password/host-key questions, bounded connect time.
-const NONINTERACTIVE = ['-c', 'core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=15'];
+export const NONINTERACTIVE = ['-c', 'core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=15'];
 
 // Design §4.1: a new container's shared .ai/ starts from the remote's default branch when it commits
 // one. Only .ai/ is checked out of a shallow, blob-less clone in a temp dir under the machine config
@@ -19,7 +19,7 @@ export async function seedFromRemote(deps, remote, branch, destAi) {
   const config = configDir(deps.env, deps.homedir());
   mkdirSync(config, { recursive: true });
   const tmp = mkdtempSync(join(config, 'seed-'));
-  const none = { seeded: false, files: 0, base: {}, warning: null, skipped: [] };
+  const none = { seeded: false, files: 0, warning: null, skipped: [] };
   const unreadable = (why) => ({ ...none, warning: `could not read the remote's .ai/ (${why}); the container starts with a fresh .ai/ layer` });
   try {
     const repo = join(tmp, 'repo');
@@ -39,7 +39,7 @@ export async function seedFromRemote(deps, remote, branch, destAi) {
     } catch {}
     if (!stat || stat.isSymbolicLink() || !stat.isDirectory()) return unreadable('.ai in the remote is not a directory');
     const { copied, skippedSymlinks } = copyTree(join(repo, '.ai'), destAi);
-    return { seeded: true, files: copied.length, base: syncedState(join(repo, '.ai')).files, warning: null, skipped: skippedSymlinks };
+    return { seeded: true, files: copied.length, warning: null, skipped: skippedSymlinks };
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }

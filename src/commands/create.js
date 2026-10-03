@@ -10,6 +10,8 @@ import { lanePorts } from '../lib/ports.js';
 import { LANE_NAME, laneId } from '../lib/ids.js';
 import { shellQuote } from '../lib/paths.js';
 import { appendAudit } from '../lib/audit.js';
+import { withLock } from '../lib/lock.js';
+import { repoCommitsAi, syncedState, writeAiBase } from '../lib/ai-tree.js';
 import { BlockedError, InvalidInputError } from '../lib/errors.js';
 import { dropRequests, putRequest, requestId } from '../lib/lanes-state.js';
 import { currentChecksums, hookStates } from '../lib/hooks.js';
@@ -61,6 +63,19 @@ function validate(ctx, deps, opts, branch) {
   }
 }
 
+// Design §4.3: a fresh clone's .ai/ equals HEAD, the honest "repository and this lane agree" base for
+// `ai sync`. A repository that does not commit .ai/ gets no entry (and a stale one from an earlier lane
+// of the same name is dropped). A problem with ai-sync.json is a warning: `ai sync` reports it again.
+async function recordAiBase(ctx, deps, plan) {
+  try {
+    const base = repoCommitsAi(deps, plan.laneDir) ? syncedState(join(plan.laneDir, '.ai')).files : null;
+    await withLock(ctx.paths.lock, () => writeAiBase(ctx.paths, plan.name, base));
+    return null;
+  } catch (err) {
+    return `.ai/ sync base not recorded (${String(err.message).split('\n')[0]}): the first \`laines ai sync ${plan.name}\` merges both sides.`;
+  }
+}
+
 export async function runCreate(opts, deps) {
   const ctx = loadContainer(opts, deps);
   const [repoName, repo] = Object.entries(ctx.config.repos)[0];
@@ -105,6 +120,11 @@ export async function runCreate(opts, deps) {
       failures.push(`removing ${plan.laneDir}: ${err.message}`);
     }
     try {
+      await withLock(ctx.paths.lock, () => writeAiBase(ctx.paths, plan.name, null));
+    } catch (err) {
+      failures.push(`removing the lane's .ai/ sync base: ${err.message}`);
+    }
+    try {
       await updateLanes(ctx, deps, (state) => {
         delete state.lanes[plan.name];
         return { state, result: null, activity: [{ ts: deps.now(), lane: plan.name, text: `lane creation failed: ${why}` }] };
@@ -127,6 +147,7 @@ export async function runCreate(opts, deps) {
   }
 
   let files;
+  let baseWarning = null;
   try {
     await gitOutAsync(deps, ['clone', '--origin', 'origin', '--', repo.remote, plan.laneDir], ctx.root);
     const current = gitOut(deps, ['branch', '--show-current'], plan.laneDir).trim();
@@ -134,6 +155,7 @@ export async function runCreate(opts, deps) {
       const onRemote = deps.git(['show-ref', '--verify', '--quiet', `refs/remotes/origin/${branch}`], { cwd: plan.laneDir }).status === 0;
       gitOut(deps, onRemote ? ['checkout', '-q', '-b', branch, '--track', `origin/${branch}`] : ['checkout', '-q', '-b', branch], plan.laneDir);
     }
+    baseWarning = await recordAiBase(ctx, deps, plan);
     files = writeLaneFiles(ctx, deps, { ...plan, branch });
   } catch (err) {
     await abandon(String(err.message).split('\n')[0]);
@@ -183,7 +205,7 @@ export async function runCreate(opts, deps) {
     branch,
     ports: plan.ports,
     files: files.written,
-    warnings: [...files.skipped.map((s) => `${s.file} not written: ${s.reason}`), ...unapprovedWarnings(run)],
+    warnings: [...files.skipped.map((s) => `${s.file} not written: ${s.reason}`), ...(baseWarning ? [baseWarning] : []), ...unapprovedWarnings(run)],
     hooks: run,
     brief: buildBrief(ctx, plan.name, lane),
     next: [

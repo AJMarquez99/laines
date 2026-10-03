@@ -124,17 +124,38 @@ export function aiDrift(containerAi, laneAi) {
   return [...new Set([...Object.keys(c), ...Object.keys(l)])].filter((rel) => own(c, rel) !== own(l, rel)).length;
 }
 
+const Sha = z.string().regex(/^sha256:[0-9a-f]{64}$/);
 const BaseSchema = z.strictObject({
-  version: z.literal(1),
-  base: z.record(z.string(), z.string().regex(/^sha256:[0-9a-f]{64}$/)),
+  version: z.literal(2),
+  lanes: z.record(z.string(), z.record(z.string(), Sha)),
 });
 
 export const aiSyncFile = (paths) => join(paths.laines, 'ai-sync.json');
 
-export const readAiBase = (paths) =>
-  parseWith(BaseSchema, readJson(aiSyncFile(paths), { onMissing: () => ({ version: 1, base: {} }) }), aiSyncFile(paths)).base;
+// Design §4.3: one base per lane (`{ version: 2, lanes: { <lane>: { <rel>: sha } } }`). A shared
+// base cannot tell "this lane is behind" from "this lane deleted it". A file without `lanes` (the
+// pre-release version 1) means no base for any lane; anything else malformed throws.
+export function readAiBases(paths) {
+  const file = aiSyncFile(paths);
+  const raw = readJson(file, { onMissing: () => ({ version: 2, lanes: {} }) });
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && !Object.hasOwn(raw, 'lanes')) return {};
+  return parseWith(BaseSchema, raw, file).lanes;
+}
 
-export const writeAiBase = (paths, base) => writeJson(aiSyncFile(paths), { version: 1, base });
+export const readAiBase = (paths, lane) => own(readAiBases(paths), lane) ?? {};
+
+// Read-modify-write of one lane's entry (null removes it); callers that may race hold the container
+// lock. Removing an entry that is not there writes nothing.
+export function writeAiBase(paths, lane, base) {
+  const lanes = { ...readAiBases(paths) };
+  if (base === null) {
+    if (!Object.hasOwn(lanes, lane)) return;
+    delete lanes[lane];
+  } else {
+    Object.defineProperty(lanes, lane, { value: base, enumerable: true, writable: true, configurable: true });
+  }
+  writeJson(aiSyncFile(paths), { version: 2, lanes });
+}
 
 // repoDir must be the worktree toplevel (pathspec is cwd-relative).
 export function repoCommitsAi(deps, repoDir) {

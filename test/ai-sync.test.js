@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { invoke } from '../src/commands/registry.js';
 import { loadContainer } from '../src/lib/container.js';
 import { readLanes } from '../src/lib/lanes-store.js';
-import { readAiBase } from '../src/lib/ai-tree.js';
+import { readAiBase, readAiBases, syncedState, writeAiBase } from '../src/lib/ai-tree.js';
 import { BlockedError } from '../src/lib/errors.js';
 import { cleanupTmp, connectMcp, setupContainer, setConfig, gitIn, runCli } from './helpers.js';
 
@@ -31,7 +31,7 @@ describe('ai sync', () => {
     const s = await synced();
     expect(read(join(s.cAi, 'knowledge', 'a.md'))).toBe('A\n');
     expect(existsSync(join(s.lAi, 'knowledge', 'README.md'))).toBe(true);
-    expect(readAiBase(loadContainer({ container: s.container }, s.deps).paths)['knowledge/a.md']).toMatch(/^sha256:/);
+    expect(readAiBase(loadContainer({ container: s.container }, s.deps).paths, 'lane_1')['knowledge/a.md']).toMatch(/^sha256:/);
   });
 
   it('copies a container change into the lane, where it shows in git status', async () => {
@@ -131,4 +131,77 @@ describe('ai sync', () => {
     expect((await runCli(['ai', 'sync', 'lane_1', '--container', s.container], s.deps)).code).toBe(4);
     expect(readLanes(loadContainer({ container: s.container }, s.deps)).lanes.lane_1.state).toBe('active');
   });
+
+  describe('per-lane base', () => {
+    // A container seeded from a remote committing .ai/knowledge/a.md, with lane_1 and lane_2 created.
+    async function twoLanes() {
+      const s = await setupContainer({ files: { 'README.md': '# app\n', '.ai/knowledge/a.md': 'A\n' } });
+      const l1 = await invoke('create', { container: s.container }, s.deps);
+      const l2 = await invoke('create', { container: s.container }, s.deps);
+      const sync = (lane, opts = {}) => invoke('ai sync', { lane, container: s.container, ...opts }, s.deps);
+      return { ...s, sync, cAi: join(s.container, '.ai'), l1: join(l1.path, '.ai'), l2: join(l2.path, '.ai') };
+    }
+    const synced = (ai) => syncedState(ai).files;
+
+    it('a second lane that is behind never deletes from the container', async () => {
+      const s = await twoLanes();
+      const before = synced(s.cAi);
+      const r1 = await s.sync('lane_1');
+      expect(r1.toLane.length).toBeGreaterThan(0);
+      expect(r1.deleted.container).toEqual([]);
+      const r2 = await s.sync('lane_2');
+      expect(r2).toMatchObject({ toContainer: [], deleted: { container: [] }, conflicts: [] });
+      expect(synced(s.cAi)).toEqual(before);
+      expect(existsSync(join(s.cAi, '.gitignore'))).toBe(true);
+      expect(synced(s.l2)).toEqual(before);
+    });
+
+    it('a container edit synced to one lane still reaches a lane that is behind', async () => {
+      const s = await twoLanes();
+      put(s.cAi, 'knowledge/a.md', 'A2\n');
+      await s.sync('lane_1');
+      const r2 = await s.sync('lane_2');
+      expect(r2.conflicts).toEqual([]);
+      expect(r2.toLane).toContain('knowledge/a.md');
+      expect(read(join(s.cAi, 'knowledge', 'a.md'))).toBe('A2\n');
+      expect(read(join(s.l2, 'knowledge', 'a.md'))).toBe('A2\n');
+    });
+
+    it('a lane that pulled a deletion still propagates it to the container', async () => {
+      const s = await twoLanes();
+      rmSync(join(s.l2, 'knowledge', 'a.md'));
+      const r2 = await s.sync('lane_2');
+      expect(r2.deleted.container).toEqual(['knowledge/a.md']);
+      expect(existsSync(join(s.cAi, 'knowledge', 'a.md'))).toBe(false);
+    });
+
+    it('create drops a stale entry for a repository without .ai/, and a failed create leaves none', async () => {
+      const plain = await setupContainer();
+      const paths = loadContainer({ container: plain.container }, plain.deps).paths;
+      writeAiBase(paths, 'lane_1', { 'knowledge/old.md': `sha256:${'0'.repeat(64)}` });
+      await invoke('create', { container: plain.container }, plain.deps);
+      expect(readAiBase(paths, 'lane_1')).toEqual({});
+
+      const s = await setupContainer({ files: { 'README.md': '# app\n', '.ai/knowledge/a.md': 'A\n' } });
+      const git = (args, o) => (args[0] === 'rev-parse' && args[1] === '--git-path' ? { status: 1, stdout: '', stderr: 'fatal: broke' } : s.deps.git(args, o));
+      await expect(invoke('create', { container: s.container }, { ...s.deps, git })).rejects.toThrow(/broke/);
+      expect(existsSync(join(s.container, 'lane_1'))).toBe(false);
+      expect(readAiBases(loadContainer({ container: s.container }, s.deps).paths)).toEqual({});
+    });
+
+    it('records the base per lane, and teardown drops the lane entry', async () => {
+      const s = await twoLanes();
+      const paths = loadContainer({ container: s.container }, s.deps).paths;
+      expect(Object.keys(readAiBase(paths, 'lane_1'))).toEqual(['knowledge/a.md']);
+      expect(Object.keys(readAiBase(paths, 'lane_2'))).toEqual(['knowledge/a.md']);
+      expect(readAiBase(paths, 'lane_9')).toEqual({});
+      await s.sync('lane_1');
+      expect(Object.keys(readAiBase(paths, 'lane_1')).length).toBeGreaterThan(1);
+      expect(Object.keys(readAiBase(paths, 'lane_2'))).toEqual(['knowledge/a.md']);
+      await invoke('teardown', { lane: 'lane_2', container: s.container }, s.deps);
+      expect(readAiBase(paths, 'lane_2')).toEqual({});
+      expect(Object.keys(JSON.parse(read(join(s.container, '.laines', 'ai-sync.json'))).lanes)).toEqual(['lane_1']);
+    });
+  });
 });
+

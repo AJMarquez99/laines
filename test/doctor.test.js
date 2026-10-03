@@ -240,7 +240,7 @@ describe('doctor lane checks', () => {
     const r = byName(await runDoctor({ container: s.container }, s.deps));
     expect(r['lane:lane_1'].ok).toBe(true);
     expect(r['lane:lane_1'].detail).toMatch(/\.ai\/ differs in \d+ file\(s\): run `laines ai sync lane_1`/);
-    expect(r['ai-sync']).toMatchObject({ ok: true });
+    expect(r['ai-sync']).toMatchObject({ ok: true, detail: 'base for 1 lane(s)' });
     writeFileSync(join(s.container, '.laines', 'ai-sync.json'), '{');
     expect(byName(await runDoctor({ container: s.container }, s.deps))['ai-sync'].ok).toBe(false);
   });

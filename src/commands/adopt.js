@@ -293,7 +293,7 @@ export async function runAdopt(opts, deps) {
       base = Object.fromEntries(Object.entries(syncedState(laneAi).files).filter(([rel]) => trackedSet.has(`.ai/${rel}`)));
     }
     writeContainer({ path: insp.dir, entry, config: p.config, agents: p.agents, deps });
-    if (base) writeAiBase(containerPaths(insp.dir), base);
+    if (base) writeAiBase(containerPaths(insp.dir), p.lane, base);
     const ctx = loadContainer({ container: insp.dir }, deps);
     const now = deps.now();
     await updateLanes(ctx, deps, (state) => {

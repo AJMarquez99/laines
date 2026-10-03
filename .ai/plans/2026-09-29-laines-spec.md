@@ -367,7 +367,7 @@ anything with filesystem access, and hooks themselves (they are the user's code)
 2. Claim a container ID and port block in `containers.json`.
 3. Run the bundled dot-ai CLI with `cwd` = container: `init` with the agent flags from
    `--agents` (default Claude). Non-zero exit aborts with dot-ai's stderr.
-3b. If the remote's default branch commits `.ai/`, seed the container's `.ai/` from it and record the sync base.
+3b. If the remote's default branch commits `.ai/`, seed the container's `.ai/` from it (no sync base yet: bases are per lane, §10.5).
 4. Write `.laines/` (marker, config, empty lane index, empty hooks dir, empty lock file), the
    board, the lane-management runbook, lane templates, the `laines-lanes` block in each wired
    agent file, and Claude deny rules.
@@ -378,7 +378,8 @@ anything with filesystem access, and hooks themselves (they are the user's code)
 1. Check capability, `maxLanes`, name (next free `lane_N` if omitted), path containment.
 2. Allocate ports; verify they are free.
 3. `git clone` the remote into the lane path; check out `--branch` (tracking the remote branch
-   if it exists, otherwise a new local branch), default `defaultBranch`.
+   if it exists, otherwise a new local branch), default `defaultBranch`. If the repository commits
+   `.ai/`, record the lane's `ai sync` base from the fresh clone (§10.5).
 4. Write lane files (§4), `.git/info/exclude` entries, `.laines.env`, deny rules.
 5. Record the lane (`state: active`) and board entry; run `post-create` under the hook policy.
 6. On hook failure: `state: setup-failed`, board request, exit 1 with hook output (exit 3 if
@@ -398,7 +399,7 @@ A failed clone removes the partial directory and releases the ports.
 3. Over MCP: apply `teardown.mcp` (§9.3).
 4. Run `pre-teardown`; failure aborts with nothing touched.
 5. Move the lane's `.ai/plans/` to the container's `.ai/archive/<date>_<lane>/`; delete
-   `.ai/context/`. Mark the lane `closed`.
+   `.ai/context/`. Mark the lane `closed` and drop its `ai sync` base.
 6. If `--remove-dir`: re-verify containment and delete the lane directory.
 7. Run `post-teardown`; audit; release the lane's ports.
 
@@ -409,9 +410,9 @@ Without `--remove-dir`, the clone is left in place and nothing irreversible happ
 Human-only, CLI only. Detail in `2026-10-02-laines-m4.5-adopt-design.md`.
 
 1. Check the directory (git checkout with a reachable `origin`, not already a container, not inside a lane) and plan; `--dry-run` stops here.
-2. Move the checkout into `<dir>/lane_1` with a two-rename move so the folder becomes the container.
-3. Copy the project's `.ai/` into the container as the shared layer, write container files and claim the machine-index entry.
-4. Register the lane in `lanes.json`: this is the commit point. Before it, everything rolls back exactly.
+2. Claim the container id and port block in the machine index, then move the checkout into `<dir>/lane_1` with a two-rename move so the folder becomes the container.
+3. Copy the project's `.ai/` into the container as the shared layer, write container files, and record `lane_1`'s `ai sync` base from its tracked `.ai/` files.
+4. Register the lane in `lanes.json`: this is the commit point. Before it, everything rolls back exactly (including releasing the machine-index claim).
 5. After it, write lane files, rename untracked collisions to `<name>.pre-laines`, and remove untracked `.ai/` files already copied. A later failure keeps the container and says to run `laines refresh <lane>`.
 
 ### 10.5 `ai sync`
@@ -419,10 +420,10 @@ Human-only, CLI only. Detail in `2026-10-02-laines-m4.5-adopt-design.md`.
 Detail in the M4.5 design. Capability `aiSync` (exit 4 when off).
 
 1. Resolve the lane (`assertLaneDir`); walk the synced set of both `.ai/` trees without following symlinks.
-2. Plan per file against the recorded base (`.laines/ai-sync.json`): a change on one side only moves across; equal sides are a no-op.
+2. Plan per file against **this lane's** recorded base (`.laines/ai-sync.json`, `{ version: 2, lanes: { <lane>: { <rel>: sha } } }`): a change on one side only moves across; equal sides are a no-op. The base is per lane because a shared one cannot tell a lane that is behind from one that deleted or reverted a file. `create` records it from the fresh clone, `adopt` from `lane_1`'s tracked files, `teardown` drops it; a lane without one merges (one-sided files move, two-sided differences conflict).
 3. A file changed on both sides is a conflict: left untouched on both sides, base not updated, exit 3.
 4. Symlinks are listed under `refused` and never followed or deleted.
-5. Write only inside the container's and the lane's `.ai/`, then the new base; a second run moves nothing.
+5. Write only inside the container's and the lane's `.ai/`, then this lane's new base; a second run moves nothing.
 
 ## 11. Board
 

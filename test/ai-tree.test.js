@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
-  aiDrift, copyTree, isSynced, planSync, readAiBase, repoCommitsAi, syncedState, walk, writeAiBase,
+  aiDrift, copyTree, isSynced, planSync, readAiBase, readAiBases, repoCommitsAi, syncedState, walk, writeAiBase,
 } from '../src/lib/ai-tree.js';
 import { operationInProgress } from '../src/lib/lane-git.js';
 import { containerPaths } from '../src/lib/paths.js';
@@ -143,14 +143,26 @@ describe('planSync', () => {
 });
 
 describe('ai-sync.json', () => {
-  it('reads a missing base as empty, round-trips, and rejects a malformed one', () => {
+  it('keeps one base per lane: missing is empty, writes touch one lane, v1 is no base, malformed throws', () => {
     const root = tmp();
     const paths = containerPaths(root);
-    expect(readAiBase(paths)).toEqual({});
-    writeAiBase(paths, { 'knowledge/a.md': checksum('A\n') });
-    expect(readAiBase(paths)).toEqual({ 'knowledge/a.md': checksum('A\n') });
-    writeFileSync(join(paths.laines, 'ai-sync.json'), JSON.stringify({ version: 1, base: { x: 42 } }));
-    expect(() => readAiBase(paths)).toThrow(MalformedConfigError);
+    const file = join(paths.laines, 'ai-sync.json');
+    expect(readAiBase(paths, 'lane_1')).toEqual({});
+    writeAiBase(paths, 'lane_1', null);
+    expect(existsSync(file)).toBe(false);
+    writeAiBase(paths, 'lane_1', { 'knowledge/a.md': checksum('A\n') });
+    writeAiBase(paths, 'lane_2', { 'knowledge/b.md': checksum('B\n') });
+    expect(readAiBase(paths, 'lane_1')).toEqual({ 'knowledge/a.md': checksum('A\n') });
+    expect(readAiBase(paths, 'lane_3')).toEqual({});
+    expect(readAiBases(paths)).toEqual({ lane_1: { 'knowledge/a.md': checksum('A\n') }, lane_2: { 'knowledge/b.md': checksum('B\n') } });
+    writeAiBase(paths, 'lane_1', null);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ version: 2, lanes: { lane_2: { 'knowledge/b.md': checksum('B\n') } } });
+    writeFileSync(file, JSON.stringify({ version: 1, base: { 'knowledge/a.md': checksum('A\n') } }));
+    expect(readAiBase(paths, 'lane_2')).toEqual({});
+    writeFileSync(file, JSON.stringify({ version: 2, lanes: { lane_1: { x: 42 } } }));
+    expect(() => readAiBase(paths, 'lane_1')).toThrow(MalformedConfigError);
+    writeFileSync(file, '[]');
+    expect(() => readAiBase(paths, 'lane_1')).toThrow(MalformedConfigError);
   });
 });
 

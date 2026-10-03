@@ -17,7 +17,6 @@ import {
 import { mergeMcpConfig } from '../lib/mcp-config.js';
 import { appendAudit } from '../lib/audit.js';
 import { seedFromRemote } from '../lib/ai-seed.js';
-import { writeAiBase } from '../lib/ai-tree.js';
 
 const LANE_TEMPLATES = [
   ['lane-ai-readme.md', 'Lane-local `.ai/README.md`: lane rules and where the shared knowledge lives'],
@@ -170,10 +169,9 @@ export async function runInit(opts, deps) {
   try {
     // dot-ai init is additive, so a seeded .ai/ keeps its content and gains only missing scaffold.
     seed = opts.seed === false
-      ? { seeded: false, files: 0, base: {}, warning: null, skipped: [] }
+      ? { seeded: false, files: 0, warning: null, skipped: [] }
       : await seedFromRemote(deps, opts.remote, config.repos[repoName].defaultBranch, join(path, '.ai'));
     writeContainer({ path, entry, config, agents, deps });
-    if (seed.seeded) writeAiBase(containerPaths(path), seed.base);
   } catch (err) {
     await releaseContainer(indexDir, entry.id);
     const exitCode = err instanceof LainesError ? err.exitCode : 1;

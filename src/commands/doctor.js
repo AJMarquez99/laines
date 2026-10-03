@@ -13,7 +13,7 @@ import { MalformedConfigError, NotAContainerError } from '../lib/errors.js';
 import { hookStates, isExecutable } from '../lib/hooks.js';
 import { hasMcpEntry, mcpAddCommand } from '../lib/mcp-config.js';
 import { lockSuggested } from '../lib/hook-events.js';
-import { aiDrift, readAiBase, repoCommitsAi } from '../lib/ai-tree.js';
+import { aiDrift, readAiBases, repoCommitsAi } from '../lib/ai-tree.js';
 
 // Informational: a lane whose committed .ai/ differs from the container's shared one.
 function aiDriftNote(paths, laneDir, deps, name) {
@@ -197,9 +197,8 @@ export async function runDoctor(opts, deps) {
     return parts.join('; ');
   });
   check('ai-sync', () => {
-    const base = readAiBase(p);
-    const n = Object.keys(base).length;
-    return n ? `base covers ${n} file(s)` : 'no .ai/ sync yet';
+    const n = Object.keys(readAiBases(p)).length;
+    return n ? `base for ${n} lane(s)` : 'no .ai/ sync base yet';
   });
   const agents = config ? config.agents : ['claude'];
   const openLanes = Object.entries(lanesState?.lanes ?? {}).filter(([, l]) => l.state !== 'closed');
