@@ -86,6 +86,8 @@ Everyone works in this container's `.ai/`. If the repository commits its own `.a
 sync <lane>` brings the lane's copy up to date before a PR (new knowledge shows in `git diff`) and
 brings back knowledge that arrived through `main` (after you pull). A file changed in both places is
 a conflict: sync leaves both copies alone and tells you which file to reconcile.
+Once one lane commits the dot-ai scaffold to the repository, another lane's `git pull` may refuse to
+overwrite its untracked copies of those files: remove the untracked copies (they are in the container) and pull again.
 
 ## Adopting an existing checkout
 
