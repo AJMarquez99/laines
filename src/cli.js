@@ -4,7 +4,7 @@ import { VERSION } from './version.js';
 import { invoke } from './commands/registry.js';
 import { runWatch } from './commands/watch.js';
 import { EXIT_CODES, InvalidInputError, LainesError } from './lib/errors.js';
-import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate, formatRefresh, formatReport, formatKeep, formatRelease, formatList, formatStatus, formatTeardown, formatHooksStatus, formatHooksApprove, formatHooksPolicy, formatConfigSet, formatAiSync } from './lib/format.js';
+import { printJson, formatInit, formatAdopt, formatConfig, formatDoctor, formatBrief, formatCreate, formatRefresh, formatReport, formatKeep, formatRelease, formatList, formatStatus, formatTeardown, formatHooksStatus, formatHooksApprove, formatHooksPolicy, formatConfigSet, formatAiSync } from './lib/format.js';
 
 function reportError(err) {
   if (err instanceof LainesError) {
@@ -64,6 +64,14 @@ export function buildProgram(deps = defaultDeps) {
     .option('--no-seed', 'start the container with a fresh .ai/ layer, without reading the remote')
     .option('--dry-run', 'show what would be created without writing anything')
     .action(handle('init', { table: formatInit, args: ['dir'] }, deps));
+
+  withFormat(program.command('adopt'))
+    .description('Turn an existing git checkout into a container, with the checkout as its first lane (human-only)')
+    .argument('<dir>', 'the project folder to adopt')
+    .option('--id <id>', 'machine-unique container id (default: from the repo name)')
+    .option('--agents <list>', 'agents to wire: claude,codex,gemini', 'claude')
+    .option('--dry-run', 'show what would happen without changing anything')
+    .action(handle('adopt', { table: formatAdopt, args: ['dir'] }, deps));
 
   const config = program.command('config').description('Read and change container settings');
   withGlobals(config.command('get'))

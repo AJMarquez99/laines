@@ -134,3 +134,12 @@ export async function connectMcp(deps, { container, elicit, capabilities } = {})
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
   return { client, server, call: (name, args = {}) => client.callTool({ name, arguments: args }), close: () => client.close() };
 }
+
+// An existing project checkout to adopt: a clone of a fresh remote at <root>/<path>.
+export function makeProject(root, { files, branches, path = 'work/myapp' } = {}) {
+  const remote = makeRemote(root, { files, branches });
+  const dir = join(root, path);
+  mkdirSync(dirname(dir), { recursive: true });
+  gitIn(root, 'clone', '-q', remote, dir);
+  return { dir, remote };
+}

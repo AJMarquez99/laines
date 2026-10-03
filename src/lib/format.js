@@ -164,3 +164,16 @@ export function formatAiSync(r) {
   for (const p of r.conflicts) lines.push(`  CONFLICT     ${p}`);
   return lines.join('\n');
 }
+
+export function formatAdopt(r) {
+  const lines = [
+    r.dryRun ? `dry run: would adopt ${r.path}` : `adopted ${r.path}`,
+    `container: ${r.id} · ports ${r.portRange[0]}–${r.portRange[1]}`,
+    `lane:      ${r.lanePath} (branch ${r.branch}, ports ${r.ports[0]}–${r.ports[1]})`,
+    `.ai/:      ${r.ai.mode === 'seed' ? `the project's .ai/ becomes the container's shared layer (${r.ai.files} file(s))` : 'a fresh shared layer'}`,
+  ];
+  for (const b of r.backups) lines.push(`kept:      ${b.from} → ${b.to}`);
+  for (const w of r.warnings) lines.push(`warning: ${w}`);
+  if (r.next.length) lines.push('', 'next:', ...r.next.map((s) => `  ${s}`));
+  return lines.join('\n');
+}

@@ -21,6 +21,7 @@ export const LANE_EXCLUDES = [
   '/GEMINI.md',
   '/.claude/settings.local.json',
   '/.mcp.json',
+  '/*.pre-laines*',
 ];
 
 // Double-quoted and escaped, so `source .laines.env` survives spaces and shell characters.

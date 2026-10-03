@@ -30,7 +30,7 @@ export function upsertBlock(file, body) {
   return 'written';
 }
 
-export const HUMAN_ONLY_COMMANDS = ['teardown', 'release', 'hooks approve', 'hooks policy', 'config set'];
+export const HUMAN_ONLY_COMMANDS = ['teardown', 'release', 'hooks approve', 'hooks policy', 'config set', 'adopt'];
 const INVOCATIONS = ['laines', 'npx laines', 'npx @ajmarquez99/laines'];
 
 export const denyRules = () => HUMAN_ONLY_COMMANDS.flatMap((c) => INVOCATIONS.map((i) => `Bash(${i} ${c}:*)`));

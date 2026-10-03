@@ -5,6 +5,7 @@ import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
 import { dropRequests, putRequest, requestId, spinUpState } from '../lib/lanes-state.js';
 import { assertLaneDir } from '../lib/containment.js';
 import { writeLaneFiles } from '../lib/lane-files.js';
+import { denyRules, mergeDenyRules } from '../lib/agent-files.js';
 import { hookStates } from '../lib/hooks.js';
 import {
   dryRunHooks, hookBoardEntries, hookError, runEvent, runSummary, setupFailedNext, setupFailedRequest, unapprovedWarnings,
@@ -60,6 +61,8 @@ export async function runRefresh(opts, deps) {
     throw new InvalidInputError(`${laneDir} is missing or not a git clone. Tear the lane down (\`laines teardown ${name} --remove-dir --force\`) and create it again.`);
   }
   if (opts.dryRun) return { dryRun: true, lane: name, path: laneDir, hooks: dryRunHooks(ctx, 'post-create') };
+  // Containers made before a new human-only command existed get its deny rules here.
+  mergeDenyRules(ctx.paths.claudeSettings, denyRules());
 
   // The board and LANE_BRANCH follow the branch the clone is on now; a detached HEAD keeps the old one.
   const head = deps.git(['branch', '--show-current'], { cwd: real });

@@ -25,7 +25,7 @@ describe('MCP tools table', () => {
       expect(t.name).toBe(`laines_${t.command.replace(/ /g, '_')}`);
       if (t.name !== 'laines_teardown') expect(COMMANDS[t.command].humanOnly, t.name).toBeFalsy();
     }
-    for (const absent of ['laines_init', 'laines_release', 'laines_hooks_approve', 'laines_hooks_policy', 'laines_config_set', 'laines_watch']) {
+    for (const absent of ['laines_init', 'laines_release', 'laines_hooks_approve', 'laines_hooks_policy', 'laines_config_set', 'laines_watch', 'laines_adopt']) {
       expect(TOOLS.map((t) => t.name)).not.toContain(absent);
     }
   });

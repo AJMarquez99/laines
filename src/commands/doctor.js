@@ -131,7 +131,7 @@ export async function runDoctor(opts, deps) {
   check('deny-rules', () => {
     const deny = readJson(p.claudeSettings)?.permissions?.deny ?? [];
     const missing = denyRules().filter((r) => !deny.includes(r));
-    if (missing.length) throw new Error(`${missing.length} human-only deny rule(s) missing from .claude/settings.json`);
+    if (missing.length) throw new Error(`${missing.length} human-only deny rule(s) missing from .claude/settings.json: run \`laines refresh <lane>\` (any lane) to add them`);
     return `${denyRules().length} rules present`;
   });
   check('mcp', () => {

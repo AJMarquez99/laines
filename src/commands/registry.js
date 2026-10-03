@@ -3,6 +3,7 @@ import { containerDirFrom, resolveContainer } from '../lib/container.js';
 import { containerPaths } from '../lib/paths.js';
 import { BlockedError, CapabilityDeniedError, InvalidInputError } from '../lib/errors.js';
 import { runInit } from './init.js';
+import { runAdopt } from './adopt.js';
 import { runConfigGet, runConfigSet } from './config.js';
 import { runDoctor } from './doctor.js';
 import { runBrief } from './brief.js';
@@ -21,6 +22,7 @@ const always = () => true;
 // agent deny rules (HUMAN_ONLY_COMMANDS) and reach MCP only through a human confirmation.
 export const COMMANDS = {
   init: { run: runInit, capability: null },
+  adopt: { run: runAdopt, capability: null, humanOnly: true },
   'config get': { run: runConfigGet, capability: null },
   'config set': { run: runConfigSet, capability: null, humanOnly: true, locked: always },
   doctor: { run: runDoctor, capability: null },
