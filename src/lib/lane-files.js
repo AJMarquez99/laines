@@ -6,6 +6,7 @@ import { readJson, writeJson } from './jsonfile.js';
 import { readTemplate, renderTemplate } from './templates.js';
 import { denyRules, mergeDenyRules } from './agent-files.js';
 import { mergeMcpConfig } from './mcp-config.js';
+import { CURRENT_LAYOUT } from './container-files.js';
 import { composeProject, laneId, laneSuffix } from './ids.js';
 
 export const EXCLUDE_BEGIN = '# BEGIN laines lane (lane-local files, never committed)';
@@ -136,7 +137,9 @@ export function writeLaneFiles(ctx, deps, lane) {
   // The container's copies of the lane templates win, so a team can customise them.
   const template = (file) => {
     // `_<name>` first, then the old `<name>` of a container not yet migrated, then the package copy.
-    const own = [`_${file}`, file].map((n) => join(ctx.paths.templatesDir, n)).find((f) => existsSync(f));
+    // From layout 2 on, a plain-named file is the project's own, never a laines template.
+    const names = (ctx.layout ?? 1) < CURRENT_LAYOUT ? [`_${file}`, file] : [`_${file}`];
+    const own = names.map((n) => join(ctx.paths.templatesDir, n)).find((f) => existsSync(f));
     return renderTemplate(own ? readFileSync(own, 'utf8') : readTemplate(file), vars);
   };
 

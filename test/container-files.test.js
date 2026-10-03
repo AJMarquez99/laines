@@ -171,4 +171,35 @@ describe('laines container files', () => {
     ownFile(s.container);
     expect(existsSync(join(rb, '_lane-management.md'))).toBe(false);
   });
+  it('pre-M4.6: a README.md row for a laines file absent under both names is removed and the layout stamped', async () => {
+    const s = await setupContainer();
+    await lane1(s);
+    downgrade(s.container);
+    const rb = join(s.container, '.ai', 'runbooks');
+    rmSync(join(rb, 'lane-management.md'));
+    const readme = join(rb, 'README.md');
+    expect(read(readme)).toContain('(lane-management.md)');
+    const marker = join(s.container, '.laines', 'container.json');
+    const dry = await invoke('refresh', { lane: 'lane_1', container: s.container, dryRun: true }, s.deps);
+    expect(dry.wouldMigrate).toContain('runbooks/lane-management.md');
+    expect(read(readme)).toContain('(lane-management.md)');
+    expect(JSON.parse(read(marker)).layout).toBeUndefined();
+    const r = await invoke('refresh', { lane: 'lane_1', container: s.container }, s.deps);
+    expect(r.migrated).toContain('runbooks/lane-management.md');
+    expect(read(readme)).not.toContain('(lane-management.md)');
+    expect(existsSync(join(rb, '_lane-management.md'))).toBe(false);
+    expect(JSON.parse(read(marker)).layout).toBe(2);
+    expect((await runDoctor({ container: s.container }, s.deps)).ok).toBe(true);
+  });
+
+  it('layout 2: a lane renders the package template, not a project\'s own plain-named template', async () => {
+    const s = await setupContainer();
+    const tpl = join(s.container, '.ai', 'templates');
+    rmSync(join(tpl, '_lane-ai-readme.md'));
+    writeFileSync(join(tpl, 'lane-ai-readme.md'), 'project own template\n');
+    await lane1(s);
+    const out = read(join(s.container, 'lane_1', '.ai', 'README.md'));
+    expect(out).not.toContain('project own template');
+    expect(out).toContain('lane_1');
+  });
 });

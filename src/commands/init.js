@@ -14,7 +14,7 @@ import { readTemplate, renderTemplate } from '../lib/templates.js';
 import {
   AGENT_FILES, AGENT_FLAGS, appendOnce, denyRules, mergeDenyRules, upsertBlock,
 } from '../lib/agent-files.js';
-import { LANE_TEMPLATES, RUNBOOK, indexPrivate } from '../lib/container-files.js';
+import { CURRENT_LAYOUT, LANE_TEMPLATES, RUNBOOK, indexPrivate } from '../lib/container-files.js';
 import { mergeMcpConfig } from '../lib/mcp-config.js';
 import { appendAudit } from '../lib/audit.js';
 import { seedFromRemote } from '../lib/ai-seed.js';
@@ -77,7 +77,7 @@ export function writeContainer({ path, entry, config, agents, deps }) {
   }
   const p = containerPaths(path);
   const state = emptyLanesState();
-  writeJson(p.marker, { id: entry.id, lainesVersion: VERSION, layout: 2, created: deps.now() });
+  writeJson(p.marker, { id: entry.id, lainesVersion: VERSION, layout: CURRENT_LAYOUT, created: deps.now() });
   writeJson(p.config, config);
   writeJson(p.lanes, state);
   writeJson(p.hooksLock, { version: 1, hooks: {} });

@@ -13,6 +13,7 @@ import {
 import { readJson, writeJson } from '../lib/jsonfile.js';
 import { CURRENT_LAYOUT, migrateContainerFiles, unmigratedFiles } from '../lib/container-files.js';
 import { appendAudit } from '../lib/audit.js';
+import { withLock } from '../lib/lock.js';
 import { InvalidInputError, MalformedConfigError } from '../lib/errors.js';
 
 // Records one post-create run on the board, the lane and the audit log; returns whether it succeeded.
@@ -69,10 +70,13 @@ export async function runRefresh(opts, deps) {
   // Containers made before M4.6 keep laines' files under plain names; move them to `_` names.
   let migrated = [];
   try {
-    const m = migrateContainerFiles(ctx.paths.ai, ctx.layout);
-    migrated = m.migrated;
-    warnings.push(...m.warnings);
-    if (ctx.layout < CURRENT_LAYOUT && !m.warnings.length) writeJson(ctx.paths.marker, { ...readJson(ctx.paths.marker), layout: CURRENT_LAYOUT });
+    // Under the container lock: two refreshes must not migrate, or stamp the marker, at once.
+    await withLock(ctx.paths.lock, () => {
+      const m = migrateContainerFiles(ctx.paths.ai, ctx.layout);
+      migrated = m.migrated;
+      warnings.push(...m.warnings);
+      if (ctx.layout < CURRENT_LAYOUT && !m.warnings.length) writeJson(ctx.paths.marker, { ...readJson(ctx.paths.marker), layout: CURRENT_LAYOUT });
+    });
   } catch (err) {
     warnings.push(`container files not migrated to _ names: ${err.message}`);
   }

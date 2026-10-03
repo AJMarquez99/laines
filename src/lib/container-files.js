@@ -60,7 +60,11 @@ export function migrateContainerFiles(ai, layout = 1) {
       renameSync(old, next);
       migrated.push(`${dir}/${name}`);
     }
-    if (!existsSync(next)) continue;
+    if (!existsSync(next)) {
+      // Gone under both names: only the committed row is left, and it would dangle once stamped.
+      if (removeIndexRow(join(ai, dir, 'README.md'), name)) migrated.push(`${dir}/${name}`);
+      continue;
+    }
     const rowGone = removeIndexRow(join(ai, dir, 'README.md'), name);
     const rowAdded = addPrivateIndexRow(join(ai, dir), `_${name}`, answers) === 'written';
     if ((rowGone || rowAdded) && !migrated.includes(`${dir}/${name}`)) migrated.push(`${dir}/${name}`);
