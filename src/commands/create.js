@@ -7,7 +7,7 @@ import { writeLaneFiles } from '../lib/lane-files.js';
 import { buildBrief } from '../lib/brief.js';
 import { gitOut, gitOutAsync } from '../lib/git.js';
 import { lanePorts } from '../lib/ports.js';
-import { laneId } from '../lib/ids.js';
+import { LANE_NAME, laneId } from '../lib/ids.js';
 import { shellQuote } from '../lib/paths.js';
 import { appendAudit } from '../lib/audit.js';
 import { BlockedError, InvalidInputError } from '../lib/errors.js';
@@ -18,7 +18,6 @@ import {
   runEvent, runSummary, setupFailedNext, setupFailedRequest, unapprovedWarnings,
 } from '../lib/hook-events.js';
 
-const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
 // An explicit `<lanePrefix><N>` name claims lane number N, so the name and the ports agree. Only a
 // canonical number counts: `lane_003` or `lane_0` is a custom name.
@@ -54,7 +53,7 @@ function planLane(ctx, state, opts) {
 
 function validate(ctx, deps, opts, branch) {
   // `__proto__` would set the prototype of state.lanes rather than add a lane.
-  if (opts.name !== undefined && (!NAME.test(opts.name) || opts.name === '__proto__')) {
+  if (opts.name !== undefined && (!LANE_NAME.test(opts.name) || opts.name === '__proto__')) {
     throw new InvalidInputError(`Invalid lane name "${opts.name}": use lowercase letters, digits, "_" and "-", start with a letter or digit, max 32 characters.`);
   }
   if (String(branch).startsWith('-') || deps.git(['check-ref-format', '--branch', branch], { cwd: ctx.root }).status !== 0) {

@@ -23,14 +23,21 @@ export function runGitAsync(args, { cwd } = {}) {
   return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
-    const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: gitEnv() });
-    child.stdout.setEncoding('utf8').on('data', (d) => {
+    let child;
+    try {
+      child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: gitEnv() });
+    } catch (error) {
+      resolve({ status: null, stdout: '', stderr: '', error });
+      return;
+    }
+    // First, so a failed spawn (EMFILE: a child without stdio) resolves instead of crashing.
+    child.on('error', (error) => resolve({ status: null, stdout, stderr, error }));
+    child.stdout?.setEncoding('utf8').on('data', (d) => {
       stdout += d;
     });
-    child.stderr.setEncoding('utf8').on('data', (d) => {
+    child.stderr?.setEncoding('utf8').on('data', (d) => {
       stderr += d;
     });
-    child.on('error', (error) => resolve({ status: null, stdout, stderr, error }));
     child.on('close', (status) => resolve({ status, stdout, stderr, error: undefined }));
   });
 }

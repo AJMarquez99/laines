@@ -100,4 +100,10 @@ describe('runGitAsync', () => {
     const bad = await runGitAsync(['definitely-not-a-git-command']);
     expect(bad.status).not.toBe(0);
   });
+
+  it('resolves, never rejects, when git cannot be spawned', async () => {
+    const r = await runGitAsync(['--version'], { cwd: join(tmp(), 'missing') });
+    expect(r.status).toBeNull();
+    expect(r.error).toBeTruthy();
+  });
 });

@@ -70,15 +70,16 @@ export function runHookFile({ file, cwd, vars, timeoutMs, signals = process }) {
       finish(null, null, error);
       return;
     }
-    for (const s of FORWARDED) signals.on(s, forward);
-    child.stdout.setEncoding('utf8').on('data', append);
-    child.stderr.setEncoding('utf8').on('data', append);
+    // First, so a failed spawn (EMFILE: a child without stdio) is data, never an uncaught event.
     child.on('error', (error) => finish(null, null, error));
+    for (const s of FORWARDED) signals.on(s, forward);
+    child.stdout?.setEncoding('utf8').on('data', append);
+    child.stderr?.setEncoding('utf8').on('data', append);
     child.on('exit', (status, signal) => {
       if (settled) return;
       linger = setTimeout(() => {
-        child.stdout.destroy();
-        child.stderr.destroy();
+        child.stdout?.destroy();
+        child.stderr?.destroy();
         finish(status, signal);
       }, EXIT_GRACE_MS);
     });

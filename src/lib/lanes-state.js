@@ -59,5 +59,7 @@ export const dropRequests = (state, match) => ({ ...state, requests: state.reque
 export function spinUpState(lane, config, now) {
   if (lane.status !== 'spinning up') return null;
   const staleMs = ((config?.hooks.timeoutSec ?? 300) + 1800) * 1000;
-  return Date.parse(now) - Date.parse(lane.updated) > staleMs ? 'interrupted' : 'running';
+  const age = Date.parse(now) - Date.parse(lane.updated);
+  // An unreadable timestamp can never become stale on its own: call it interrupted.
+  return !Number.isFinite(age) || age > staleMs ? 'interrupted' : 'running';
 }

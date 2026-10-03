@@ -1,5 +1,8 @@
 import { InvalidInputError } from './errors.js';
 
+// One lane-name rule for create and lane detection.
+export const LANE_NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+
 export function slugify(s) {
   const slug = String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
   return slug || 'container';

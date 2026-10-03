@@ -4,6 +4,7 @@ import { loadConfig } from '../config.js';
 import { readJson } from './jsonfile.js';
 import { configDir, containerPaths } from './paths.js';
 import { loadIndex } from './machine-index.js';
+import { LANE_NAME } from './ids.js';
 import { BlockedError, InvalidInputError, MalformedConfigError, NotAContainerError } from './errors.js';
 
 // No upward search: a command runs against the given directory or fails clearly.
@@ -27,8 +28,6 @@ const readJsonQuiet = (file) => {
     return null;
   }
 };
-
-const LANE_NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
 // Spec §7.1: lane mode only when the lane marker sits at the repo root AND the container it names
 // carries a marker with the same id AND the repo root really is <container>/<lane> (a copied lane

@@ -157,6 +157,15 @@ describe('create', () => {
     expect(r.stdout).toContain('# Lane brief: lane_1');
   });
 
+  it('treats a failed git spawn as a clone failure and cleans up', async () => {
+    const s = await setupContainer();
+    const broken = { ...s.deps, gitAsync: async (args, o) => (args[0] === 'clone' ? { status: null, stdout: '', stderr: '', error: new Error('spawn git EMFILE') } : s.deps.gitAsync(args, o)) };
+    await expect(runCreate({ container: s.container }, broken)).rejects.toBeInstanceOf(GitError);
+    const ctx = loadContainer({ container: s.container }, s.deps);
+    expect(readLanes(ctx).lanes).toEqual({});
+    expect(existsSync(join(s.container, 'lane_1'))).toBe(false);
+  });
+
   it('clones asynchronously, so a long-lived server keeps answering', async () => {
     const { deps, container } = await setupContainer();
     const sync = { ...deps, git: (args, o) => (args[0] === 'clone' ? { status: 1, stdout: '', stderr: 'sync clone used' } : deps.git(args, o)) };

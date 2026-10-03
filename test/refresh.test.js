@@ -6,6 +6,7 @@ import { runRefresh } from '../src/commands/refresh.js';
 import { runTeardown } from '../src/commands/teardown.js';
 import { loadContainer } from '../src/lib/container.js';
 import { readLanes, updateLanes } from '../src/lib/lanes-store.js';
+import { spinUpState } from '../src/lib/lanes-state.js';
 import { approveHooks } from '../src/lib/hooks.js';
 import { HookError, InvalidInputError, MalformedConfigError } from '../src/lib/errors.js';
 import { cleanupTmp, setupContainer, gitIn, runCli, writeHook, setConfig } from './helpers.js';
@@ -106,6 +107,12 @@ describe('refresh', () => {
     });
     await runRefresh({ lane: 'lane_1', container: s.container }, s.deps);
     expect(lane1(s)).toMatchObject({ state: 'active', status: 'idle' });
+  });
+
+  it('treats an unreadable updated timestamp as interrupted', () => {
+    const lane = { status: 'spinning up', updated: 'garbage' };
+    expect(spinUpState(lane, undefined, '2026-09-29T12:00:00.000Z')).toBe('interrupted');
+    expect(spinUpState({ ...lane, updated: '2026-09-29T11:59:00.000Z' }, undefined, '2026-09-29T12:00:00.000Z')).toBe('running');
   });
 
   it('refuses a lane whose create may still be running', async () => {
