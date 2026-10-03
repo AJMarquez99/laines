@@ -18,4 +18,4 @@ guidelines, lessons, data and audits live in the container's shared layer:
 6. **Stay inside this lane:** source `.laines.env`, use only this lane's ports, and never run
    `dot-ai init` or `dot-ai sync` here.
 
-Full protocol: `{{containerDir}}/.ai/runbooks/lane-management.md`
+Full protocol: `{{containerDir}}/.ai/runbooks/_lane-management.md`

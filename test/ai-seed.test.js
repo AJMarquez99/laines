@@ -63,7 +63,7 @@ describe('init seeding', () => {
   it("seeds a new container's shared .ai/ from the remote, recording no base until a lane exists", async () => {
     const s = await setupContainer({ files: { 'README.md': '#\n', '.ai/knowledge/a.md': 'A\n' } });
     expect(readFileSync(join(s.container, '.ai', 'knowledge', 'a.md'), 'utf8')).toBe('A\n');
-    expect(existsSync(join(s.container, '.ai', 'runbooks', 'lane-management.md'))).toBe(true);
+    expect(existsSync(join(s.container, '.ai', 'runbooks', '_lane-management.md'))).toBe(true);
     expect(existsSync(join(s.container, '.laines', 'ai-sync.json'))).toBe(false);
   });
 
@@ -90,7 +90,7 @@ describe('init seeding', () => {
     const r = await runCli(['init', 'lanes', '--remote', remote, '--format', 'table'], testDeps(root, { runDotAi }));
     expect(r.code).toBe(0);
     expect(r.stdout).toMatch(/\.ai in the remote is not a directory/);
-    expect(existsSync(join(root, 'lanes', '.ai', 'runbooks', 'lane-management.md'))).toBe(true);
+    expect(existsSync(join(root, 'lanes', '.ai', 'runbooks', '_lane-management.md'))).toBe(true);
   });
 
   it('--no-seed starts fresh without reading the remote', async () => {

@@ -237,21 +237,21 @@ describe('adopt', () => {
 
   it('never removes an untracked .ai/ file from the lane when laines wrote its own version in the container', async () => {
     const w = world({ files: { 'README.md': '#\n' } });
-    put(w.dir, '.ai/runbooks/lane-management.md', 'my own runbook\n');
+    put(w.dir, '.ai/runbooks/_lane-management.md', 'my own runbook\n');
     put(w.dir, '.ai/notes/idea.md', 'I\n');
     const r = await w.adopt();
     const laneDir = join(w.dir, 'lane_1');
-    expect(readFileSync(join(laneDir, '.ai', 'runbooks', 'lane-management.md'), 'utf8')).toBe('my own runbook\n');
+    expect(readFileSync(join(laneDir, '.ai', 'runbooks', '_lane-management.md'), 'utf8')).toBe('my own runbook\n');
     expect(existsSync(join(laneDir, '.ai', 'notes'))).toBe(false);
-    expect(r.warnings.join('\n')).toMatch(/kept in lane_1\/\.ai\/.*runbooks\/lane-management\.md/);
+    expect(r.warnings.join('\n')).toMatch(/kept in lane_1\/\.ai\/.*runbooks\/_lane-management\.md/);
   });
 
   it('keeps an untracked file that is only a prefix of what laines writes, not a whole line of it', async () => {
     const w = world({ files: { 'README.md': '#\n' } });
-    put(w.dir, '.ai/runbooks/lane-management.md', '# Lane\n');
+    put(w.dir, '.ai/runbooks/_lane-management.md', '# Lane\n');
     const r = await w.adopt();
-    expect(readFileSync(join(w.dir, 'lane_1', '.ai', 'runbooks', 'lane-management.md'), 'utf8')).toBe('# Lane\n');
-    expect(r.warnings.join('\n')).toMatch(/kept in lane_1\/\.ai\/.*runbooks\/lane-management\.md/);
+    expect(readFileSync(join(w.dir, 'lane_1', '.ai', 'runbooks', '_lane-management.md'), 'utf8')).toBe('# Lane\n');
+    expect(r.warnings.join('\n')).toMatch(/kept in lane_1\/\.ai\/.*runbooks\/_lane-management\.md/);
   });
 
   it('keeps a tracked .ai/ file whose name readdir returns decomposed (NFD)', async () => {
@@ -284,7 +284,8 @@ describe('adopt', () => {
     const shared = (rel) => readFileSync(join(w.dir, '.ai', rel), 'utf8');
     expect(shared('context/README.md')).toContain('user context line');
     expect(shared('runbooks/README.md')).toContain('user runbook line');
-    expect(shared('runbooks/README.md')).toContain('lane-management.md');
+    expect(shared('runbooks/README.md')).not.toContain('lane-management.md');
+    expect(shared('runbooks/_README.md')).toContain('_lane-management.md');
     expect(shared('README.md')).toBe('# my .ai\n');
     expect(shared('plans/README.md')).toBe('# my plans\n');
     expect(existsSync(join(laneDir, '.ai', 'runbooks'))).toBe(false);

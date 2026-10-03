@@ -47,8 +47,9 @@ describe('runInit', () => {
     const settings = JSON.parse(readFileSync(join(c, '.claude', 'settings.json'), 'utf8'));
     expect(settings.permissions.deny).toEqual(expect.arrayContaining(denyRules()));
     expect(readFileSync(join(c, '.ai', 'context', 'LANES_BOARD.md'), 'utf8')).toContain('# Lanes Board: my-app');
-    expect(readFileSync(join(c, '.ai', 'runbooks', 'README.md'), 'utf8')).toContain('[lane-management.md](lane-management.md)');
-    expect(readFileSync(join(c, '.ai', 'templates', 'README.md'), 'utf8')).toContain('[lane-ai-readme.md](lane-ai-readme.md)');
+    expect(readFileSync(join(c, '.ai', 'runbooks', '_README.md'), 'utf8')).toContain('[_lane-management.md](_lane-management.md)');
+    expect(readFileSync(join(c, '.ai', 'templates', '_README.md'), 'utf8')).toContain('[_lane-ai-readme.md](_lane-ai-readme.md)');
+    expect(readFileSync(join(c, '.ai', 'runbooks', 'README.md'), 'utf8')).not.toContain('lane-management');
     expect(readFileSync(join(c, '.ai', 'context', 'README.md'), 'utf8')).toContain('<!-- laines:board-note -->');
     expect(readFileSync(join(c, '.laines', 'audit.jsonl'), 'utf8')).toContain('"action":"init"');
     expect(loadIndex(deps.env.LAINES_CONFIG_DIR).containers).toEqual([

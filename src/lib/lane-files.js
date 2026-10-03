@@ -126,8 +126,9 @@ export function writeLaneFiles(ctx, deps, lane) {
   };
   // The container's copies of the lane templates win, so a team can customise them.
   const template = (file) => {
-    const own = join(ctx.paths.templatesDir, file);
-    return renderTemplate(existsSync(own) ? readFileSync(own, 'utf8') : readTemplate(file), vars);
+    // `_<name>` first, then the old `<name>` of a container not yet migrated, then the package copy.
+    const own = [`_${file}`, file].map((n) => join(ctx.paths.templatesDir, n)).find((f) => existsSync(f));
+    return renderTemplate(own ? readFileSync(own, 'utf8') : readTemplate(file), vars);
   };
 
   if (!tracked('.ai/.lane.json')) {

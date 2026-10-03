@@ -270,7 +270,7 @@ describe('create with hooks', () => {
 
   it('uses the container copy of lane-local-instructions.md when a team customises it', async () => {
     const { deps, container } = await setupContainer();
-    const own = join(container, '.ai', 'templates', 'lane-local-instructions.md');
+    const own = join(container, '.ai', 'templates', '_lane-local-instructions.md');
     expect(existsSync(own)).toBe(true);
     writeFileSync(own, 'Custom rules for {{lane}}\n');
     const r = await runCreate({ container }, deps);

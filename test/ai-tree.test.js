@@ -22,7 +22,8 @@ describe('isSynced', () => {
   it('excludes lane-owned, local-only and laines-owned paths', () => {
     for (const rel of ['knowledge/a.md', 'guidelines/README.md', '.gitignore', 'runbooks/deploy.md', 'templates/pr.md']) expect(isSynced(rel), rel).toBe(true);
     for (const rel of ['context/LANES_BOARD.md', 'plans/p.md', 'archive/2026-10-02_board-log.md', 'archive/2026-10-02_lane_1/plans/p.md', '_secrets.md', 'knowledge/_draft.md', '_scratch/x.md', 'README.md', '.lane.json',
-      'runbooks/lane-management.md', 'templates/lane-ai-readme.md', 'templates/lane-context-readme.md', 'templates/lane-plans-readme.md', 'templates/lane-local-instructions.md']) {
+      'runbooks/lane-management.md', 'templates/lane-ai-readme.md', 'templates/lane-context-readme.md', 'templates/lane-plans-readme.md', 'templates/lane-local-instructions.md',
+      'runbooks/_lane-management.md', 'templates/_lane-ai-readme.md', 'templates/_lane-context-readme.md', 'templates/_lane-plans-readme.md', 'templates/_lane-local-instructions.md', 'runbooks/_README.md', 'templates/_README.md']) {
       expect(isSynced(rel), rel).toBe(false);
     }
   });

@@ -22,7 +22,7 @@ export function containerPaths(root) {
     lock: join(laines, '.lock'),
     ai,
     board: join(ai, 'context', 'LANES_BOARD.md'),
-    runbook: join(ai, 'runbooks', 'lane-management.md'),
+    runbook: join(ai, 'runbooks', '_lane-management.md'),
     templatesDir: join(ai, 'templates'),
     claudeSettings: join(root, '.claude', 'settings.json'),
   };

@@ -26,6 +26,28 @@ async function synced() {
   return { ...s, sync, cAi: join(s.container, '.ai'), lAi: join(lane.path, '.ai'), laneDir: lane.path };
 }
 
+describe('ai sync and laines container files', () => {
+  it('a repo that commits .ai/ indexes: every README row in the lane links to a file that exists there, and _README.md is not synced', async () => {
+    const readme = (n) => `# ${n}\n\n## Index\n\n| File | Answers |\n|---|---|\n| [x.md](x.md) | x |\n`;
+    const s = await setupContainer({ files: {
+      'README.md': '# app\n',
+      '.ai/runbooks/README.md': readme('Runbooks'), '.ai/runbooks/x.md': 'x\n',
+      '.ai/templates/README.md': readme('Templates'), '.ai/templates/x.md': 'x\n',
+    } });
+    const lane = await invoke('create', { container: s.container }, s.deps);
+    await invoke('ai sync', { lane: 'lane_1', container: s.container }, s.deps);
+    const lAi = join(lane.path, '.ai');
+    for (const dir of ['runbooks', 'templates']) {
+      const rows = [...read(join(lAi, dir, 'README.md')).matchAll(/^\|\s*\[[^\]]*\]\(([^)]+)\)/gm)].map((m) => m[1]);
+      expect(rows.length).toBeGreaterThan(0);
+      for (const target of rows) expect(existsSync(join(lAi, dir, target)), `${dir}/${target}`).toBe(true);
+      expect(existsSync(join(lAi, dir, '_README.md')), dir).toBe(false);
+      expect(read(join(lAi, dir, 'README.md'))).not.toContain('lane-');
+    }
+    expect(existsSync(join(lAi, 'runbooks', '_lane-management.md'))).toBe(false);
+  });
+});
+
 describe('ai sync', () => {
   it('first sync merges both sides and records the base', async () => {
     const s = await synced();

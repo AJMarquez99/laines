@@ -12,7 +12,7 @@ working in.
   look for a container or report to a board.
 - **In the container directory itself (not inside a git repository):** you are the container
   session. Create, monitor and tear down lanes with `laines`; see
-  `.ai/runbooks/lane-management.md`.
+  `.ai/runbooks/_lane-management.md`.
 
 **Lane rules**
 1. A lane owns only its `.ai/context/` and `.ai/plans/`. Write new knowledge, guidelines, lessons,

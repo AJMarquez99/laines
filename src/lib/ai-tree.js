@@ -9,6 +9,7 @@ import { gitOut } from './git.js';
 
 // laines writes these into every container's .ai/: they describe the container, not the project.
 const LAINES_OWNED = new Set([
+  // Pre-M4.6 names, kept so an unmigrated container still never syncs them; the `_` names are excluded by the `_` rule.
   'runbooks/lane-management.md',
   'templates/lane-ai-readme.md',
   'templates/lane-context-readme.md',

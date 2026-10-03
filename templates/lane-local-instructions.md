@@ -13,4 +13,4 @@ You are working in a lane: an isolated clone with its own ports and local enviro
   `{{containerDir}}/.ai/context/LANES_BOARD.md`.
 - Teardown, release, hook approval, hook policy and config changes are for a human.
 
-Full protocol: `{{containerDir}}/.ai/runbooks/lane-management.md`
+Full protocol: `{{containerDir}}/.ai/runbooks/_lane-management.md`

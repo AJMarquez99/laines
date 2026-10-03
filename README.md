@@ -98,7 +98,7 @@ laines init ~/work/other-lanes --remote git@github.com:your-org/other.git --dry-
   and wired into your agent's instruction file. You don't need dot-ai installed separately.
 - **Lane rules for agents**, added to `CLAUDE.md` (and `AGENTS.md` / `GEMINI.md` with `--agents`)
   in their own `laines-lanes` block, which survives `dot-ai sync`.
-- **The status board** at `.ai/context/LANES_BOARD.md`, a lane-management runbook, and lane
+- **The status board** at `.ai/context/LANES_BOARD.md`, a lane-management runbook (`_lane-management.md`, `_`-named so it is never synced), and lane
   templates.
 - **`.laines/`**: `container.json` (marker), `config.json` (settings), `lanes.json` (lane index),
   `hooks/` (your setup scripts) and `audit.jsonl`.

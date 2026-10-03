@@ -5,6 +5,7 @@ import { readJson } from '../lib/jsonfile.js';
 import { configDir, containerPaths } from '../lib/paths.js';
 import { indexFiles, loadIndex, pruneIndex } from '../lib/machine-index.js';
 import { containerDirFrom, resolveContainer } from '../lib/container.js';
+import { unmigratedFiles } from '../lib/container-files.js';
 import { AGENT_FILES, LANES_BEGIN, denyRules } from '../lib/agent-files.js';
 import { readLanes } from '../lib/lanes-store.js';
 import { spinUpState } from '../lib/lanes-state.js';
@@ -138,6 +139,10 @@ export async function runDoctor(opts, deps) {
       return !existsSync(f) || !readFileSync(f, 'utf8').includes(LANES_BEGIN);
     });
     if (missing.length) throw new Error(`laines-lanes block missing for: ${missing.map((a) => AGENT_FILES[a]).join(', ')}`);
+    const old = unmigratedFiles(p.ai);
+    if (old.length) {
+      throw new Error(`laines' files still use plain names (${old.map((f) => `${f.dir}/${f.name}${f.both ? ', also _' + f.name : ''}`).join(', ')}): run \`laines refresh <lane>\` to move laines' files to \`_\` names`);
+    }
     return agents.map((a) => AGENT_FILES[a]).join(', ');
   });
   check('deny-rules', () => {

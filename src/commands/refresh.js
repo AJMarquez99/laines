@@ -10,6 +10,7 @@ import { hookStates } from '../lib/hooks.js';
 import {
   dryRunHooks, hookBoardEntries, hookError, runEvent, runSummary, setupFailedNext, setupFailedRequest, unapprovedWarnings,
 } from '../lib/hook-events.js';
+import { migrateContainerFiles } from '../lib/container-files.js';
 import { appendAudit } from '../lib/audit.js';
 import { InvalidInputError, MalformedConfigError } from '../lib/errors.js';
 
@@ -64,6 +65,15 @@ export async function runRefresh(opts, deps) {
   // Containers made before a new human-only command existed get its deny rules here. A malformed
   // container settings file is the container's problem (doctor reports it), not this lane's.
   const warnings = [];
+  // Containers made before M4.6 keep laines' files under plain names; move them to `_` names.
+  let migrated = [];
+  try {
+    const m = migrateContainerFiles(ctx.paths.ai);
+    migrated = m.migrated;
+    warnings.push(...m.warnings);
+  } catch (err) {
+    warnings.push(`container files not migrated to _ names: ${err.message}`);
+  }
   try {
     mergeDenyRules(ctx.paths.claudeSettings, denyRules());
   } catch (err) {
@@ -92,6 +102,7 @@ export async function runRefresh(opts, deps) {
     path: laneDir,
     branch,
     files: files.written,
+    migrated,
     warnings: [...warnings, ...files.skipped.map((f) => `${f.file} not written: ${f.reason}`), ...unapprovedWarnings(run)],
     hooks: run,
   };

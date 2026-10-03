@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { readJson, writeJson } from './jsonfile.js';
 import { InvalidInputError, MalformedConfigError } from './errors.js';
 
@@ -69,4 +69,35 @@ export function appendOnce(file, key, text) {
   if (cur.includes(marker)) return 'unchanged';
   writeFileSync(file, `${cur.replace(/\n*$/, '\n')}\n${marker}\n${text.replace(/\n+$/, '')}\n`);
   return 'written';
+}
+
+// dot-ai's private-index seed: a folder's gitignored `_README.md`, which lists its `_` files so
+// they never appear in the committed README.md.
+export const PRIVATE_SEED =
+  '# Private index\n\nLocal-only — gitignored by the `_*` rule. Indexes this folder\'s `_` files so they\nnever appear in the committed `README.md`.\n\n## Index\n\n| File | Answers |\n|---|---|\n';
+
+// Adds a row for a `_` file to the folder's `_README.md`, creating it from dot-ai's seed if absent.
+export function addPrivateIndexRow(dir, file, answers) {
+  const readme = join(dir, '_README.md');
+  if (!existsSync(readme)) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(readme, PRIVATE_SEED);
+  }
+  return addIndexRow(readme, file, answers);
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const rowFor = (file) => new RegExp(`^\\|\\s*\\[[^\\]]*\\]\\(${escapeRe(file)}\\)\\s*\\|.*$`);
+
+// True when an index row links to exactly `file`.
+export function hasIndexRow(readme, file) {
+  return existsSync(readme) && readFileSync(readme, 'utf8').split('\n').some((l) => rowFor(file).test(l));
+}
+
+// Removes the rows whose link target is exactly `file`; returns whether any went.
+export function removeIndexRow(readme, file) {
+  if (!hasIndexRow(readme, file)) return false;
+  const re = rowFor(file);
+  writeFileSync(readme, readFileSync(readme, 'utf8').split('\n').filter((l) => !re.test(l)).join('\n'));
+  return true;
 }

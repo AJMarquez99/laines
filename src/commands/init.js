@@ -12,18 +12,12 @@ import { emptyLanesState } from '../lib/lanes-state.js';
 import { renderBoard } from '../lib/board.js';
 import { readTemplate, renderTemplate } from '../lib/templates.js';
 import {
-  AGENT_FILES, AGENT_FLAGS, addIndexRow, appendOnce, denyRules, mergeDenyRules, upsertBlock,
+  AGENT_FILES, AGENT_FLAGS, appendOnce, denyRules, mergeDenyRules, upsertBlock,
 } from '../lib/agent-files.js';
+import { LANE_TEMPLATES, RUNBOOK, indexPrivate } from '../lib/container-files.js';
 import { mergeMcpConfig } from '../lib/mcp-config.js';
 import { appendAudit } from '../lib/audit.js';
 import { seedFromRemote } from '../lib/ai-seed.js';
-
-const LANE_TEMPLATES = [
-  ['lane-ai-readme.md', 'Lane-local `.ai/README.md`: lane rules and where the shared knowledge lives'],
-  ['lane-context-readme.md', 'Lane-local `.ai/context/README.md`'],
-  ['lane-plans-readme.md', 'Lane-local `.ai/plans/README.md`'],
-  ['lane-local-instructions.md', 'Lane-local `CLAUDE.local.md` / `AGENTS.md` / `GEMINI.md`: lane identity and rules'],
-];
 
 export const CONTAINER_FILES = (agents) => [
   '.laines/container.json',
@@ -32,8 +26,8 @@ export const CONTAINER_FILES = (agents) => [
   '.laines/hooks.lock.json',
   '.laines/hooks/README.md',
   '.ai/context/LANES_BOARD.md',
-  '.ai/runbooks/lane-management.md',
-  ...LANE_TEMPLATES.map(([name]) => `.ai/templates/${name}`),
+  `.ai/${RUNBOOK[0]}/_${RUNBOOK[1]}`,
+  ...LANE_TEMPLATES.map(([dir, name]) => `.ai/${dir}/_${name}`),
   '.claude/settings.json',
   ...(agents.includes('claude') ? ['.mcp.json'] : []),
   ...agents.map((a) => AGENT_FILES[a]),
@@ -92,11 +86,11 @@ export function writeContainer({ path, entry, config, agents, deps }) {
 
   mkdirSync(dirname(p.runbook), { recursive: true });
   writeFileSync(p.runbook, renderTemplate(readTemplate('lane-management.md'), { containerId: entry.id }));
-  addIndexRow(join(p.ai, 'runbooks', 'README.md'), 'lane-management.md', 'How to create, run, monitor and tear down lanes in this container');
+  indexPrivate(p.ai, RUNBOOK);
   mkdirSync(p.templatesDir, { recursive: true });
-  for (const [name, answers] of LANE_TEMPLATES) {
-    writeFileSync(join(p.templatesDir, name), readTemplate(name));
-    addIndexRow(join(p.templatesDir, 'README.md'), name, answers);
+  for (const entry of LANE_TEMPLATES) {
+    writeFileSync(join(p.templatesDir, `_${entry[1]}`), readTemplate(entry[1]));
+    indexPrivate(p.ai, entry);
   }
   appendOnce(join(p.ai, 'context', 'README.md'), 'board-note', readTemplate('context-board-note.md'));
   mkdirSync(dirname(p.board), { recursive: true });

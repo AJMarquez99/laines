@@ -77,8 +77,8 @@ people running several containers across several projects on one machine.
 │   └── .lock/                    # mkdir lock for lanes.json + board
 ├── .ai/                          # full dot-ai layer (shared by all lanes)
 │   ├── context/LANES_BOARD.md    # the board
-│   ├── runbooks/lane-management.md
-│   └── templates/lane-*.md       # lane-local README templates
+│   ├── runbooks/_lane-management.md
+│   └── templates/_lane-*.md      # `_`-prefixed (dot-ai private, never synced): lane-local README templates
 ├── .claude/settings.json         # deny rules for human-only commands (+ dot-ai settings)
 ├── .mcp.json                     # registers laines-mcp for agent sessions (Claude)
 ├── CLAUDE.md                     # dot-ai block, then <!-- BEGIN laines-lanes --> block
