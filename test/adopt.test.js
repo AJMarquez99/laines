@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { invoke } from '../src/commands/registry.js';
 import { runDotAi } from '../src/lib/dotai.js';
@@ -83,6 +84,28 @@ describe('adopt refuses', () => {
     expect(err.message).toContain('mv ');
   });
 
+  it('an interrupted earlier adopt reached through a symlink to the project', async () => {
+    const w = world();
+    const link = join(w.root, 'link');
+    symlinkSync(w.dir, link);
+    renameSync(w.dir, join(dirname(w.dir), '.myapp.laines-adopt-2026-10-02T12-00-00-000Z'));
+    mkdirSync(w.dir);
+    const err = await invoke('adopt', { dir: link }, w.deps).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedError);
+    expect(err.exitCode).toBe(3);
+    expect(err.message).toContain('mv ');
+  });
+
+  it('a stray .laines/ without a container marker gets the interrupted-adopt hint', async () => {
+    const w = world();
+    const dir = join(w.root, 'half');
+    mkdirSync(join(dir, '.laines'), { recursive: true });
+    mkdirSync(join(dir, 'lane_1', '.git'), { recursive: true });
+    const err = await invoke('adopt', { dir }, w.deps).catch((e) => e);
+    expect(err).toBeInstanceOf(InvalidInputError);
+    expect(err.message).toContain(`the project may be in ${join(dir, 'lane_1')}`);
+  });
+
   it('a project whose .ai is a symbolic link', async () => {
     const w = world();
     mkdirSync(join(w.root, 'elsewhere'));
@@ -151,7 +174,38 @@ describe('adopt', () => {
     const laneDir = join(w.dir, 'lane_1');
     expect(readFileSync(join(laneDir, '.ai', 'runbooks', 'lane-management.md'), 'utf8')).toBe('my own runbook\n');
     expect(existsSync(join(laneDir, '.ai', 'notes'))).toBe(false);
-    expect(r.warnings.join('\n')).toContain('runbooks/lane-management.md');
+    expect(r.warnings.join('\n')).toMatch(/kept in lane_1\/\.ai\/.*runbooks\/lane-management\.md/);
+  });
+
+  it('moves an untracked dot-ai scaffold into the container, keeping the lines laines appends to', async () => {
+    const w = world({ files: { 'README.md': '#\n' } });
+    put(w.dir, '.ai/README.md', '# my .ai\n');
+    put(w.dir, '.ai/context/README.md', '# Context\n\nuser context line\n');
+    put(w.dir, '.ai/runbooks/README.md', '# Runbooks\n\n## Index\n\n| File | Answers |\n|---|---|\n| [mine.md](mine.md) | user runbook line |\n');
+    put(w.dir, '.ai/runbooks/mine.md', 'M\n');
+    put(w.dir, '.ai/plans/README.md', '# my plans\n');
+    const r = await w.adopt();
+    const laneDir = join(w.dir, 'lane_1');
+    expect(r.warnings.join('\n')).not.toContain('kept');
+    const shared = (rel) => readFileSync(join(w.dir, '.ai', rel), 'utf8');
+    expect(shared('context/README.md')).toContain('user context line');
+    expect(shared('runbooks/README.md')).toContain('user runbook line');
+    expect(shared('runbooks/README.md')).toContain('lane-management.md');
+    expect(shared('README.md')).toBe('# my .ai\n');
+    expect(shared('plans/README.md')).toBe('# my plans\n');
+    expect(existsSync(join(laneDir, '.ai', 'runbooks'))).toBe(false);
+    expect(gitIn(laneDir, 'status', '--porcelain')).toBe('');
+  });
+
+  it('skips unreadable folders when looking for virtualenvs', async () => {
+    const w = world();
+    put(w.dir, 'locked/inner/x.txt', 'x\n');
+    chmodSync(join(w.dir, 'locked'), 0o000);
+    try {
+      expect((await w.adopt()).lane).toBe('lane_1');
+    } finally {
+      chmodSync(join(w.dir, 'lane_1', 'locked'), 0o755);
+    }
   });
 
   it('keeps untracked lane-local files as .pre-laines backups, hidden from git, only for files laines writes', async () => {
@@ -220,6 +274,28 @@ describe('adopt rollback', () => {
     expect(snapshot(w.dir)).toEqual(before);
     expect(loadIndex(w.deps.env.LAINES_CONFIG_DIR).containers).toEqual([]);
     expect(readdirSync(dirname(w.dir)).filter((e) => e.includes('laines-adopt'))).toEqual([]);
+  });
+
+  it('leaves anything adopt did not write, says where the project is, and the hint finishes the restore', async () => {
+    const w = world({
+      deps: {
+        runDotAi: (args, o) => {
+          writeFileSync(join(o.cwd, 'stranger.txt'), 'not ours\n');
+          return { status: 1, stdout: '', stderr: 'dot-ai broke', error: undefined };
+        },
+      },
+    });
+    const before = snapshot(w.dir);
+    const laneDir = join(w.dir, 'lane_1');
+    const err = await w.adopt().catch((e) => e);
+    expect(err.message).toContain('stranger.txt');
+    expect(err.message).toContain(`the project is in ${laneDir}`);
+    expect(readFileSync(join(w.dir, 'stranger.txt'), 'utf8')).toBe('not ours\n');
+    expect(existsSync(join(laneDir, '.git'))).toBe(true);
+    unlinkSync(join(w.dir, 'stranger.txt'));
+    const hint = err.message.split('\n').map((l) => l.trim()).find((l) => l.startsWith('mv '));
+    execFileSync('sh', ['-c', hint]);
+    expect(snapshot(w.dir)).toEqual(before);
   });
 
   it('restores the original folder when registering the lane fails', async () => {

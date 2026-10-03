@@ -43,6 +43,17 @@ function isSymlink(p) {
   }
 }
 
+// The top-level names adopt (writeContainer and dot-ai init) creates in the new container folder.
+const ownTopLevel = (agents) => new Set([...CONTAINER_FILES(agents).map((f) => f.split('/')[0]), '.ai', '.laines', '.claude', '.gemini', '.mcp.json']);
+
+// True when `now` is `was`, or `was` (minus trailing newlines, which appends normalise) plus more.
+function holds(now, was) {
+  if (now.equals(was)) return true;
+  let n = was.length;
+  while (n > 0 && was[n - 1] === 0x0a) n -= 1;
+  return now.length >= n && now.subarray(0, n).equals(was.subarray(0, n));
+}
+
 function isGitDir(p) {
   try {
     return lstatSync(p).isDirectory();
@@ -55,10 +66,11 @@ function isGitDir(p) {
 function inspect(opts, deps) {
   if (!opts.dir) throw new InvalidInputError('Usage: laines adopt <dir>');
   const given = resolve(deps.cwd(), opts.dir);
-  // The temp sibling sits next to the real folder, so look beside the realpath of the parent (adopt
-  // may be given a symlink whose target has already been moved aside).
-  const parent0 = existsSync(dirname(given)) ? realpathSync(dirname(given)) : dirname(given);
-  const name0 = existsSync(given) ? basename(realpathSync(given)) : basename(given);
+  // The temp sibling sits next to the real folder: when `given` resolves (it may be a symlink to the
+  // project), look beside its target; otherwise beside the real path of its parent.
+  const real0 = existsSync(given) ? realpathSync(given) : join(existsSync(dirname(given)) ? realpathSync(dirname(given)) : dirname(given), basename(given));
+  const parent0 = dirname(real0);
+  const name0 = basename(real0);
   // A crash between the two renames leaves the project in a hidden sibling: say how to put it back.
   const leftover = existsSync(parent0) ? readdirSync(parent0).find((e) => e.startsWith(tempPrefix(name0))) : undefined;
   if (leftover) {
@@ -72,11 +84,11 @@ function inspect(opts, deps) {
   const dir = realpathSync(given);
   const home = deps.homedir();
   if (dir === parse(dir).root || (existsSync(home) && dir === realpathSync(home))) throw new InvalidInputError(`Refusing to adopt ${dir}.`);
-  if (existsSync(join(dir, '.laines'))) throw new InvalidInputError(`${dir} is already a L.AI.nes container.`);
   const dotGit = join(dir, '.git');
   if (existsSync(dotGit) && !isGitDir(dotGit)) {
     throw new InvalidInputError(`${dir} is a git worktree or submodule (its .git is a file). Adopt the main checkout instead.`);
   }
+  if (existsSync(join(dir, '.laines', 'container.json'))) throw new InvalidInputError(`${dir} is already a L.AI.nes container.`);
   if (!existsSync(dotGit)) {
     const interrupted = existsSync(join(dir, 'lane_1', '.git')) ? `\nIf an earlier adopt was interrupted, the project may be in ${join(dir, 'lane_1')}.` : '';
     throw new InvalidInputError(`${dir} is not a git repository.\n${setupSteps(dir)}${interrupted}`);
@@ -117,7 +129,13 @@ function findVenvs(dir) {
   const found = [];
   const visit = (abs, rel, depth) => {
     if (depth > 3) return;
-    for (const entry of readdirSync(abs, { withFileTypes: true })) {
+    let entries;
+    try {
+      entries = readdirSync(abs, { withFileTypes: true });
+    } catch {
+      return; // unreadable: not ours to judge
+    }
+    for (const entry of entries) {
       if (!entry.isDirectory() || entry.name === 'node_modules' || entry.name === '.git') continue;
       const childRel = rel ? `${rel}/${entry.name}` : entry.name;
       if (existsSync(join(abs, entry.name, 'pyvenv.cfg'))) found.push(childRel);
@@ -205,33 +223,55 @@ export async function runAdopt(opts, deps) {
   const laneAi = join(laneDir, '.ai');
   let tracked = [];
   let copied = [];
+  const copiedBytes = new Map();
 
   const rollback = async () => {
     const problems = [];
     const attempt = (what, fn) => {
       try {
         fn();
+        return true;
       } catch (e) {
         problems.push(`${what}: ${e.message}`);
+        return false;
       }
     };
+    // Each step runs only if the one before it worked, so the project is never moved twice blind.
+    let ok = true;
+    const step = (what, fn) => {
+      if (ok) ok = attempt(what, fn);
+    };
     if (moved.inside) {
-      attempt('removing the partial container', () => {
-        for (const e of readdirSync(insp.dir)) if (e !== p.lane) rmSync(join(insp.dir, e), { recursive: true, force: true });
+      step('removing the partial container', () => {
+        // Only what adopt itself writes there; anything else is left in place and reported.
+        const ours = ownTopLevel(p.agents);
+        const others = readdirSync(insp.dir).filter((e) => e !== p.lane && !ours.has(e));
+        for (const e of readdirSync(insp.dir)) if (ours.has(e)) rmSync(join(insp.dir, e), { recursive: true, force: true });
+        if (others.length) throw new Error(`left alone, not written by adopt: ${others.join(', ')}`);
       });
-      attempt(`moving ${laneDir} aside`, () => renameSync(laneDir, tmp));
-      attempt(`removing ${insp.dir}`, () => rmdirSync(insp.dir));
-      attempt(`restoring ${insp.dir}`, () => renameSync(tmp, insp.dir));
+      step(`moving ${laneDir} aside`, () => renameSync(laneDir, tmp));
+      step(`removing ${insp.dir}`, () => rmdirSync(insp.dir));
+      step(`restoring ${insp.dir}`, () => renameSync(tmp, insp.dir));
     } else if (moved.aside) {
-      attempt(`removing ${insp.dir}`, () => existsSync(insp.dir) && rmdirSync(insp.dir));
-      attempt(`restoring ${insp.dir}`, () => renameSync(tmp, insp.dir));
+      step(`removing ${insp.dir}`, () => existsSync(insp.dir) && rmdirSync(insp.dir));
+      step(`restoring ${insp.dir}`, () => renameSync(tmp, insp.dir));
     }
     try {
       await releaseContainer(indexDir, entry.id);
     } catch (e) {
       problems.push(`releasing the machine-index entry: ${e.message}`);
     }
-    if (!isGitDir(join(insp.dir, '.git'))) problems.push(`${insp.dir} was not restored`);
+    if (!isGitDir(join(insp.dir, '.git'))) {
+      const where = [tmp, laneDir].find((d) => isGitDir(join(d, '.git')));
+      problems.push(
+        where
+          ? `${insp.dir} was not restored: the project is in ${where}. To finish, empty or remove ${insp.dir}${where === laneDir ? ` except ${p.lane}/` : ''}, then:\n` +
+              (where === laneDir
+                ? `      mv ${shellQuote(laneDir)} ${shellQuote(tmp)} && rmdir ${shellQuote(insp.dir)} && mv ${shellQuote(tmp)} ${shellQuote(insp.dir)}`
+                : `      mv ${shellQuote(tmp)} ${shellQuote(insp.dir)}`)
+          : `${insp.dir} was not restored, and the project was not found in ${tmp} or ${laneDir}`,
+      );
+    }
     return problems;
   };
 
@@ -245,6 +285,9 @@ export async function runAdopt(opts, deps) {
     if (p.ai.mode === 'seed') {
       // Copy, never move: the project's files are untouched until the lane is registered.
       ({ copied } = copyTree(laneAi, containerPaths(insp.dir).ai));
+      // What each file held when copied: the post-commit cleanup removes a lane copy only while the
+      // container still holds exactly that (or that plus laines' appended lines).
+      for (const rel of copied) copiedBytes.set(rel, readFileSync(join(laneAi, rel)));
       tracked = gitOut(deps, ['ls-files', '-z', '--', '.ai'], laneDir).split('\0').filter(Boolean);
       const trackedSet = new Set(tracked);
       base = Object.fromEntries(Object.entries(syncedState(laneAi).files).filter(([rel]) => trackedSet.has(`.ai/${rel}`)));
@@ -285,13 +328,14 @@ export async function runAdopt(opts, deps) {
       // Exactly the untracked files that were copied now live in the container's shared .ai/; tracked
       // files stay (git owns them). Then drop the folders that emptied, deepest first (never .ai/ itself):
       // an empty untracked .ai/knowledge/ would look like a stray dot-ai scaffold to doctor.
-      // A copied file laines then overwrote in the container (its own runbook, templates or board) stays.
+      // A copied file whose content laines then replaced in the container (its own runbook, templates
+      // or board) stays in the lane; one laines only appended to (index rows, the board note) is safe.
       const trackedSet = new Set(tracked);
       const containerAi = containerPaths(insp.dir).ai;
       const kept = [];
       for (const rel of copied) {
         if (trackedSet.has(`.ai/${rel}`)) continue;
-        if (readFileSync(join(laneAi, rel)).equals(readFileSync(join(containerAi, rel)))) rmSync(join(laneAi, rel), { force: true });
+        if (holds(readFileSync(join(containerAi, rel)), copiedBytes.get(rel))) rmSync(join(laneAi, rel), { force: true });
         else kept.push(rel);
       }
       if (kept.length) warnings.push(`kept in ${p.lane}/.ai/ because laines writes its own version in the container: ${kept.join(', ')}`);
