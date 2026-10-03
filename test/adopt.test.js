@@ -177,6 +177,31 @@ describe('adopt', () => {
     expect(r.warnings.join('\n')).toMatch(/kept in lane_1\/\.ai\/.*runbooks\/lane-management\.md/);
   });
 
+  it('keeps an untracked file that is only a prefix of what laines writes, not a whole line of it', async () => {
+    const w = world({ files: { 'README.md': '#\n' } });
+    put(w.dir, '.ai/runbooks/lane-management.md', '# Lane\n');
+    const r = await w.adopt();
+    expect(readFileSync(join(w.dir, 'lane_1', '.ai', 'runbooks', 'lane-management.md'), 'utf8')).toBe('# Lane\n');
+    expect(r.warnings.join('\n')).toMatch(/kept in lane_1\/\.ai\/.*runbooks\/lane-management\.md/);
+  });
+
+  it('keeps a tracked .ai/ file whose name readdir returns decomposed (NFD)', async () => {
+    const nfcName = 'caf\u00e9.md';
+    const nfdName = nfcName.normalize('NFD');
+    const w = world({ files: { 'README.md': '#\n', [`.ai/knowledge/${nfcName}`]: 'C\n' } });
+    const dir = join(w.dir, '.ai', 'knowledge');
+    // Store the name decomposed on disk, as macOS tools often do; git still tracks it precomposed.
+    renameSync(join(dir, nfcName), join(dir, 'tmp.md'));
+    renameSync(join(dir, 'tmp.md'), join(dir, nfdName));
+    if (!readdirSync(dir).includes(nfdName) || gitIn(w.dir, 'status', '--porcelain') !== '') return; // filesystem or git normalises: nothing to pin
+    const r = await w.adopt();
+    const laneDir = join(w.dir, 'lane_1');
+    expect(readFileSync(join(laneDir, '.ai', 'knowledge', nfdName), 'utf8')).toBe('C\n');
+    expect(gitIn(laneDir, 'status', '--porcelain')).toBe('');
+    expect(Object.keys(readAiBase(loadContainer({ container: w.dir }, w.deps).paths, 'lane_1')).map((k) => k.normalize('NFC'))).toContain(`knowledge/${nfcName}`);
+    expect(r.warnings).toEqual([]);
+  });
+
   it('moves an untracked dot-ai scaffold into the container, keeping the lines laines appends to', async () => {
     const w = world({ files: { 'README.md': '#\n' } });
     put(w.dir, '.ai/README.md', '# my .ai\n');
@@ -320,6 +345,38 @@ describe('adopt rollback', () => {
     expect(err.message).toContain('laines refresh lane_1');
     expect(existsSync(join(w.dir, '.laines', 'container.json'))).toBe(true);
     expect(existsSync(join(w.dir, 'lane_1', '.git'))).toBe(true);
+  });
+});
+
+describe('adopt after the commit point', () => {
+  it('says to back up a lane-local file whose .pre-laines rename failed before refreshing', async () => {
+    const w = world({
+      deps: {
+        runDotAi: (args, o) => {
+          // Something now sits at the backup name: the rename onto a non-empty directory fails.
+          mkdirSync(join(o.cwd, 'lane_1', 'CLAUDE.local.md.pre-laines', 'x'), { recursive: true });
+          return runDotAi(args, o);
+        },
+      },
+    });
+    put(w.dir, 'CLAUDE.local.md', 'my own notes\n');
+    const err = await w.adopt().catch((e) => e);
+    const laneFile = join(w.dir, 'lane_1', 'CLAUDE.local.md');
+    expect(err.message).toContain(`Back up ${laneFile}`);
+    expect(err.message).toContain('before running `laines refresh lane_1`');
+    expect(readFileSync(laneFile, 'utf8')).toBe('my own notes\n');
+  });
+
+  it('never prompts when checking origin: ls-remote runs with BatchMode ssh', async () => {
+    const w = world();
+    const seen = [];
+    const gitAsync = (args, o) => {
+      seen.push(args);
+      return w.deps.gitAsync(args, o);
+    };
+    await invoke('adopt', { dir: w.dir, dryRun: true }, { ...w.deps, gitAsync });
+    const lsRemote = seen.find((a) => a.includes('ls-remote'));
+    expect(lsRemote.slice(0, 2)).toEqual(['-c', 'core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=15']);
   });
 });
 

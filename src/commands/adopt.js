@@ -13,6 +13,7 @@ import { isTracked, writeLaneFiles } from '../lib/lane-files.js';
 import { operationInProgress } from '../lib/lane-git.js';
 import { copyTree, syncedState, walk, writeAiBase } from '../lib/ai-tree.js';
 import { appendAudit } from '../lib/audit.js';
+import { NONINTERACTIVE } from '../lib/ai-seed.js';
 import { CONTAINER_FILES, parseAgents, writeContainer } from './init.js';
 
 // The lane-local files writeLaneFiles will write for these agents; only those can collide.
@@ -46,13 +47,18 @@ function isSymlink(p) {
 // The top-level names adopt (writeContainer and dot-ai init) creates in the new container folder.
 const ownTopLevel = (agents) => new Set([...CONTAINER_FILES(agents).map((f) => f.split('/')[0]), '.ai', '.laines', '.claude', '.gemini', '.mcp.json']);
 
-// True when `now` is `was`, or `was` (minus trailing newlines, which appends normalise) plus more.
+// True when `now` is `was`, or `was` (minus trailing newlines, which appends normalise) plus more
+// lines: what follows `was` must start on a new line, so "# Lane" is not held by "# Lane management".
 function holds(now, was) {
   if (now.equals(was)) return true;
   let n = was.length;
   while (n > 0 && was[n - 1] === 0x0a) n -= 1;
-  return now.length >= n && now.subarray(0, n).equals(was.subarray(0, n));
+  return now.length >= n && now.subarray(0, n).equals(was.subarray(0, n)) && (now.length === n || now[n] === 0x0a);
 }
+
+// git stores paths precomposed (NFC) on macOS while readdir may return them decomposed (NFD): compare
+// the two only after normalising, or a tracked non-ASCII file looks untracked.
+const nfc = (s) => s.normalize('NFC');
 
 function isGitDir(p) {
   try {
@@ -115,7 +121,7 @@ function inspect(opts, deps) {
 }
 
 async function assertRemoteReachable(deps, { dir, remote }) {
-  const r = await deps.gitAsync(['ls-remote', '--exit-code', '--heads', 'origin'], { cwd: dir });
+  const r = await deps.gitAsync([...NONINTERACTIVE, 'ls-remote', '--exit-code', '--heads', 'origin'], { cwd: dir });
   if (r.status === 0) return;
   if (r.status === 2) throw new InvalidInputError(`origin (${remote}) has no branches yet: push yours first (git push -u origin <branch>), then run laines adopt again.`);
   throw new InvalidInputError(
@@ -265,7 +271,9 @@ export async function runAdopt(opts, deps) {
       const where = [tmp, laneDir].find((d) => isGitDir(join(d, '.git')));
       problems.push(
         where
-          ? `${insp.dir} was not restored: the project is in ${where}. To finish, empty or remove ${insp.dir}${where === laneDir ? ` except ${p.lane}/` : ''}, then:\n` +
+          ? `${insp.dir} was not restored: the project is in ${where}. To finish, ` +
+              (where === laneDir ? `remove everything in ${insp.dir} except ${p.lane}/` : `remove ${insp.dir}`) +
+              ', then:\n' +
               (where === laneDir
                 ? `      mv ${shellQuote(laneDir)} ${shellQuote(tmp)} && rmdir ${shellQuote(insp.dir)} && mv ${shellQuote(tmp)} ${shellQuote(insp.dir)}`
                 : `      mv ${shellQuote(tmp)} ${shellQuote(insp.dir)}`)
@@ -289,8 +297,8 @@ export async function runAdopt(opts, deps) {
       // container still holds exactly that (or that plus laines' appended lines).
       for (const rel of copied) copiedBytes.set(rel, readFileSync(join(laneAi, rel)));
       tracked = gitOut(deps, ['ls-files', '-z', '--', '.ai'], laneDir).split('\0').filter(Boolean);
-      const trackedSet = new Set(tracked);
-      base = Object.fromEntries(Object.entries(syncedState(laneAi).files).filter(([rel]) => trackedSet.has(`.ai/${rel}`)));
+      const trackedSet = new Set(tracked.map(nfc));
+      base = Object.fromEntries(Object.entries(syncedState(laneAi).files).filter(([rel]) => trackedSet.has(nfc(`.ai/${rel}`))));
     }
     writeContainer({ path: insp.dir, entry, config: p.config, agents: p.agents, deps });
     if (base) writeAiBase(containerPaths(insp.dir), p.lane, base);
@@ -323,18 +331,28 @@ export async function runAdopt(opts, deps) {
   // After the commit point: the container exists and the lane is registered.
   const warnings = [...p.warnings];
   try {
-    for (const b of p.backups) renameSync(join(laneDir, b.from), join(laneDir, b.to));
+    for (const b of p.backups) {
+      try {
+        renameSync(join(laneDir, b.from), join(laneDir, b.to));
+      } catch (e) {
+        // refresh's writeLaneFiles writes its own version of this file: the user's copy must be safe first.
+        throw new LainesError(
+          `Could not keep ${join(laneDir, b.from)} as ${b.to}: ${e.message}\n` +
+            `Back up ${join(laneDir, b.from)} (copy it somewhere outside the lane) before running \`laines refresh ${p.lane}\`, which writes over it.`,
+        );
+      }
+    }
     if (p.ai.mode === 'seed') {
       // Exactly the untracked files that were copied now live in the container's shared .ai/; tracked
       // files stay (git owns them). Then drop the folders that emptied, deepest first (never .ai/ itself):
       // an empty untracked .ai/knowledge/ would look like a stray dot-ai scaffold to doctor.
       // A copied file whose content laines then replaced in the container (its own runbook, templates
       // or board) stays in the lane; one laines only appended to (index rows, the board note) is safe.
-      const trackedSet = new Set(tracked);
+      const trackedSet = new Set(tracked.map(nfc));
       const containerAi = containerPaths(insp.dir).ai;
       const kept = [];
       for (const rel of copied) {
-        if (trackedSet.has(`.ai/${rel}`)) continue;
+        if (trackedSet.has(nfc(`.ai/${rel}`))) continue;
         if (holds(readFileSync(join(containerAi, rel)), copiedBytes.get(rel))) rmSync(join(laneAi, rel), { force: true });
         else kept.push(rel);
       }
