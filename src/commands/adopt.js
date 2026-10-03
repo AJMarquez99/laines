@@ -158,18 +158,28 @@ function backupName(dir, file) {
   return to;
 }
 
-const unquote = (v) => v.trim().replace(/^(["'])(.*)\1$/, '$2');
+// A scalar as dotenv/YAML read it: quoted (a trailing comment allowed) or bare (a comment starts at
+// whitespace + #). Null when empty or interpolated: that source does not name the project.
+function scalar(raw) {
+  const v = raw.trim();
+  const quoted = v.match(/^(["'])(.*?)\1(?:[ \t]+#.*)?$/);
+  const out = (quoted ? quoted[2] : v.replace(/[ \t]+#.*$/, '')).trim();
+  return out && !out.includes('$') ? out : null;
+}
 
 // The Compose project name the checkout uses today (.env, then the compose file's top-level name:,
-// then Compose's default: the folder name lowercased, minus anything outside [a-z0-9_-]).
+// then Compose's default: the folder name lowercased, minus anything outside [a-z0-9_-] and any
+// leading _ or -).
 function composeName(dir, folder) {
   const read = (f) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8') : null);
-  const fromEnv = read('.env')?.match(/^COMPOSE_PROJECT_NAME=(.*)$/m);
-  if (fromEnv && unquote(fromEnv[1])) return unquote(fromEnv[1]);
+  const lines = [...(read('.env') ?? '').matchAll(/^(?:export[ \t]+)?COMPOSE_PROJECT_NAME=(.*)$/gm)];
+  const fromEnv = lines.length ? scalar(lines.at(-1)[1]) : null;
+  if (fromEnv) return fromEnv;
   const file = ['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml'].find((f) => existsSync(join(dir, f)));
-  const named = file && read(file).match(/^name:[ \t]*(.*?)[ \t]*(?:#.*)?$/m);
-  if (named && unquote(named[1])) return unquote(named[1]);
-  return folder.toLowerCase().replace(/[^a-z0-9_-]/g, '') || null;
+  const named = file && read(file).match(/^name:(.*)$/m);
+  const fromFile = named ? scalar(named[1]) : null;
+  if (fromFile) return fromFile;
+  return folder.toLowerCase().replace(/[^a-z0-9_-]/g, '').replace(/^[_-]+/, '') || null;
 }
 
 function plan(insp, opts, deps) {
@@ -380,7 +390,7 @@ export async function runAdopt(opts, deps) {
       }
     }
     const ctx = loadContainer({ container: insp.dir }, deps);
-    writeLaneFiles(ctx, deps, { name: p.lane, number: 1, laneDir, branch: p.branch, ports, compose: p.compose ?? undefined });
+    writeLaneFiles(ctx, deps, { name: p.lane, number: 1, laneDir, branch: p.branch, ports, compose: p.compose });
     const busy = await deps.busyPorts(ports);
     if (busy.length) warnings.push(`lane ports already in use: ${busy.join(', ')}`);
   } catch (err) {

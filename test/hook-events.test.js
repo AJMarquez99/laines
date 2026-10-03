@@ -6,6 +6,7 @@ import { approveHooks } from '../src/lib/hooks.js';
 import { dryRunHooks, hookBoardEntries, hookError, lockSuggested, runEvent, runSummary, setupFailedRequest, unapprovedWarnings } from '../src/lib/hook-events.js';
 import { dropRequests, emptyLanesState, putRequest } from '../src/lib/lanes-state.js';
 import { HookError } from '../src/lib/errors.js';
+import { laneHookVars } from '../src/lib/hook-events.js';
 import { cleanupTmp, setupContainer, writeHook } from './helpers.js';
 
 afterEach(cleanupTmp);
@@ -238,5 +239,14 @@ describe('lockSuggested', () => {
     expect(lockSuggested(history(A, A), config(), B)).toBe(false);
     expect(lockSuggested(history(A, A), config('approve'), A)).toBe(false);
     expect(lockSuggested(history({}, {}), config(), {})).toBe(false);
+  });
+});
+
+describe('laneHookVars', () => {
+  it("uses the lane's recorded compose name, else <id>-l<n>", async () => {
+    const s = await setupContainer();
+    const ctx = loadContainer({ container: s.container }, s.deps);
+    expect(laneHookVars(ctx, 'lane_1', { ...LANE, compose: 'myapp' }).COMPOSE_PROJECT_NAME).toBe('myapp');
+    expect(laneHookVars(ctx, 'lane_1', LANE).COMPOSE_PROJECT_NAME).toBe(`${ctx.id}-l1`);
   });
 });

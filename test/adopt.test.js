@@ -134,9 +134,33 @@ describe('adopt keeps the Compose project', () => {
   });
 
   it('prefers COMPOSE_PROJECT_NAME in .env, quotes stripped', async () => {
-    const w = world({ files: { '.env': 'A=1\nCOMPOSE_PROJECT_NAME="custom"\nCOMPOSE_PROJECT_NAME=other\n', 'compose.yaml': 'name: fromfile\n' } });
+    const w = world({ files: { '.env': 'A=1\nCOMPOSE_PROJECT_NAME=other\nCOMPOSE_PROJECT_NAME="custom"\n', 'compose.yaml': 'name: fromfile\n' } });
     expect((await w.adopt()).compose).toBe('custom');
     expect(laneEnvOf(w)).toContain('COMPOSE_PROJECT_NAME="custom"');
+  });
+
+  it('reads .env like dotenv: export prefix, trailing comments on unquoted values, last line wins', async () => {
+    const w = world({ files: { '.env': 'COMPOSE_PROJECT_NAME=first\nexport COMPOSE_PROJECT_NAME=second # note\n' } });
+    expect((await w.adopt()).compose).toBe('second');
+  });
+
+  it('skips an interpolated value and falls through to the next source', async () => {
+    const w = world({ files: { '.env': 'COMPOSE_PROJECT_NAME=${X:-a}\n', 'compose.yaml': 'name: "$Y"\n' }, path: 'Code/folder' });
+    expect((await w.adopt()).compose).toBe('folder');
+  });
+
+  it('keeps a # inside a quoted compose name', async () => {
+    const w = world({ files: { 'compose.yaml': 'name: "foo#bar" # comment\n' } });
+    expect((await w.adopt()).compose).toBe('foo#bar');
+  });
+
+  it("trims leading _ and - from the folder default, as Compose does", async () => {
+    const a = world({ path: 'Code/_My App-' });
+    expect((await a.adopt({ dryRun: true })).compose).toBe('my app-'.replace(' ', ''));
+    const b = world({ path: 'Code/-x_y' });
+    expect((await b.adopt({ dryRun: true })).compose).toBe('x_y');
+    const c = world({ path: 'Code/_-' });
+    expect((await c.adopt({ dryRun: true })).compose).toBeNull();
   });
 
   it('uses a top-level name: in the compose file when .env does not name it', async () => {
