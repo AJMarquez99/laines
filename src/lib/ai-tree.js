@@ -26,30 +26,36 @@ export function isSynced(rel) {
   return !LAINES_OWNED.has(rel);
 }
 
+const gone = (fn) => {
+  try {
+    return fn();
+  } catch (err) {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  }
+};
+
 // Every entry under dir as '/'-separated relative paths. Symlinks are listed, never followed.
-// Throws BlockedError if dir itself is a symlink (including dangling symlinks).
+// Throws BlockedError if dir itself is a symlink (including dangling symlinks). A missing dir is
+// empty; an entry that vanishes mid-walk (an atomic write's temp file, an editor save) is skipped,
+// never taken as the end of the listing. Any other error propagates.
 export function walk(dir) {
   const files = [];
   const symlinks = [];
   const visit = (abs, rel) => {
-    for (const name of readdirSync(abs).sort()) {
+    for (const name of (gone(() => readdirSync(abs)) ?? []).sort()) {
       const childAbs = join(abs, name);
       const childRel = rel ? `${rel}/${name}` : name;
-      const st = lstatSync(childAbs);
+      const st = gone(() => lstatSync(childAbs));
+      if (!st) continue;
       if (st.isSymbolicLink()) symlinks.push(childRel);
       else if (st.isDirectory()) visit(childAbs, childRel);
       else if (st.isFile()) files.push(childRel);
     }
   };
-  try {
-    const st = lstatSync(dir);
-    if (st.isSymbolicLink()) throw new BlockedError(`${dir} is a symbolic link: refusing to read through it.`);
-    if (st.isDirectory()) visit(dir, '');
-  } catch (err) {
-    if (err instanceof BlockedError) throw err;
-    // Missing directory returns empty, other errors propagate
-    if (err.code !== 'ENOENT') throw err;
-  }
+  const st = gone(() => lstatSync(dir));
+  if (st?.isSymbolicLink()) throw new BlockedError(`${dir} is a symbolic link: refusing to read through it.`);
+  if (st?.isDirectory()) visit(dir, '');
   return { files: files.sort(), symlinks: symlinks.sort() };
 }
 
