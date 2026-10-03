@@ -16,6 +16,8 @@ import {
 } from '../lib/agent-files.js';
 import { mergeMcpConfig } from '../lib/mcp-config.js';
 import { appendAudit } from '../lib/audit.js';
+import { seedFromRemote } from '../lib/ai-seed.js';
+import { writeAiBase } from '../lib/ai-tree.js';
 
 const LANE_TEMPLATES = [
   ['lane-ai-readme.md', 'Lane-local `.ai/README.md`: lane rules and where the shared knowledge lives'],
@@ -74,7 +76,7 @@ function assertSafeTarget(target, home) {
   }
 }
 
-function writeContainer({ path, entry, config, agents, deps }) {
+export function writeContainer({ path, entry, config, agents, deps }) {
   const dot = deps.runDotAi(['init', ...agents.map((a) => AGENT_FLAGS[a])], { cwd: path });
   if (dot.error || dot.status !== 0) {
     const why = (dot.stderr || (dot.error && dot.error.message) || '').trim();
@@ -146,7 +148,7 @@ export async function runInit(opts, deps) {
     }
     const id = opts.id ?? uniqueId(repoName, taken);
     const portRange = allocateBlock({ range: index.machine.range, blockSize }, index.containers.map((c) => c.portRange));
-    return { dryRun: true, id, path: target, portRange, repo, agents, files, next: [] };
+    return { dryRun: true, id, path: target, portRange, repo, agents, files, warnings: [], next: [] };
   }
 
   const created = !existsSync(target);
@@ -164,8 +166,12 @@ export async function runInit(opts, deps) {
     throw err;
   }
 
+  let seed;
   try {
+    // dot-ai init is additive, so a seeded .ai/ keeps its content and gains only missing scaffold.
+    seed = await seedFromRemote(deps, opts.remote, config.repos[repoName].defaultBranch, join(path, '.ai'));
     writeContainer({ path, entry, config, agents, deps });
+    if (seed.seeded) writeAiBase(containerPaths(path), seed.base);
   } catch (err) {
     await releaseContainer(indexDir, entry.id);
     const exitCode = err instanceof LainesError ? err.exitCode : 1;
@@ -176,5 +182,10 @@ export async function runInit(opts, deps) {
   }
 
   appendAudit(containerPaths(path).audit, { ts: deps.now(), action: 'init', container: entry.id }, { warn: deps.warn });
-  return { dryRun: false, id: entry.id, path, portRange: entry.portRange, repo, agents, files, next: nextSteps(path) };
+  return {
+    dryRun: false, id: entry.id, path, portRange: entry.portRange, repo, agents, files,
+    ai: { seeded: seed.seeded, files: seed.files },
+    warnings: seed.warning ? [seed.warning] : [],
+    next: nextSteps(path),
+  };
 }

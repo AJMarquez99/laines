@@ -11,6 +11,8 @@ export function formatInit(r) {
     `ports:   ${r.portRange[0]}–${r.portRange[1]}`,
     `repo:    ${r.repo.remote} (${r.repo.defaultBranch})`,
     `agents:  ${r.agents.join(', ')}`,
+    ...(r.warnings ?? []).map((w) => `warning: ${w}`),
+    ...(r.ai?.seeded ? [`.ai/:    seeded from the remote (${r.ai.files} file(s))`] : []),
   ];
   if (r.next.length) lines.push('', 'next:', ...r.next.map((s) => `  ${s}`));
   return lines.join('\n');

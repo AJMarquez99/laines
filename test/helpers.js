@@ -35,7 +35,11 @@ export function testDeps(root, overrides = {}) {
       throw new Error('runDotAi not stubbed in this test');
     },
     git: runGit,
-    gitAsync: runGitAsync,
+    // Fixture remotes on example.com do not exist: fail their clones at once instead of waiting on the network.
+    gitAsync: (args, opts) =>
+      args.some((a) => String(a).includes('example.com'))
+        ? Promise.resolve({ status: 128, stdout: '', stderr: 'fatal: fixture remote (example.com)', error: undefined })
+        : runGitAsync(args, opts),
     busyPorts: async () => [],
     runHook: runHookFile,
     warn: () => {},
