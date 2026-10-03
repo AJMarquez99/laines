@@ -152,3 +152,13 @@ export function formatConfigSet(r) {
   if (r.dryRun) return `dry run: ${change}`;
   return r.changed ? change : `${r.key} is already ${JSON.stringify(r.to)}`;
 }
+
+export function formatAiSync(r) {
+  if (!r.applies) return r.note;
+  const lines = [`${r.dryRun ? 'dry run: ' : ''}.ai/ sync for ${r.lane}: ${r.toLane.length} to the lane, ${r.toContainer.length} to the container`];
+  for (const p of r.toLane) lines.push(`  → lane       ${p}${r.deleted.lane.includes(p) ? ' (deleted)' : ''}`);
+  for (const p of r.toContainer) lines.push(`  → container  ${p}${r.deleted.container.includes(p) ? ' (deleted)' : ''}`);
+  for (const p of r.refused) lines.push(`  skipped      ${p} (symbolic link)`);
+  for (const p of r.conflicts) lines.push(`  CONFLICT     ${p}`);
+  return lines.join('\n');
+}

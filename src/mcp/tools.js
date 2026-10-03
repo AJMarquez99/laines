@@ -90,6 +90,13 @@ export const TOOLS = [
     mapArgs: () => ({}),
   },
   {
+    name: 'laines_ai_sync',
+    command: 'ai sync',
+    description: "Sync the container's shared .ai/ with the lane's committed .ai/ before opening a PR: changes move in both directions; a file changed on both sides is a conflict and is left untouched.",
+    inputSchema: { lane: lane().optional(), dry_run: dryRun() },
+    mapArgs: (a) => pick({ lane: a.lane, dryRun: a.dry_run }),
+  },
+  {
     name: 'laines_teardown',
     command: 'teardown',
     description: 'Close a lane: archive its plans, delete its context and, with remove_dir, its clone. A human confirms unless the container is set otherwise; a kept lane and unpushed work are always refused.',

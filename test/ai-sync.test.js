@@ -1,0 +1,134 @@
+import { describe, it, expect, afterEach } from 'vitest';
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { invoke } from '../src/commands/registry.js';
+import { loadContainer } from '../src/lib/container.js';
+import { readLanes } from '../src/lib/lanes-store.js';
+import { readAiBase } from '../src/lib/ai-tree.js';
+import { BlockedError } from '../src/lib/errors.js';
+import { cleanupTmp, connectMcp, setupContainer, setConfig, gitIn, runCli } from './helpers.js';
+
+afterEach(cleanupTmp);
+
+function put(root, rel, text) {
+  const file = join(root, rel);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, text);
+}
+const read = (file) => readFileSync(file, 'utf8');
+
+// A container whose repository commits .ai/knowledge/a.md, with lane_1 created and a first sync done.
+async function synced() {
+  const s = await setupContainer({ files: { 'README.md': '# app\n', '.ai/knowledge/a.md': 'A\n' } });
+  const lane = await invoke('create', { container: s.container }, s.deps);
+  const sync = (opts = {}) => invoke('ai sync', { lane: 'lane_1', container: s.container, ...opts }, s.deps);
+  await sync();
+  return { ...s, sync, cAi: join(s.container, '.ai'), lAi: join(lane.path, '.ai'), laneDir: lane.path };
+}
+
+describe('ai sync', () => {
+  it('first sync merges both sides and records the base', async () => {
+    const s = await synced();
+    expect(read(join(s.cAi, 'knowledge', 'a.md'))).toBe('A\n');
+    expect(existsSync(join(s.lAi, 'knowledge', 'README.md'))).toBe(true);
+    expect(readAiBase(loadContainer({ container: s.container }, s.deps).paths)['knowledge/a.md']).toMatch(/^sha256:/);
+  });
+
+  it('copies a container change into the lane, where it shows in git status', async () => {
+    const s = await synced();
+    put(s.cAi, 'knowledge/b.md', 'B\n');
+    put(s.cAi, 'knowledge/a.md', 'A2\n');
+    const r = await s.sync();
+    expect(r).toMatchObject({ applies: true, toLane: ['knowledge/a.md', 'knowledge/b.md'], toContainer: [], conflicts: [] });
+    expect(read(join(s.lAi, 'knowledge', 'b.md'))).toBe('B\n');
+    expect(gitIn(s.laneDir, 'status', '--porcelain')).toContain('.ai/knowledge/a.md');
+  });
+
+  it('copies a lane change (e.g. pulled from main) into the container', async () => {
+    const s = await synced();
+    put(s.lAi, 'knowledge/a.md', 'from main\n');
+    const r = await s.sync();
+    expect(r.toContainer).toEqual(['knowledge/a.md']);
+    expect(read(join(s.cAi, 'knowledge', 'a.md'))).toBe('from main\n');
+  });
+
+  it('propagates deletions from either side', async () => {
+    const s = await synced();
+    put(s.cAi, 'knowledge/gone.md', 'G\n');
+    await s.sync();
+    rmSync(join(s.cAi, 'knowledge', 'gone.md'));
+    const r = await s.sync();
+    expect(r.deleted.lane).toEqual(['knowledge/gone.md']);
+    expect(existsSync(join(s.lAi, 'knowledge', 'gone.md'))).toBe(false);
+    rmSync(join(s.lAi, 'knowledge', 'a.md'));
+    expect((await s.sync()).deleted.container).toEqual(['knowledge/a.md']);
+    expect(existsSync(join(s.cAi, 'knowledge', 'a.md'))).toBe(false);
+  });
+
+  it('leaves a conflict untouched on both sides, applies the rest, and exits 3', async () => {
+    const s = await synced();
+    put(s.cAi, 'knowledge/a.md', 'container\n');
+    put(s.lAi, 'knowledge/a.md', 'lane\n');
+    put(s.cAi, 'knowledge/b.md', 'B\n');
+    const err = await s.sync().catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedError);
+    expect(err.message).toContain('knowledge/a.md');
+    expect(err.message).toContain('laines ai sync lane_1');
+    expect(read(join(s.cAi, 'knowledge', 'a.md'))).toBe('container\n');
+    expect(read(join(s.lAi, 'knowledge', 'a.md'))).toBe('lane\n');
+    expect(read(join(s.lAi, 'knowledge', 'b.md'))).toBe('B\n');
+    put(s.lAi, 'knowledge/a.md', 'container\n');
+    expect((await s.sync()).conflicts).toEqual([]);
+  });
+
+  it('is a no-op the second time, and on a dry run', async () => {
+    const s = await synced();
+    put(s.cAi, 'knowledge/b.md', 'B\n');
+    expect(await s.sync({ dryRun: true })).toMatchObject({ dryRun: true, toLane: ['knowledge/b.md'] });
+    expect(existsSync(join(s.lAi, 'knowledge', 'b.md'))).toBe(false);
+    await s.sync();
+    const board = read(join(s.container, '.ai', 'context', 'LANES_BOARD.md'));
+    const again = await s.sync();
+    expect(again).toMatchObject({ toLane: [], toContainer: [], conflicts: [] });
+    expect(read(join(s.container, '.ai', 'context', 'LANES_BOARD.md'))).toBe(board);
+  });
+
+  it('never moves excluded paths or follows symlinks', async () => {
+    const s = await synced();
+    put(s.cAi, 'knowledge/_draft.md', 'D\n');
+    put(s.cAi, 'plans/x.md', 'P\n');
+    symlinkSync(join(s.root, 'my-app.git'), join(s.cAi, 'knowledge', 'link'));
+    const r = await s.sync();
+    expect(r.refused).toEqual(['knowledge/link']);
+    for (const rel of ['knowledge/_draft.md', 'plans/x.md', 'knowledge/link']) expect(existsSync(join(s.lAi, rel)), rel).toBe(false);
+  });
+
+  it('does nothing for a repository that does not commit .ai/', async () => {
+    const s = await setupContainer();
+    await invoke('create', { container: s.container }, s.deps);
+    const r = await invoke('ai sync', { lane: 'lane_1', container: s.container }, s.deps);
+    expect(r).toMatchObject({ applies: false });
+    expect(r.note).toContain('does not commit .ai/');
+  });
+
+  it('refuses a lane with a merge in progress', async () => {
+    const s = await synced();
+    writeFileSync(join(s.laneDir, '.git', 'MERGE_HEAD'), 'x\n');
+    await expect(s.sync()).rejects.toMatchObject({ exitCode: 3 });
+  });
+
+  it('is gated by the aiSync capability and works over MCP and the CLI', async () => {
+    const s = await synced();
+    put(s.cAi, 'knowledge/b.md', 'B\n');
+    const m = await connectMcp(s.deps, { container: s.container });
+    const r = await m.call('laines_ai_sync', { lane: 'lane_1' });
+    expect(r.structuredContent).toMatchObject({ toLane: ['knowledge/b.md'] });
+    await m.close();
+    const cli = await runCli(['ai', 'sync', 'lane_1', '--container', s.container, '--format', 'table'], s.deps);
+    expect(cli.code).toBe(0);
+    expect(cli.stdout).toContain('0 to the lane, 0 to the container');
+    setConfig(s.container, (c) => { c.capabilities.aiSync = false; });
+    expect((await runCli(['ai', 'sync', 'lane_1', '--container', s.container], s.deps)).code).toBe(4);
+    expect(readLanes(loadContainer({ container: s.container }, s.deps)).lanes.lane_1.state).toBe('active');
+  });
+});

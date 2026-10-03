@@ -17,7 +17,7 @@ describe('config', () => {
       ports: { stride: 10 },
       hooks: { policy: 'notify', timeoutSec: 300, stableAfter: 3 },
       teardown: { mcp: 'confirm' },
-      capabilities: { create: true, report: true, keep: true, teardown: true },
+      capabilities: { create: true, report: true, keep: true, teardown: true, aiSync: true },
       agents: ['claude'],
       agentCmd: 'claude',
       board: { logLimit: 200 },

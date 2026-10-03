@@ -4,7 +4,7 @@ import { VERSION } from './version.js';
 import { invoke } from './commands/registry.js';
 import { runWatch } from './commands/watch.js';
 import { EXIT_CODES, InvalidInputError, LainesError } from './lib/errors.js';
-import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate, formatRefresh, formatReport, formatKeep, formatRelease, formatList, formatStatus, formatTeardown, formatHooksStatus, formatHooksApprove, formatHooksPolicy, formatConfigSet } from './lib/format.js';
+import { printJson, formatInit, formatConfig, formatDoctor, formatBrief, formatCreate, formatRefresh, formatReport, formatKeep, formatRelease, formatList, formatStatus, formatTeardown, formatHooksStatus, formatHooksApprove, formatHooksPolicy, formatConfigSet, formatAiSync } from './lib/format.js';
 
 function reportError(err) {
   if (err instanceof LainesError) {
@@ -153,6 +153,14 @@ export function buildProgram(deps = defaultDeps) {
     .argument('<policy>', 'approve | notify | open')
     .option('--dry-run', 'show the change without writing it')
     .action(handle('hooks policy', { table: formatHooksPolicy, args: ['policy'] }, deps));
+
+  // Like `hooks`, the group takes no options of its own.
+  const ai = program.command('ai').description("Share the container's .ai/ with lanes");
+  withGlobals(ai.command('sync'))
+    .description("Sync the container's .ai/ with a lane's committed .ai/ (three-way; conflicts stop it)")
+    .argument('[lane]', 'lane name (default: the lane you are in)')
+    .option('--dry-run', 'show what would move without changing anything')
+    .action(handle('ai sync', { table: formatAiSync, args: ['lane'] }, deps));
 
   program
     .command('watch')

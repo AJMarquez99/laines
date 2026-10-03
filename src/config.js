@@ -35,6 +35,7 @@ export const ConfigSchema = z.strictObject({
       report: z.boolean().default(true),
       keep: z.boolean().default(true),
       teardown: z.boolean().default(true),
+      aiSync: z.boolean().default(true),
     })
     .prefault({}),
   agents: z

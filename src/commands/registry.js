@@ -10,6 +10,7 @@ import { runCreate } from './create.js';
 import { runRefresh } from './refresh.js';
 import { runReport, runKeep, runRelease, runList, runStatus } from './lanes.js';
 import { runTeardown } from './teardown.js';
+import { runAiSync } from './ai-sync.js';
 import { runHooksStatus, runHooksApprove, runHooksPolicy } from './hooks.js';
 import { runWatch } from './watch.js';
 
@@ -35,6 +36,7 @@ export const COMMANDS = {
   'hooks status': { run: runHooksStatus, capability: null },
   'hooks approve': { run: runHooksApprove, capability: null, humanOnly: true, locked: always },
   'hooks policy': { run: runHooksPolicy, capability: null, humanOnly: true, locked: always },
+  'ai sync': { run: runAiSync, capability: 'aiSync' },
   // Listed for the coverage guard only: it streams, so the CLI drives runWatch directly with a
   // signal and a writer, and it is never invoked through here or exposed over MCP.
   watch: { run: runWatch, capability: null },

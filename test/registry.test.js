@@ -17,7 +17,7 @@ describe('command registry', () => {
     expect(leaves(buildProgram()).filter((n) => n !== 'help').sort()).toEqual(Object.keys(COMMANDS).sort());
     for (const [name, entry] of Object.entries(COMMANDS)) {
       expect(typeof entry.run, name).toBe('function');
-      expect(entry.capability === null || ['create', 'report', 'keep', 'teardown'].includes(entry.capability), name).toBe(true);
+      expect(entry.capability === null || ['create', 'report', 'keep', 'teardown', 'aiSync'].includes(entry.capability), name).toBe(true);
     }
   });
 
