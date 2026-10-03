@@ -1,6 +1,6 @@
-# M2–M4 carry-overs (input for the M5 plan)
+# M2–M4.5 carry-overs (input for the M5 plan)
 
-Findings from the M2–M4 reviews that belong to later milestones. Fold each into the plan
+Findings from the M2–M4.5 reviews that belong to later milestones. Fold each into the plan
 that owns it, then delete this note.
 
 ## M5 (release, SECURITY.md residual risks)
@@ -23,3 +23,15 @@ that owns it, then delete this note.
 - `hooks approve` approves what is on disk when it runs; a hook edited between `hooks status` and `approve` is approved unseen (approve prints the diffs it approved). `--expect <checksum>` would bind approval to what the human reviewed.
 - Only `git clone` runs asynchronously; other git calls are short local operations and stay synchronous, briefly blocking the MCP server.
 - Spec §15: confirm elicitation in headless `claude -p` and VS Code against a real `laines-mcp`; adjust only the fallback message if it differs.
+
+## From M4.5 (adopt / ai sync) reviews
+
+- `create`'s "sync base not recorded" warning promises the first `ai sync` merges both sides; untrue when the clone's `.ai` is a symlink (sync refuses) or a repaired `ai-sync.json` still holds a stale entry for that lane name. Reword to "run `laines doctor`, then `laines ai sync <lane>`".
+- `ai sync` writes the base under the container lock after both trees are written; a lock timeout leaves files moved and the base unrecorded (self-heals on the next run).
+- `planSync` compares un-normalised path keys: after `adopt` on macOS the container may hold an NFD name while a fresh clone lists NFC, so one file appears as two paths. Normalise keys to NFC.
+- A lane with no base entry (pre-M4.5, or a warned `create`) that is behind a container which deleted a file resurrects that file into the container on its first sync (empty base = merge).
+- Deleting the last committed synced `.ai/` file flips `repoCommitsAi` to false, so `ai sync` stops applying instead of propagating that final deletion.
+- `adopt`: a dangling-symlink leftover (crash between renames, reached through a symlink) gives exit 2 "not a directory" instead of the leftover `mv` hint; use `readlinkSync`.
+- `ai sync` TOCTOU: a lane `.ai/<dir>` swapped for a symlink between planning and writing is followed (assert `realpath(dirname(target))` inside the `.ai` root); lane-side symlink tests.
+- `init` has no signal handling: Ctrl-C during seeding leaks the `seed-*` temp dir and the machine-index claim.
+- Cosmetic: `copyOrDelete` leaves empty dirs and drops the mode bit; refused rows all read "(symbolic link)"; doctor runs `repoCommitsAi` twice per lane; design §3.2 lists lane_1's base after registration (code records it before).
