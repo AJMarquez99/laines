@@ -11,7 +11,7 @@ import {
   dryRunHooks, hookBoardEntries, hookError, runEvent, runSummary, setupFailedNext, setupFailedRequest, unapprovedWarnings,
 } from '../lib/hook-events.js';
 import { appendAudit } from '../lib/audit.js';
-import { InvalidInputError } from '../lib/errors.js';
+import { InvalidInputError, MalformedConfigError } from '../lib/errors.js';
 
 // Records one post-create run on the board, the lane and the audit log; returns whether it succeeded.
 async function recordRun(ctx, deps, run, name, branch) {
@@ -61,8 +61,15 @@ export async function runRefresh(opts, deps) {
     throw new InvalidInputError(`${laneDir} is missing or not a git clone. Tear the lane down (\`laines teardown ${name} --remove-dir --force\`) and create it again.`);
   }
   if (opts.dryRun) return { dryRun: true, lane: name, path: laneDir, hooks: dryRunHooks(ctx, 'post-create') };
-  // Containers made before a new human-only command existed get its deny rules here.
-  mergeDenyRules(ctx.paths.claudeSettings, denyRules());
+  // Containers made before a new human-only command existed get its deny rules here. A malformed
+  // container settings file is the container's problem (doctor reports it), not this lane's.
+  const warnings = [];
+  try {
+    mergeDenyRules(ctx.paths.claudeSettings, denyRules());
+  } catch (err) {
+    if (!(err instanceof MalformedConfigError)) throw err;
+    warnings.push(`container deny rules not checked: ${ctx.paths.claudeSettings} is malformed. Fix it, then run \`laines refresh ${name}\` again.`);
+  }
 
   // The board and LANE_BRANCH follow the branch the clone is on now; a detached HEAD keeps the old one.
   const head = deps.git(['branch', '--show-current'], { cwd: real });
@@ -85,7 +92,7 @@ export async function runRefresh(opts, deps) {
     path: laneDir,
     branch,
     files: files.written,
-    warnings: [...files.skipped.map((f) => `${f.file} not written: ${f.reason}`), ...unapprovedWarnings(run)],
+    warnings: [...warnings, ...files.skipped.map((f) => `${f.file} not written: ${f.reason}`), ...unapprovedWarnings(run)],
     hooks: run,
   };
 }

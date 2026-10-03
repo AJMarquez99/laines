@@ -17,6 +17,19 @@ const ctxOf = (s) => loadContainer({ container: s.container }, s.deps);
 const lane1 = (s) => readLanes(ctxOf(s)).lanes.lane_1;
 
 describe('refresh', () => {
+  it('still refreshes the lane when the container settings file is malformed, with a warning', async () => {
+    const s = await setupContainer();
+    const { path } = await runCreate({ container: s.container }, s.deps);
+    const settings = join(s.container, '.claude', 'settings.json');
+    writeFileSync(settings, '{');
+    rmSync(join(path, '.laines.env'));
+    const r = await runRefresh({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(existsSync(join(path, '.laines.env'))).toBe(true);
+    expect(r.warnings.join('\n')).toMatch(/deny rules not checked/);
+    expect(r.warnings.join('\n')).toContain(settings);
+    expect(readFileSync(settings, 'utf8')).toBe('{');
+  });
+
   it('rewrites .laines.env and re-runs post-create, so appended lines appear exactly once', async () => {
     const s = await setupContainer();
     writeHook(s.container, 'post-create', 'echo "DB=app$LANE_SUFFIX" >> "$LANE_ENV_FILE"');
