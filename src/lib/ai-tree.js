@@ -1,6 +1,7 @@
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, lstatSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
+import { BlockedError } from './errors.js';
 import { checksum } from './hooks.js';
 import { readJson, writeJson } from './jsonfile.js';
 import { parseWith } from './schema.js';
@@ -26,6 +27,7 @@ export function isSynced(rel) {
 }
 
 // Every entry under dir as '/'-separated relative paths. Symlinks are listed, never followed.
+// Throws BlockedError if dir itself is a symlink (including dangling symlinks).
 export function walk(dir) {
   const files = [];
   const symlinks = [];
@@ -39,7 +41,15 @@ export function walk(dir) {
       else if (st.isFile()) files.push(childRel);
     }
   };
-  if (existsSync(dir) && lstatSync(dir).isDirectory()) visit(dir, '');
+  try {
+    const st = lstatSync(dir);
+    if (st.isSymbolicLink()) throw new BlockedError(`${dir} is a symbolic link: refusing to read through it.`);
+    if (st.isDirectory()) visit(dir, '');
+  } catch (err) {
+    if (err instanceof BlockedError) throw err;
+    // Missing directory returns empty, other errors propagate
+    if (err.code !== 'ENOENT') throw err;
+  }
   return { files: files.sort(), symlinks: symlinks.sort() };
 }
 
@@ -52,26 +62,42 @@ export function syncedState(aiDir) {
 }
 
 // Copies every regular file of src into dest; symlinks are skipped and reported.
+// Throws BlockedError if dest has symlinks to avoid writing through them.
 export function copyTree(src, dest) {
-  const { files, symlinks } = walk(src);
-  for (const rel of files) {
+  const srcWalk = walk(src);
+  const destWalk = walk(dest);
+  if (destWalk.symlinks.length > 0) {
+    throw new BlockedError(`${dest} destination has symlinks: refusing to write through them.`);
+  }
+  for (const rel of srcWalk.files) {
     const to = join(dest, rel);
     mkdirSync(dirname(to), { recursive: true });
     copyFileSync(join(src, rel), to);
   }
-  return { copied: files, skippedSymlinks: symlinks };
+  return { copied: srcWalk.files, skippedSymlinks: srcWalk.symlinks };
 }
 
 const own = (o, k) => (Object.hasOwn(o, k) ? o[k] : undefined);
 
+// Check if rel equals or sits under any refused rel (symlinked directory).
+const isRefused = (rel, refused) => refused.some((r) => rel === r || rel.startsWith(r + '/'));
+
 // Design §4.3, per file: c = container, l = lane, b = base (undefined = absent).
-export function planSync({ container, lane, base }) {
+// refused: rels of symlinked directories; files under them are never synced.
+export function planSync({ container, lane, base, refused = [] }) {
   const paths = [...new Set([...Object.keys(container), ...Object.keys(lane), ...Object.keys(base)])].sort();
   const toLane = [];
   const toContainer = [];
   const conflicts = [];
+  const refusedRels = [];
   const next = [];
   for (const rel of paths) {
+    if (isRefused(rel, refused)) {
+      refusedRels.push(rel);
+      const b = own(base, rel);
+      if (b !== undefined) next.push([rel, b]);
+      continue;
+    }
     const c = own(container, rel);
     const l = own(lane, rel);
     const b = own(base, rel);
@@ -89,7 +115,7 @@ export function planSync({ container, lane, base }) {
     }
   }
   // fromEntries defines own properties, so a "__proto__" path stays data.
-  return { toLane, toContainer, conflicts, nextBase: Object.fromEntries(next) };
+  return { toLane, toContainer, conflicts, refused: refusedRels.sort(), nextBase: Object.fromEntries(next) };
 }
 
 export function aiDrift(containerAi, laneAi) {
@@ -110,6 +136,7 @@ export const readAiBase = (paths) =>
 
 export const writeAiBase = (paths, base) => writeJson(aiSyncFile(paths), { version: 1, base });
 
+// repoDir must be the worktree toplevel (pathspec is cwd-relative).
 export function repoCommitsAi(deps, repoDir) {
   return gitOut(deps, ['ls-files', '-z', '--', '.ai'], repoDir)
     .split('\0')

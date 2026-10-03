@@ -31,8 +31,16 @@ const IN_PROGRESS = ['MERGE_HEAD', 'rebase-merge', 'rebase-apply', 'CHERRY_PICK_
 
 // A merge, rebase, cherry-pick, revert or bisect half-done in repoDir, or null.
 export function operationInProgress(deps, repoDir) {
-  return IN_PROGRESS.find((name) => {
-    const rel = gitOut(deps, ['rev-parse', '--git-path', name], repoDir).trim();
-    return existsSync(isAbsolute(rel) ? rel : join(repoDir, rel));
-  }) ?? null;
+  const args = ['rev-parse'];
+  for (const name of IN_PROGRESS) {
+    args.push('--git-path', name);
+  }
+  const lines = gitOut(deps, args, repoDir).trim().split('\n');
+  for (let i = 0; i < IN_PROGRESS.length; i++) {
+    const rel = lines[i];
+    if (rel && existsSync(isAbsolute(rel) ? rel : join(repoDir, rel))) {
+      return IN_PROGRESS[i];
+    }
+  }
+  return null;
 }

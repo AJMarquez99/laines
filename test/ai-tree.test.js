@@ -7,7 +7,7 @@ import {
 import { operationInProgress } from '../src/lib/lane-git.js';
 import { containerPaths } from '../src/lib/paths.js';
 import { checksum } from '../src/lib/hooks.js';
-import { MalformedConfigError } from '../src/lib/errors.js';
+import { BlockedError, MalformedConfigError } from '../src/lib/errors.js';
 import { tmp, cleanupTmp, testDeps, gitIn } from './helpers.js';
 
 afterEach(cleanupTmp);
@@ -65,6 +65,36 @@ describe('walk, syncedState and copyTree', () => {
     put(root, 'l/context/ignored.md', 'X\n');
     expect(aiDrift(join(root, 'c'), join(root, 'l'))).toBe(2);
   });
+
+  it('throws BlockedError when walk root is a symlink', () => {
+    const root = tmp();
+    put(root, 'real/.ai/knowledge/a.md', 'A\n');
+    const linkDir = join(root, 'link');
+    symlinkSync(join(root, 'real', '.ai'), linkDir);
+    expect(() => walk(linkDir)).toThrow(BlockedError);
+    expect(() => walk(linkDir)).toThrow(/is a symbolic link: refusing to read through it/);
+  });
+
+  it('throws BlockedError when walk root is a dangling symlink', () => {
+    const root = tmp();
+    const linkDir = join(root, 'dangling');
+    symlinkSync('/nonexistent/path', linkDir);
+    expect(() => walk(linkDir)).toThrow(BlockedError);
+    expect(() => walk(linkDir)).toThrow(/is a symbolic link: refusing to read through it/);
+  });
+
+  it('throws BlockedError when copyTree destination has symlinks', () => {
+    const root = tmp();
+    const src = join(root, 'src');
+    put(src, 'knowledge/a.md', 'A\n');
+    const dest = join(root, 'dest');
+    put(dest, 'knowledge/x.md', 'old\n');
+    symlinkSync(join(dest, 'knowledge', 'x.md'), join(dest, 'link.md'));
+    expect(() => copyTree(src, dest)).toThrow(BlockedError);
+    expect(() => copyTree(src, dest)).toThrow(/destination has symlinks: refusing to write through them/);
+    // Ensure no files were copied
+    expect(readFileSync(join(dest, 'knowledge', 'x.md'), 'utf8')).toBe('old\n');
+  });
 });
 
 describe('planSync', () => {
@@ -94,6 +124,21 @@ describe('planSync', () => {
     const plan = planSync({ container: JSON.parse('{"__proto__":"sha256:a"}'), lane: {}, base: {} });
     expect(Object.hasOwn(plan.nextBase, '__proto__')).toBe(true);
     expect({}.polluted).toBeUndefined();
+  });
+
+  it('places files under symlinked directories into refused bucket, keeping base entries', () => {
+    const A = 'sha256:a';
+    const plan = planSync({
+      container: { 'knowledge/linked': A, 'knowledge/linked/x.md': A },
+      lane: { 'knowledge/linked/x.md': A },
+      base: { 'knowledge/linked': A, 'knowledge/linked/x.md': A },
+      refused: ['knowledge/linked'],
+    });
+    expect(plan.toLane).toEqual([]);
+    expect(plan.toContainer).toEqual([]);
+    expect(plan.conflicts).toEqual([]);
+    expect(plan.refused.sort()).toEqual(['knowledge/linked', 'knowledge/linked/x.md']);
+    expect(plan.nextBase).toEqual({ 'knowledge/linked': A, 'knowledge/linked/x.md': A });
   });
 });
 
@@ -127,5 +172,23 @@ describe('repository state', () => {
     expect(operationInProgress(deps, repo)).toBe(null);
     writeFileSync(join(repo, '.git', 'MERGE_HEAD'), 'x\n');
     expect(operationInProgress(deps, repo)).toBe('MERGE_HEAD');
+  });
+
+  it('detects operations in linked worktrees (git rev-parse --git-path)', () => {
+    const repo = tmp();
+    gitIn(repo, 'init', '-q', '-b', 'main');
+    put(repo, 'README.md', '#\n');
+    gitIn(repo, 'add', '-A');
+    gitIn(repo, 'commit', '-q', '-m', 'init');
+    // Create a linked worktree
+    const worktree = join(repo, 'linked');
+    gitIn(repo, 'worktree', 'add', worktree, 'HEAD');
+    const depsWorktree = testDeps(worktree);
+    // Get the absolute git-path for MERGE_HEAD in the worktree
+    const gitPath = gitIn(worktree, 'rev-parse', '--git-path', 'MERGE_HEAD').trim();
+    expect(operationInProgress(depsWorktree, worktree)).toBe(null);
+    mkdirSync(dirname(gitPath), { recursive: true });
+    writeFileSync(gitPath, 'x\n');
+    expect(operationInProgress(depsWorktree, worktree)).toBe('MERGE_HEAD');
   });
 });
