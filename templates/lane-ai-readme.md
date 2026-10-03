@@ -13,7 +13,9 @@ guidelines, lessons, data and audits live in the container's shared layer:
 3. **Report as you work:** `laines report {{lane}} --status "..." --task "..."`.
 4. **Promote before you finish:** durable findings go to the container's `knowledge/`,
    `guidelines/` or `lessons/`, not left here to be archived.
-5. **Stay inside this lane:** source `.laines.env`, use only this lane's ports, and never run
+5. **Committed `.ai/` is output:** if this repository commits `.ai/`, its files in this lane change
+   only through `laines ai sync {{lane}}`. Run it before opening a PR.
+6. **Stay inside this lane:** source `.laines.env`, use only this lane's ports, and never run
    `dot-ai init` or `dot-ai sync` here.
 
 Full protocol: `{{containerDir}}/.ai/runbooks/lane-management.md`

@@ -13,6 +13,18 @@ import { MalformedConfigError, NotAContainerError } from '../lib/errors.js';
 import { hookStates, isExecutable } from '../lib/hooks.js';
 import { hasMcpEntry, mcpAddCommand } from '../lib/mcp-config.js';
 import { lockSuggested } from '../lib/hook-events.js';
+import { aiDrift, readAiBase, repoCommitsAi } from '../lib/ai-tree.js';
+
+// Informational: a lane whose committed .ai/ differs from the container's shared one.
+function aiDriftNote(paths, laneDir, deps, name) {
+  try {
+    if (!existsSync(join(laneDir, '.git')) || !repoCommitsAi(deps, laneDir)) return null;
+    const n = aiDrift(paths.ai, join(laneDir, '.ai'));
+    return n ? `ok; .ai/ differs in ${n} file(s): run \`laines ai sync ${name}\`` : null;
+  } catch {
+    return null;
+  }
+}
 
 function laneProblems(root, containerId, name, lane, agents, deps) {
   const dir = join(root, lane.repos[0].path);
@@ -58,7 +70,7 @@ function laneProblems(root, containerId, name, lane, agents, deps) {
       problems.push(`.mcp.json is malformed: fix or delete it, then run \`laines refresh ${name}\``);
     }
   }
-  const stray = ['knowledge', 'guidelines', 'lessons'].filter((f) => has(join('.ai', f)) && !isTracked(deps, dir, `.ai/${f}`));
+  const stray = repoCommitsAi(deps, dir) ? [] : ['knowledge', 'guidelines', 'lessons'].filter((f) => has(join('.ai', f)) && !isTracked(deps, dir, `.ai/${f}`));
   if (stray.length) problems.push(`a full .ai/ layer was scaffolded in the lane (${stray.join(', ')}): dot-ai init/sync was run there; move anything useful to the container's .ai/ and delete them`);
   return problems;
 }
@@ -184,13 +196,18 @@ export async function runDoctor(opts, deps) {
     }
     return parts.join('; ');
   });
+  check('ai-sync', () => {
+    const base = readAiBase(p);
+    const n = Object.keys(base).length;
+    return n ? `base covers ${n} file(s)` : 'no .ai/ sync yet';
+  });
   const agents = config ? config.agents : ['claude'];
   const openLanes = Object.entries(lanesState?.lanes ?? {}).filter(([, l]) => l.state !== 'closed');
   for (const [name, lane] of openLanes) {
     check(`lane:${name}`, () => {
       const problems = [...laneStateProblems(name, lane, config, deps), ...laneProblems(root, marker?.id, name, lane, agents, deps)];
       if (problems.length) throw new Error(problems.join('; '));
-      return 'ok';
+      return aiDriftNote(p, join(root, lane.repos[0].path), deps, name) ?? 'ok';
     });
   }
   // Informational: Claude reads the container CLAUDE.md from every lane; Codex and Gemini stop at

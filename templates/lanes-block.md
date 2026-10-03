@@ -17,8 +17,10 @@ working in.
 **Lane rules**
 1. A lane owns only its `.ai/context/` and `.ai/plans/`. Write new knowledge, guidelines, lessons,
    data and audits to this container's `.ai/`, never into the lane.
-2. If the repository commits its own `.ai/`, read it as project truth (it wins on conflict). Change
-   it only when the task is itself a change to the project's docs.
+2. This container's `.ai/` is where you read and write knowledge, even when the repository commits
+   its own `.ai/`. A lane's committed `.ai/` files are output: never edit them by hand.
+   `laines ai sync <lane>` (or the `laines_ai_sync` MCP tool) moves knowledge both ways; run it
+   before opening a PR so new knowledge travels with the code.
 3. Never run `dot-ai init` or `dot-ai sync` inside a lane.
 4. Report meaningful status changes with `laines report <lane> --status "..." --task "..."` or the
    `laines_report` MCP tool. Prefer the `laines_*` MCP tools when your session has them.

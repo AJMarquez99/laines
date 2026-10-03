@@ -31,7 +31,7 @@ describe('doctor', () => {
     const r = await runDoctor({ container: c }, deps);
     expect(r.ok).toBe(true);
     expect(r.container).toEqual({ id: 'my-app', path: c });
-    expect(r.checks.map((x) => x.name)).toEqual(['container-marker', 'config', 'machine-index', 'dot-ai', 'agent-files', 'deny-rules', 'mcp', 'board', 'lock', 'machine-lock', 'lanes-state', 'hooks', 'agent-reach', 'elicitation-hooks']);
+    expect(r.checks.map((x) => x.name)).toEqual(['container-marker', 'config', 'machine-index', 'dot-ai', 'agent-files', 'deny-rules', 'mcp', 'board', 'lock', 'machine-lock', 'lanes-state', 'hooks', 'ai-sync', 'agent-reach', 'elicitation-hooks']);
   });
 
   it('reports each broken piece without throwing', async () => {
@@ -231,5 +231,17 @@ describe('doctor lane checks', () => {
     expect(r.mcp.detail).toContain('Malformed file');
     expect(r['lane:lane_1'].detail).toContain('malformed');
     expect(r['lane:lane_1'].detail).not.toContain('missing from');
+  });
+
+  it('notes .ai/ drift for a lane whose repository commits .ai/', async () => {
+    const s = await setupContainer({ files: { 'README.md': '#\n', '.ai/knowledge/a.md': 'A\n' } });
+    await runCreate({ container: s.container }, s.deps);
+    writeFileSync(join(s.container, '.ai', 'knowledge', 'new.md'), 'N\n');
+    const r = byName(await runDoctor({ container: s.container }, s.deps));
+    expect(r['lane:lane_1'].ok).toBe(true);
+    expect(r['lane:lane_1'].detail).toMatch(/\.ai\/ differs in \d+ file\(s\): run `laines ai sync lane_1`/);
+    expect(r['ai-sync']).toMatchObject({ ok: true });
+    writeFileSync(join(s.container, '.laines', 'ai-sync.json'), '{');
+    expect(byName(await runDoctor({ container: s.container }, s.deps))['ai-sync'].ok).toBe(false);
   });
 });

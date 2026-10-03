@@ -27,6 +27,7 @@ export function buildBrief(ctx, name, lane) {
     `Source ${envFile} before starting services, and use only ports ${start}–${end}.`,
     `Report status with \`laines report ${name} --status "..." --task "..."\` (run it inside the lane, or add --container ${ctx.root}).`,
     `Write durable knowledge, guidelines, lessons, data and audits to ${ctx.paths.ai}/, not into the lane.`,
+    `If the repository commits .ai/, never edit the lane's .ai/ files by hand: run \`laines ai sync ${name}\` before opening a PR (it moves knowledge both ways).`,
     'Never run `dot-ai init` or `dot-ai sync` in the lane.',
     'Teardown, release, hook approval, hook policy and config changes are for a human.',
   ];

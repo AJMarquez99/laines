@@ -80,6 +80,18 @@ Sessions in this container and in its lanes have the `laines_*` MCP tools (regis
 asks a human to confirm first (setting `teardown.mcp`); if the client cannot ask, the request
 waits on the board for `laines teardown <lane>` in a terminal.
 
+## Knowledge and pull requests
+
+Everyone works in this container's `.ai/`. If the repository commits its own `.ai/`, `laines ai
+sync <lane>` brings the lane's copy up to date before a PR (new knowledge shows in `git diff`) and
+brings back knowledge that arrived through `main` (after you pull). A file changed in both places is
+a conflict: sync leaves both copies alone and tells you which file to reconcile.
+
+## Adopting an existing checkout
+
+`laines adopt <dir>` turned the original project folder into this container's first lane; the
+project's `.ai/` became this shared layer. Recreate Python virtualenvs in the lane after a move.
+
 ## Monitoring
 
     laines watch                 # follow the board

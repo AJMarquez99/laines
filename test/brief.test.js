@@ -52,6 +52,7 @@ describe('brief', () => {
     expect(paths).not.toContain(join(laneDir, 'AGENTS.md'));
     expect(b.rules.join('\n')).toContain('20000–20009');
     expect(b.rules.join('\n')).toContain('laines report lane_1');
+    expect(b.rules.join('\n')).toContain('laines ai sync');
     expect(b.board).toContain('<!-- lane:lane_1:start -->');
     expect(b.text).toContain('# Lane brief: lane_1 (my-app/lane_1)');
   });

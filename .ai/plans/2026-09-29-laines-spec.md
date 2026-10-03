@@ -30,6 +30,7 @@ people running several containers across several projects on one machine.
 **In v1**
 - `laines` CLI and `laines-mcp` MCP server over one command layer.
 - Fresh containers created by `laines init` (dot-ai bundled and run by L.AI.nes).
+- `laines adopt` for an existing git checkout (design: `2026-10-02-laines-m4.5-adopt-design.md`).
 - One repo per container; lane = one clone.
 - Built-in isolation primitives (lane number, port block, scoped names, env file) + project
   hooks for stack-specific work.
@@ -42,7 +43,7 @@ people running several containers across several projects on one machine.
   (§8).
 - Multi-repo lanes — data shapes already allow them (§6.3).
 - Windows.
-- Adopting an existing `.ai/` or migrating containers made with earlier scripts.
+- Migrating containers made with earlier scripts.
 
 ## 3. Concepts
 
@@ -109,6 +110,7 @@ would happen, exit 0. MCP tool names are `laines_<command>` with snake_case argu
 | Command | CLI | MCP | Summary |
 |---|---|---|---|
 | `init <dir> --remote <url> [--id] [--agents] [--branch]` | ✅ | — | Create a container (§10.1). |
+| `adopt <dir> [--id] [--agents]` | ✅ | — | Turn an existing checkout into a container; it becomes `lane_1` (§10.4). |
 | `create [name] [--branch]` | ✅ | ✅ | Create a lane (§10.2). |
 | `refresh <lane>` | ✅ | ✅ | Rewrite lane-local files and env, re-run `post-create`. |
 | `brief <lane>` | ✅ | ✅ | Handoff text for an agent working in the lane (§7.4). |
@@ -121,6 +123,7 @@ would happen, exit 0. MCP tool names are `laines_<command>` with snake_case argu
 | `hooks status` | ✅ | ✅ | Approved / changed / new hooks with diffs. |
 | `hooks approve [--lock]` | ✅ | — | Approve current hooks; `--lock` also sets policy `approve`. |
 | `hooks policy <approve\|notify\|open>` | ✅ | — | Change hook policy. Human-only. |
+| `ai sync [lane]` | ✅ | ✅ | Three-way sync of the shared `.ai/` with a lane's committed `.ai/` (§10.5). |
 | `config get [key]` | ✅ | ✅ | Read settings. |
 | `config set <key> <value>` | ✅ | — | Change settings. Human-only. |
 | `watch [file]` | ✅ | — | Follow the board (or any file) and print new lines. |
@@ -145,7 +148,7 @@ Writes to `lanes.json`, the board, and `containers.json` happen under their mkdi
   "ports": { "stride": 10 },
   "hooks": { "policy": "notify", "timeoutSec": 300, "stableAfter": 3 },
   "teardown": { "mcp": "confirm" },
-  "capabilities": { "create": true, "report": true, "keep": true, "teardown": true },
+  "capabilities": { "create": true, "report": true, "keep": true, "teardown": true, "aiSync": true },
   "agents": ["claude"],
   "agentCmd": "claude",
   "board": { "logLimit": 200 },
@@ -225,6 +228,8 @@ upward search for containers.
 | Repo's committed `.ai/` (if any) | yes — project truth, wins on conflict | only when the task is itself a change to project docs |
 | Container `.ai/` | yes | all new durable knowledge, guidelines, lessons, data, audits |
 | `~/.ai/` | index only | no |
+
+The container's `.ai/` is the live knowledge base even when the repository commits `.ai/`; a lane's committed `.ai/` changes only through `laines ai sync` (§10.5).
 
 Agents in a lane must not run `dot-ai init` or `dot-ai sync` (they would scaffold a full
 `.ai/` into the lane); `doctor` detects it.
@@ -324,7 +329,7 @@ Checksums of approved hooks live in `hooks.lock.json`.
 ### 9.2 Human-only commands beyond MCP
 
 MCP gating does not stop an agent that has a shell. `init` writes Claude permission deny rules
-for `laines teardown`, `laines release`, `laines hooks approve`, `laines hooks policy`, and
+for `laines teardown`, `laines release`, `laines adopt`, `laines hooks approve`, `laines hooks policy`, and
 `laines config set` into the container's `.claude/settings.json` (covers the container session
 and its subagents); `create` and `refresh` merge the same rules into each lane's
 `.claude/settings.local.json` (verified: container settings do not apply in a lane). Agents go
@@ -362,6 +367,7 @@ anything with filesystem access, and hooks themselves (they are the user's code)
 2. Claim a container ID and port block in `containers.json`.
 3. Run the bundled dot-ai CLI with `cwd` = container: `init` with the agent flags from
    `--agents` (default Claude). Non-zero exit aborts with dot-ai's stderr.
+3b. If the remote's default branch commits `.ai/`, seed the container's `.ai/` from it and record the sync base.
 4. Write `.laines/` (marker, config, empty lane index, empty hooks dir, empty lock file), the
    board, the lane-management runbook, lane templates, the `laines-lanes` block in each wired
    agent file, and Claude deny rules.
@@ -397,6 +403,26 @@ A failed clone removes the partial directory and releases the ports.
 7. Run `post-teardown`; audit; release the lane's ports.
 
 Without `--remove-dir`, the clone is left in place and nothing irreversible happens to it.
+
+### 10.4 `adopt`
+
+Human-only, CLI only. Detail in `2026-10-02-laines-m4.5-adopt-design.md`.
+
+1. Check the directory (git checkout with a reachable `origin`, not already a container, not inside a lane) and plan; `--dry-run` stops here.
+2. Move the checkout into `<dir>/lane_1` with a two-rename move so the folder becomes the container.
+3. Copy the project's `.ai/` into the container as the shared layer, write container files and claim the machine-index entry.
+4. Register the lane in `lanes.json`: this is the commit point. Before it, everything rolls back exactly.
+5. After it, write lane files, rename untracked collisions to `<name>.pre-laines`, and remove untracked `.ai/` files already copied. A later failure keeps the container and says to run `laines refresh <lane>`.
+
+### 10.5 `ai sync`
+
+Detail in the M4.5 design. Capability `aiSync` (exit 4 when off).
+
+1. Resolve the lane (`assertLaneDir`); walk the synced set of both `.ai/` trees without following symlinks.
+2. Plan per file against the recorded base (`.laines/ai-sync.json`): a change on one side only moves across; equal sides are a no-op.
+3. A file changed on both sides is a conflict: left untouched on both sides, base not updated, exit 3.
+4. Symlinks are listed under `refused` and never followed or deleted.
+5. Write only inside the container's and the lane's `.ai/`, then the new base; a second run moves nothing.
 
 ## 11. Board
 

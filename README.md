@@ -54,6 +54,14 @@ Create a container for a project:
 laines init ~/work/myapp-lanes --remote git@github.com:your-org/myapp.git --format table
 ```
 
+Already have a checkout? Adopt it instead — the folder becomes the container and its contents
+become `lane_1`:
+
+```bash
+laines adopt ~/work/myapp --dry-run   # see what will happen
+laines adopt ~/work/myapp
+```
+
 ```
 container myapp created
 id:      myapp
@@ -111,6 +119,7 @@ human-readable output.
 | Command | What it does |
 |---|---|
 | `laines init <dir> --remote <url>` | Create a container. Options: `--id <id>`, `--agents claude,codex,gemini`, `--branch <name>` (default `main`), `--dry-run`. |
+| `laines adopt <dir> [--id] [--agents] [--dry-run]` | Turn an existing git checkout into a container (human-only). The folder becomes the container and its contents become `lane_1` unchanged (uncommitted work, stashes and ignored files included); the project's `.ai/` becomes the shared layer. Needs a reachable `origin`. Recreate Python virtualenvs afterwards. Containers made before M4.5 get its deny rule from `laines refresh <lane>`. |
 | `laines config get [key]` | Print the container's settings, or one dotted key such as `hooks.policy`. |
 | `laines config set <key> <value> [--dry-run]` | Change one setting (human-only). The value is JSON when it parses (`true`, `20`, `["claude"]`), else a string. Only that key changes in the file; the whole config is validated first. |
 | `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board, locks, every open lane, and how each agent reaches the lanes. `--prune` removes machine-index entries for containers that no longer exist. |
@@ -126,6 +135,7 @@ human-readable output.
 | `laines hooks status` | List each hook in `.laines/hooks/` as approved, changed or new, with a diff against the approved copy. |
 | `laines hooks approve [--lock] [--dry-run]` | Approve the current hooks (human-only). `--lock` also sets policy `approve`, so later changes are refused until a human approves them. It shows the diff of each hook it approves (with `--dry-run`, before approving). |
 | `laines hooks policy <approve\|notify\|open> [--dry-run]` | Set the hook policy (human-only). |
+| `laines ai sync [lane] [--dry-run]` | For a repository that commits `.ai/`: sync the container's shared `.ai/` with the lane's committed copy, both ways, against the last agreed state. A file changed on both sides is a conflict (exit 3) and is left alone. Run it before opening a PR. |
 | `laines watch [file] [--interval <s>]` | Follow the board (or any file) and print new lines as they land. |
 
 Run commands from the container directory, or pass `--container <dir>`. A bare `--` argument is rejected (exit 2), so options can't be used to slip past the agent deny rules for human-only commands.
@@ -199,8 +209,8 @@ read the container's instructions too.
 
 `laines-mcp` serves the agent-safe commands as MCP tools: `laines_create`, `laines_refresh`,
 `laines_brief`, `laines_list`, `laines_status`, `laines_report`, `laines_keep`, `laines_teardown`,
-`laines_hooks_status`, `laines_config_get` and `laines_doctor`. Human-only commands (`init`,
-`release`, `hooks approve`, `hooks policy`, `config set`) are not exposed, no tool takes a `force`
+`laines_hooks_status`, `laines_config_get`, `laines_ai_sync` and `laines_doctor`. Human-only commands (`init`,
+`adopt`, `release`, `hooks approve`, `hooks policy`, `config set`) are not exposed, no tool takes a `force`
 or `prune` argument, and the server only ever acts on the container it was started for.
 
 `laines init` registers it for Claude in the container's `.mcp.json`, and every lane gets its own
@@ -232,8 +242,8 @@ lane.
 
 ### Capabilities and locked mode
 
-`capabilities` in `.laines/config.json` switches off `create` (also `refresh`), `report`, `keep` or
-`teardown` for the CLI and MCP alike (exit `4`). `"locked": true` refuses `config set`,
+`capabilities` in `.laines/config.json` switches off `create` (also `refresh`), `report`, `keep`,
+`teardown` or `aiSync` for the CLI and MCP alike (exit `4`). `"locked": true` refuses `config set`,
 `hooks approve`, `hooks policy`, `release` and `teardown --force`, even from your own terminal
 (exit `3`); unlocking requires editing the file by hand.
 
@@ -245,6 +255,7 @@ lane.
 | **M2: Lanes** | `create`, `list`, `status`, `report`, `brief`, `keep` / `release`, `teardown` with unpushed-work safety checks, `watch` | ✅ Done |
 | **M3: Hooks** | hook runner, checksum approval (`hooks status / approve / policy`), `refresh` | ✅ Done |
 | **M4: MCP server** | `laines-mcp`, capabilities, locked mode, human confirmation for teardown over MCP | ✅ Done |
+| **M4.5: Adopt** | `laines adopt`, `.ai/` seeding, `laines ai sync` | ✅ Done |
 | **M5: Release** | CI on macOS and Linux, security documentation, npm package | Planned |
 
 Out of scope for v1: Windows, several repositories in one lane, and adopting an existing `.ai/`
