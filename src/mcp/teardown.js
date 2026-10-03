@@ -18,16 +18,15 @@ export const declinedMessage = (lane) =>
 function confirmMessage(ctx, deps, plan, opts) {
   const lane = getLane(readLanes(ctx), opts.lane);
   const plans = existsSync(plan.path) ? untrackedEntries(deps, plan.path, '.ai/plans').length : 0;
-  const unpushed = !opts.removeDir
-    ? 'not checked (the clone stays)'
-    : plan.checks?.problems.length ? plan.checks.problems.join('; ') : 'none';
+  const unpushed = !opts.removeDir ? 'not checked (the clone stays)' : plan.checks === null ? 'not checked (no clone)' : 'none';
+  const clone = plan.removedDir ? 'deleted (remove_dir)' : opts.removeDir ? 'no clone to delete' : 'left in place';
   const hooks = plan.hooks.flatMap((h) => h.hooks.map((x) => `${x.hook} (${x.state})`)).join(', ') || 'none';
   return [
     `Tear down lane ${opts.lane} of container ${ctx.id}?`,
     `- Branch: ${lane.repos[0].branch}`,
     `- Path: ${plan.path}`,
     `- Archived: ${plans} entr${plans === 1 ? 'y' : 'ies'} of .ai/plans/ move to the container's .ai/archive/; .ai/context/ is deleted`,
-    `- Clone: ${opts.removeDir ? 'deleted (remove_dir)' : 'left in place'}`,
+    `- Clone: ${clone}`,
     `- Unpushed work: ${unpushed}`,
     ...plan.warnings.map((w) => `- Warning: ${w}`),
     `- Hooks that run: ${hooks}`,
@@ -49,7 +48,7 @@ export async function runTeardownMcp(opts, deps) {
 
   // The dry run applies every check (capability, keep, closed, unpushed work) and touches nothing.
   const plan = await invoke('teardown', { ...args, dryRun: true }, deps);
-  if (plan.blocked) return invoke('teardown', args, deps); // refuses with the unpushed-work details
+  if (plan.blocked) throw new BlockedError(plan.refusal); // never re-run the real teardown without an accept
   const command = `laines teardown ${opts.lane}${opts.removeDir ? ' --remove-dir' : ''}`;
   if (!deps.canElicit?.()) {
     const ts = deps.now();
@@ -60,11 +59,12 @@ export async function runTeardownMcp(opts, deps) {
     }));
     throw new BlockedError(`This MCP client cannot ask a human to confirm a teardown. The request is on the board; a human completes it with \`${command}\`.`);
   }
+  const message = confirmMessage(ctx, deps, plan, opts);
   let answer = null;
   try {
-    answer = await deps.elicit(confirmMessage(ctx, deps, plan, opts), CONFIRM_SCHEMA);
-  } catch {
-    answer = null; // a timeout or a client error is no answer
+    answer = await deps.elicit(message, CONFIRM_SCHEMA);
+  } catch (error) {
+    deps.warn?.(`teardown confirmation failed: ${error?.message ?? error}`); // a timeout or a client error is no answer
   }
   if (answer?.action !== 'accept' || answer.content?.confirm !== true) throw new BlockedError(declinedMessage(opts.lane));
   return invoke('teardown', args, deps);

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runCreate } from '../src/commands/create.js';
 import { loadContainer } from '../src/lib/container.js';
@@ -76,13 +76,15 @@ describe('teardown over MCP: confirm', () => {
   it('treats a cancelled tool call as no answer, even if the human accepts later', async () => {
     const s = await withLane();
     let answer;
+    let entered;
     const answered = new Promise((resolve) => { answer = resolve; });
-    const m = await connectMcp(s.deps, { container: s.container, elicit: async () => { await answered; return { action: 'accept', content: { confirm: true } }; } });
+    const prompted = new Promise((resolve) => { entered = resolve; });
+    const m = await connectMcp(s.deps, { container: s.container, elicit: async () => { entered(); await answered; return { action: 'accept', content: { confirm: true } }; } });
     const ac = new AbortController();
     const call = m.client.callTool({ name: 'laines_teardown', arguments: { lane: 'lane_1' } }, undefined, { signal: ac.signal });
-    await new Promise((r) => setTimeout(r, 300));
+    await prompted;
     ac.abort();
-    await expect(call).rejects.toThrow();
+    await expect(call).rejects.toThrow(/abort/i);
     answer();
     await new Promise((r) => setTimeout(r, 300));
     expect(s.state().lanes.lane_1.state).toBe('active');
@@ -111,6 +113,26 @@ describe('teardown over MCP: confirm', () => {
     expect(kept.structuredContent.error.message).toContain('is kept');
     expect(s.state().lanes.lane_1.state).toBe('active');
     await m.close();
+  });
+
+  it('never runs the real teardown without an accept, even if the work gets pushed after the check', async () => {
+    const s = await withLane();
+    gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'local only');
+    let statuses = 0;
+    const prompts = [];
+    const deps = {
+      ...s.deps,
+      canElicit: () => true,
+      elicit: async (message) => (prompts.push(message), { action: 'accept', content: { confirm: true } }),
+      git: (args, o) => {
+        if (args[0] === 'status' && args.includes('--porcelain') && (statuses += 1) === 2) gitIn(s.dir, 'push', '-q', 'origin', 'HEAD');
+        return s.deps.git(args, o);
+      },
+    };
+    await expect(runTeardownMcp({ lane: 'lane_1', removeDir: true, container: s.container }, deps)).rejects.toMatchObject({ exitCode: 3, message: expect.stringContaining('exist on no remote') });
+    expect(prompts).toEqual([]);
+    expect(s.state().lanes.lane_1.state).toBe('active');
+    expect(existsSync(s.dir)).toBe(true);
   });
 
   it('cannot be forced: an injected force argument is dropped', async () => {

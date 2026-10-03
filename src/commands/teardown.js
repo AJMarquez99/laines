@@ -41,6 +41,17 @@ const recordHookRun = (ctx, deps, run, name, finish) =>
     return { state, result: null, activity: [...board.activity, { ts, lane: name, text }] };
   });
 
+// The refusal the CLI throws for unpushed work; the dry run carries the same text for callers that must not re-run a real teardown.
+export const unpushedRefusal = (laneDir, problems, isRepo) =>
+  [
+    `Refusing to remove ${laneDir}:`,
+    ...problems.map((p) => `  - ${p}`),
+    isRepo
+      ? `Push the work, or save it first: git -C ${laneDir} bundle create <file> --all --not --remotes`
+      : `Copy anything you need out of ${laneDir} first.`,
+    'Nothing has been archived or deleted. Use --force only after confirming this work can be lost.',
+  ].join('\n');
+
 // Human-only (deny rules in agent settings): the lane must always be named.
 export async function runTeardown(opts, deps) {
   if (!opts.lane) throw new InvalidInputError('Name the lane to tear down: `laines teardown <lane>`.');
@@ -77,17 +88,10 @@ export async function runTeardown(opts, deps) {
 
   if (opts.dryRun) {
     const hooks = [...(runPre ? [dryRunHooks(ctx, 'pre-teardown')] : []), ...(runPost ? [dryRunHooks(ctx, 'post-teardown')] : [])];
-    return { dryRun: true, lane: name, path: laneDir, blocked, removedDir: Boolean(opts.removeDir && real), forced: risky && Boolean(opts.force), checks, warnings, hooks };
+    return { dryRun: true, lane: name, path: laneDir, blocked, removedDir: Boolean(opts.removeDir && real), forced: risky && Boolean(opts.force), checks, warnings, hooks, refusal: blocked ? unpushedRefusal(laneDir, checks.problems, isRepo) : null };
   }
   if (blocked) {
-    throw new BlockedError([
-      `Refusing to remove ${laneDir}:`,
-      ...checks.problems.map((p) => `  - ${p}`),
-      isRepo
-        ? `Push the work, or save it first: git -C ${laneDir} bundle create <file> --all --not --remotes`
-        : `Copy anything you need out of ${laneDir} first.`,
-      'Nothing has been archived or deleted. Use --force only after confirming this work can be lost.',
-    ].join('\n'));
+    throw new BlockedError(unpushedRefusal(laneDir, checks.problems, isRepo));
   }
 
   // Spec §10.3 step 4: pre-teardown runs after the safety checks and before anything is touched.
