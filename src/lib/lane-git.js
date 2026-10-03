@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import { gitOut } from './git.js';
 
 // The loss condition is commit-level, not branch-level: any commit reachable from a local ref but
@@ -23,4 +25,14 @@ export function unpushedWork(deps, laneDir) {
   if (stashes) problems.push(`${stashes} stash entr${stashes === 1 ? 'y' : 'ies'}`);
   if (unpushed) problems.push(`${unpushed} commit(s) that exist on no remote: ${refs.map((r) => `${r.ref} (${r.commits})`).join(', ')}`);
   return { dirty, stashes, unpushed, refs, noUpstream, problems };
+}
+
+const IN_PROGRESS = ['MERGE_HEAD', 'rebase-merge', 'rebase-apply', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG'];
+
+// A merge, rebase, cherry-pick, revert or bisect half-done in repoDir, or null.
+export function operationInProgress(deps, repoDir) {
+  return IN_PROGRESS.find((name) => {
+    const rel = gitOut(deps, ['rev-parse', '--git-path', name], repoDir).trim();
+    return existsSync(isAbsolute(rel) ? rel : join(repoDir, rel));
+  }) ?? null;
 }
