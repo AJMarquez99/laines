@@ -64,8 +64,12 @@ describe('runHookFile', () => {
 
   it('stops the hook and everything it started when it times out', async () => {
     const dir = tmp();
-    const file = script(dir, 'sleep 30 &\necho $! > child.pid\nwait');
-    const r = await runHookFile({ file, cwd: dir, vars: {}, timeoutMs: 300 });
+    // The hook signals readiness once the child exists and its pid is on disk; the timeout leaves
+    // room for that under load, and the test waits for it before relying on the pid.
+    const file = script(dir, 'sleep 30 &\necho $! > child.pid\ntouch ready\nwait');
+    const pending = runHookFile({ file, cwd: dir, vars: {}, timeoutMs: 2000 });
+    expect(await until(() => existsSync(join(dir, 'ready')))).toBe(true);
+    const r = await pending;
     expect(r.timedOut).toBe(true);
     expect(r.status).toBe(null);
     const pid = Number(readFileSync(join(dir, 'child.pid'), 'utf8'));
@@ -111,8 +115,11 @@ describe('runHookFile', () => {
 
   it('timeout hard-kills a child that ignores SIGTERM', async () => {
     const dir = tmp();
-    const file = script(dir, "sh -c 'trap \"\" TERM; sleep 30' &\necho $! > child.pid\nwait");
-    const r = await runHookFile({ file, cwd: dir, vars: {}, timeoutMs: 300 });
+    // The child touches `ready` only after its trap is set; the test waits for that and the pid file.
+    const file = script(dir, "sh -c 'trap \"\" TERM; touch ready; sleep 30' &\necho $! > child.pid\nwait");
+    const pending = runHookFile({ file, cwd: dir, vars: {}, timeoutMs: 2000 });
+    expect(await until(() => existsSync(join(dir, 'ready')) && existsSync(join(dir, 'child.pid')))).toBe(true);
+    const r = await pending;
     expect(r.timedOut).toBe(true);
     expect(r.status).toBe(null);
     const pid = Number(readFileSync(join(dir, 'child.pid'), 'utf8'));

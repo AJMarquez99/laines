@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { detectLane, laneFrom, loadContainer } from '../lib/container.js';
+import { cwdLane, laneFrom, loadContainer } from '../lib/container.js';
 import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
 import { laneId } from '../lib/ids.js';
 import { dropRequests, requestId } from '../lib/lanes-state.js';
@@ -109,7 +109,7 @@ export async function runList(opts, deps) {
 export async function runStatus(opts, deps) {
   const ctx = loadContainer(opts, deps);
   const state = readLanes(ctx);
-  const name = opts.lane ?? detectLane(deps.cwd())?.lane;
+  const name = opts.lane ?? cwdLane(deps, ctx);
   if (!name) {
     const lanes = Object.entries(state.lanes)
       .filter(([, l]) => l.state !== 'closed')

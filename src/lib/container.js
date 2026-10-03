@@ -91,9 +91,14 @@ const realpathQuiet = (p) => {
 };
 
 // The cwd's lane counts only if it belongs to the container being operated on (ctx.root).
+export function cwdLane(deps, ctx) {
+  const lane = detectLane(deps.cwd());
+  return lane && realpathQuiet(lane.container) === ctx.root ? lane.lane : null;
+}
+
 export function laneFrom(opts, deps, ctx) {
   if (opts.lane) return opts.lane;
-  const lane = detectLane(deps.cwd());
-  if (lane && realpathQuiet(lane.container) === ctx.root) return lane.lane;
+  const lane = cwdLane(deps, ctx);
+  if (lane) return lane;
   throw new InvalidInputError('Name the lane (for example `laines report lane_2 ...`) or run the command inside a lane.');
 }

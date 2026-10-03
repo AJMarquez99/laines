@@ -80,6 +80,15 @@ describe('list and status', () => {
     expect(one).toMatchObject({ lane: 'lane_1', id: 'my-app/lane_1', envFile: join(lane.path, '.laines.env'), state: 'active' });
   });
 
+  it('shows the container overview when the cwd is a lane of another container', async () => {
+    const a = await oneLane();
+    const b = await oneLane();
+    const r = await runStatus({ container: b.container }, { ...b.deps, cwd: () => a.lane.path });
+    expect(r.lane).toBeUndefined();
+    expect(r.container.path).toBe(b.container);
+    expect(r.lanes.map((l) => l.lane)).toEqual(['lane_1']);
+  });
+
   it('hides closed lanes unless --all', async () => {
     const { deps, container } = await oneLane();
     const file = join(container, '.laines', 'lanes.json');
