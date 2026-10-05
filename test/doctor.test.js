@@ -4,13 +4,15 @@ import { join } from 'node:path';
 import { runInit } from '../src/commands/init.js';
 import { runDoctor } from '../src/commands/doctor.js';
 import { runCreate } from '../src/commands/create.js';
+import { runRefresh } from '../src/commands/refresh.js';
+import { spawnSync } from 'node:child_process';
 import { formatDoctor } from '../src/lib/format.js';
 import { runDotAi } from '../src/lib/dotai.js';
 import { claimContainer, loadIndex } from '../src/lib/machine-index.js';
 import { NotAContainerError } from '../src/lib/errors.js';
 import { loadContainer } from '../src/lib/container.js';
 import { updateLanes } from '../src/lib/lanes-store.js';
-import { tmp, cleanupTmp, testDeps, setupContainer, writeHook, setConfig } from './helpers.js';
+import { tmp, cleanupTmp, testDeps, setupContainer, writeHook, setConfig, gitIn } from './helpers.js';
 
 afterEach(cleanupTmp);
 const REMOTE = 'git@example.com:org/my-app.git';
@@ -269,5 +271,47 @@ describe('doctor notes', () => {
       expect(r['lane:lane_1'].detail).not.toContain('outdated');
       expect(r['lane:lane_1'].ok).toBe(true);
     }
+  });
+
+  describe('exclude block follows what the repository commits', () => {
+    const ignored = (dir, rel) => spawnSync('git', ['check-ignore', '-q', rel], { cwd: dir }).status === 0;
+    const OLD = ['/.ai/.lane.json', '/.ai/README.md', '/.ai/context/', '/.ai/plans/', '/.laines.env', '/CLAUDE.local.md',
+      '/AGENTS.md', '/GEMINI.md', '/.claude/settings.local.json', '/.mcp.json', '/*.pre-laines*'];
+    const setBlock = (dir, entries) => {
+      const file = join(dir, '.git', 'info', 'exclude');
+      const cur = readFileSync(file, 'utf8');
+      const b = cur.indexOf('# BEGIN laines lane');
+      const eEnd = cur.indexOf('# END laines lane') + '# END laines lane'.length;
+      writeFileSync(file, `${cur.slice(0, b)}# BEGIN laines lane (lane-local files, never committed)\n${entries.join('\n')}\n# END laines lane${cur.slice(eEnd)}`);
+    };
+    const detail = async (s) => byName(await runDoctor({ container: s.container }, s.deps))['lane:lane_1'];
+
+    it('a pre-M4.7 block in a repo tracking plans is flagged; refresh fixes it', async () => {
+      const s = await setupContainer({ files: { 'README.md': '#\n', '.ai/plans/README.md': 'r\n', '.ai/plans/a.md': 'p\n' } });
+      const lane = await runCreate({ container: s.container }, s.deps);
+      setBlock(lane.path, OLD);
+      writeFileSync(join(lane.path, '.ai', 'plans', 'new.md'), 'n\n');
+      expect(ignored(lane.path, '.ai/plans/new.md')).toBe(true);
+      const r = await detail(s);
+      expect(r.ok).toBe(false);
+      expect(r.detail).toContain('git exclude block outdated: run `laines refresh lane_1`');
+      await runRefresh({ container: s.container, lane: 'lane_1' }, s.deps);
+      expect(ignored(lane.path, '.ai/plans/new.md')).toBe(false);
+      expect((await detail(s)).ok).toBe(true);
+    });
+
+    it('a repo that starts, then stops, tracking plans is flagged each time; refresh fixes it', async () => {
+      const s = await setupContainer();
+      const lane = await runCreate({ container: s.container }, s.deps);
+      writeFileSync(join(lane.path, '.ai', 'plans', 'a.md'), 'p\n');
+      gitIn(lane.path, 'add', '-f', '.ai/plans/a.md');
+      expect((await detail(s)).detail).toContain('outdated');
+      await runRefresh({ container: s.container, lane: 'lane_1' }, s.deps);
+      expect((await detail(s)).ok).toBe(true);
+      gitIn(lane.path, 'rm', '-q', '--cached', '.ai/plans/a.md');
+      expect((await detail(s)).detail).toContain('outdated');
+      await runRefresh({ container: s.container, lane: 'lane_1' }, s.deps);
+      expect((await detail(s)).ok).toBe(true);
+    });
   });
 });

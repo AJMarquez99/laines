@@ -23,7 +23,7 @@ export function buildBrief(ctx, name, lane, deps) {
     [join(laneDir, '.ai', 'plans'), 'plans for the current task'],
   ];
   const readFirst = candidates.filter(([p]) => existsSync(p)).map(([path, why]) => ({ path, why }));
-  const plansRule = commitsUnder(deps, laneDir, '.ai/plans')
+  const plansRule = existsSync(join(laneDir, '.git')) && commitsUnder(deps, laneDir, '.ai/plans')
     ? 'This repository commits `.ai/plans/`: commit plans with your work.'
     : 'Plans in `.ai/plans/` stay local to this lane.';
   const rules = [

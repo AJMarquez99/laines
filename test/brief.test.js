@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { buildBrief } from '../src/lib/brief.js';
@@ -68,6 +68,14 @@ describe('brief', () => {
     const rules = buildBrief(ctx, 'lane_1', record(), deps).rules.join('\n');
     expect(rules).toContain('This repository commits `.ai/plans/`: commit plans with your work.');
     expect(rules).not.toContain('stay local');
+  });
+
+  it('falls back to the local-plans rule when the lane path is missing or not a git repository', async () => {
+    const { ctx, laneDir, deps } = await withLane();
+    rmSync(join(laneDir, '.git'), { recursive: true, force: true });
+    expect(buildBrief(ctx, 'lane_1', record(), deps).rules.join('\n')).toContain('stay local');
+    rmSync(laneDir, { recursive: true, force: true });
+    expect(buildBrief(ctx, 'lane_1', record(), deps).rules.join('\n')).toContain('stay local');
   });
 
   it('runs by name or from inside the lane, and refuses unknown or closed lanes', async () => {

@@ -49,7 +49,9 @@ function laneProblems(root, containerId, name, lane, agents, deps) {
     const after = excludeText.slice(excludeText.indexOf(EXCLUDE_BEGIN));
     const end = after.indexOf(EXCLUDE_END);
     const block = new Set((end === -1 ? after : after.slice(0, end)).split('\n').map((l) => l.trim()));
-    if (laneExcludes(deps, dir).some((l) => !block.has(l))) problems.push(`git exclude block outdated: run \`laines refresh ${name}\``);
+    const want = new Set(laneExcludes(deps, dir));
+    const have = [...block].filter((l) => l && !l.startsWith('#'));
+    if ([...want].some((l) => !block.has(l)) || have.some((l) => !want.has(l))) problems.push(`git exclude block outdated: run \`laines refresh ${name}\``);
   }
   const settingsTracked = agents.includes('claude') && isTracked(deps, dir, '.claude/settings.local.json');
   if (settingsTracked) problems.push('.claude/settings.local.json is tracked by the repository: lane deny rules cannot be written');

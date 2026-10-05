@@ -97,7 +97,7 @@ export function laneExcludes(deps, laneDir) {
     const rel = entry.slice(1);
     if (!entry.endsWith('/')) return keep(rel) ? [entry] : [];
     if (keep(rel.slice(0, -1))) return [entry];
-    return OWN_FILES[entry].filter((f) => keep(f.slice(1)));
+    return (OWN_FILES[entry] ?? []).filter((f) => keep(f.slice(1)));
   });
 }
 

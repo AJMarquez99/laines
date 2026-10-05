@@ -17,8 +17,9 @@ working in.
 **Lane rules**
 1. A lane owns its `.ai/context/` and `.ai/plans/`. If the repository commits files under
    `.ai/plans/`, plans you write there are part of your branch: commit them with the work they
-   describe. Otherwise they stay local and are archived when the lane is torn down. Write new knowledge, guidelines, lessons,
-   data and audits to this container's `.ai/`, never into the lane.
+   describe (an uncommitted plan blocks teardown). Otherwise they stay local and are archived when
+   the lane is torn down. Write new knowledge, guidelines, lessons, data and audits to this
+   container's `.ai/`, never into the lane.
 2. This container's `.ai/` is where you read and write knowledge, even when the repository commits
    its own `.ai/`. A lane's committed `.ai/` files are output: never edit them by hand.
    `laines ai sync <lane>` (or the `laines_ai_sync` MCP tool) moves knowledge both ways; run it
