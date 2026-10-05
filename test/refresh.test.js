@@ -48,6 +48,36 @@ describe('refresh of a lane adopted before M4.7', () => {
     expect(readFileSync(join(path, '.laines.env'), 'utf8')).toBe(before);
   });
 
+  it('the table output names the lanes.json write, dry and real', async () => {
+    const { s, path } = await legacy();
+    const dry = await runCli(['refresh', '--dry-run', '--format', 'table'], { ...s.deps, cwd: () => path });
+    expect(dry.stdout).toContain('would set adopted in lanes.json');
+    const real = await runCli(['refresh', '--format', 'table'], { ...s.deps, cwd: () => path });
+    expect(real.stdout).toContain('set adopted in lanes.json');
+    expect(real.stdout).not.toContain('would set');
+    const again = await runCli(['refresh', '--format', 'table'], { ...s.deps, cwd: () => path });
+    expect(again.stdout).not.toContain('lanes.json');
+  });
+
+  it('a lane closed or removed before the backfill is an invalid-input error, not a crash', async () => {
+    // Changes lanes.json the moment refresh reads the clone's branch: after its first check, before the backfill.
+    const raceWith = (s, change) => (args, o) => {
+      if (args[0] === 'branch' && args[1] === '--show-current') {
+        const file = ctxOf(s).paths.lanes;
+        const st = JSON.parse(readFileSync(file, 'utf8'));
+        change(st.lanes);
+        writeFileSync(file, JSON.stringify(st));
+      }
+      return s.deps.git(args, o);
+    };
+    const { s: closed } = await legacy();
+    const git = raceWith(closed, (lanes) => { lanes.lane_1.state = 'closed'; });
+    await expect(runRefresh({ lane: 'lane_1', container: closed.container }, { ...closed.deps, git })).rejects.toBeInstanceOf(InvalidInputError);
+    const { s: removed } = await legacy();
+    const git2 = raceWith(removed, (lanes) => { delete lanes.lane_1; });
+    await expect(runRefresh({ lane: 'lane_1', container: removed.container }, { ...removed.deps, git: git2 })).rejects.toBeInstanceOf(InvalidInputError);
+  });
+
   it('leaves a created lane (no compose) alone', async () => {
     const s = await setupContainer();
     await runCreate({ container: s.container }, s.deps);

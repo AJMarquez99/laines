@@ -51,6 +51,7 @@ export function formatRefresh(r) {
     return [
       `dry run: would refresh ${r.lane}`,
       `path:    ${r.path}`,
+      ...(r.wouldBackfill?.length ? [`lanes:   would set ${r.wouldBackfill.join(', ')} in lanes.json`] : []),
       ...(r.wouldMigrate?.length ? [`migrate: ${r.wouldMigrate.join(', ')}`] : []),
       ...(r.wouldRewrite?.length ? [`rewrite: ${r.wouldRewrite.join(', ')}`] : []),
       ...(r.agentBlocks?.length ? [`blocks:  ${r.agentBlocks.join(', ')}`] : []),
@@ -68,6 +69,7 @@ export function formatRefresh(r) {
     `path:    ${r.path}`,
     `branch:  ${r.branch}`,
     `hooks:   post-create: ${runSummary(r.hooks)}`,
+    ...(r.backfilled?.length ? [`lanes:   set ${r.backfilled.join(', ')} in lanes.json`] : []),
     ...(r.migrated?.length ? [`migrated: ${r.migrated.join(', ')}`] : []),
     ...(r.rewritten?.length ? [`rewrote:  ${r.rewritten.join(', ')}`] : []),
     ...(r.agentBlocks?.length ? [`blocks:  ${r.agentBlocks.join(', ')}`] : []),

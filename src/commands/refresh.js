@@ -70,8 +70,10 @@ export async function runRefresh(opts, deps) {
   const needsAdopted = Boolean(lane.compose) && !lane.adopted;
   if (needsAdopted && !opts.dryRun) {
     lane = await updateLanes(ctx, deps, (s) => {
-      getLane(s, name).adopted = true;
-      return { state: s, result: { ...getLane(s, name) } };
+      const l = getLane(s, name);
+      if (!l || l.state === 'closed') throw new InvalidInputError(`Lane ${name} was torn down while it was being refreshed.`);
+      l.adopted = true;
+      return { state: s, result: { ...l } };
     });
   }
   const record = { ...lane, repos: [{ ...lane.repos[0], branch }] };
@@ -115,7 +117,7 @@ export async function runRefresh(opts, deps) {
       }
     });
   } catch (err) {
-    warnings.push(`container files not migrated to _ names: ${err.message}`);
+    warnings.push(`container files not updated (migration, stale-path rewrite, agent-file block): ${err.message}`);
   }
   try {
     mergeDenyRules(ctx.paths.claudeSettings, denyRules());
