@@ -299,7 +299,7 @@ none, so the project's own `PORT` stays in effect. `refresh` backfills `adopted`
 `compose` name.
 
 `.laines.env` is written before `post-create` and contains `LANE_*`, `PORT` (first port of the
-block), and `COMPOSE_PROJECT_NAME` (`<id>-l<n>`, or the lane's recorded `compose` name: `adopt` keeps the project's own for `lane_1`). Hooks may append to it. `refresh` rewrites it from scratch before re-running `post-create`, so appended lines come back exactly once; hand edits are lost.
+block; not for an adopted lane), and `COMPOSE_PROJECT_NAME` (`<id>-l<n>`, or the lane's recorded `compose` name: `adopt` keeps the project's own for `lane_1`). Hooks may append to it. `refresh` rewrites it from scratch before re-running `post-create`, so appended lines come back exactly once; hand edits are lost.
 
 Exit `0` ok · `3` blocked, needs a human (becomes a board request, not a failure) · anything
 else fails. Default timeout 300s. Output is captured and returned to agents marked untrusted.

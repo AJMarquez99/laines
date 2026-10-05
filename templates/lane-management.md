@@ -7,10 +7,10 @@ How lanes are created, used, monitored and closed in container `{{containerId}}`
 - **The container** (this directory) holds the shared `.ai/` layer, `.laines/` (settings, lane
   index, hooks, audit log), and the lanes. It is not a git repository.
 - **Lanes** (`lane_1/`, `lane_2/`, …) are standard `git clone`s of the project. Each lane has its
-  own port block, its own `.laines.env`, and lane-local `.ai/context/` and `.ai/plans/` (plans are part of the branch when the repository
-  commits `.ai/plans/`; otherwise local, archived at teardown). Everything
-  else (knowledge, guidelines, lessons, data, audits) lives in the container's `.ai/` so it
-  outlives any lane.
+  own port block, its own `.laines.env`, and lane-local `.ai/context/` and `.ai/plans/` (plans are
+  part of the branch when the repository commits `.ai/plans/`; otherwise local, archived at
+  teardown). Everything else (knowledge, guidelines, lessons, data, audits) lives in the
+  container's `.ai/` so it outlives any lane.
 - **The board** (`.ai/context/LANES_BOARD.md`) shows every lane's status, the requests waiting on a
   human, and recent activity. `laines` generates it; nobody edits it by hand.
 
@@ -94,8 +94,10 @@ overwrite its untracked copies of those files: remove the untracked copies (they
 ## Adopting an existing checkout
 
 If this container was made with `laines adopt <dir>`, the original project folder became its first
-lane and the project's `.ai/` became this shared layer. Recreate Python virtualenvs in the lane after a move.
-`lane_1` keeps the project's Docker Compose project name, so existing volumes and containers stay attached; other lanes get their own (`<id>-l<n>`).
+lane and the project's `.ai/` became this shared layer. The checkout moved, so recreate anything
+that stored its old absolute path (examples: a language virtualenv, a build cache) and reopen
+editors on the lane. `lane_1` keeps the project's own ports and its Docker Compose project name, so
+existing volumes and containers stay attached; other lanes get their own (`<id>-l<n>`).
 
 ## Monitoring
 
@@ -116,6 +118,9 @@ lane and the project's `.ai/` became this shared layer. Recreate Python virtuale
   repeat. Hooks inherit the environment laines runs with: a wrapper that rewrites `PATH` puts its tool
   first for every hook, so launch laines through a wrapper that runs the runtime binary directly, or
   call your version manager explicitly inside the hook.
+- **laines owns its git-exclude block.** The entries between laines' markers in a lane's
+  `.git/info/exclude` are laines': `doctor` flags anything else there and `refresh` replaces it. Put
+  your own exclude rules outside the markers.
 - **Keep lane-local config patches out of commits.** If isolation needs an edit to a tracked file,
   `git update-index --skip-worktree <file>` hides it; unset it before pulling changes to that file.
 - **Stop what you start.** Stop a lane's servers before tearing it down and check its ports are

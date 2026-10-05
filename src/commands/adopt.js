@@ -130,28 +130,6 @@ async function assertRemoteReachable(deps, { dir, remote }) {
   );
 }
 
-// Directories holding pyvenv.cfg, up to three levels down: virtualenvs store absolute paths.
-function findVenvs(dir) {
-  const found = [];
-  const visit = (abs, rel, depth) => {
-    if (depth > 3) return;
-    let entries;
-    try {
-      entries = readdirSync(abs, { withFileTypes: true });
-    } catch {
-      return; // unreadable: not ours to judge
-    }
-    for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name === 'node_modules' || entry.name === '.git') continue;
-      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
-      if (existsSync(join(abs, entry.name, 'pyvenv.cfg'))) found.push(childRel);
-      else visit(join(abs, entry.name), childRel, depth + 1);
-    }
-  };
-  visit(dir, '', 1);
-  return found.sort();
-}
-
 function backupName(dir, file) {
   let to = `${file}.pre-laines`;
   for (let i = 2; existsSync(join(dir, to)); i += 1) to = `${file}.pre-laines-${i}`;
@@ -167,6 +145,8 @@ function scalar(raw) {
   return out && !out.includes('$') ? out : null;
 }
 
+// COMPOSE_PROJECT_NAME is a variable laines itself sets for every lane: this reproduces the name the
+// checkout already had, since adopt's rename would otherwise change Compose's folder-name default.
 // The Compose project name the checkout uses today (.env, then the compose file's top-level name:,
 // then Compose's default: the folder name lowercased, minus anything outside [a-z0-9_-] and any
 // leading _ or -).
@@ -197,10 +177,8 @@ function plan(insp, opts, deps) {
   const collisions = collisionCandidates(agents).filter((f) => existsSync(join(dir, f)) && !isTracked(deps, dir, f));
   // Stash commits are not "unpushed work": they stay with lane_1 either way (same rule as lane-git.js).
   const unpushed = Number(gitOut(deps, ['rev-list', '--count', '--exclude=refs/stash', '--all', '--not', '--remotes'], dir).trim()) || 0;
-  const venvs = findVenvs(dir);
   const warnings = [];
   if (unpushed) warnings.push(`${unpushed} commit(s) exist on no remote: they stay in ${lane}, but new lanes clone origin and won't have them until you push.`);
-  if (venvs.length) warnings.push(`Python virtualenv(s) store absolute paths and must be recreated after the move (for uv: uv sync): ${venvs.join(', ')}`);
   if (aiWalk.symlinks.length) warnings.push(`.ai/ symbolic links are not copied to the container: ${aiWalk.symlinks.join(', ')}`);
   return {
     branch: branchNow || defaultBranch,
@@ -212,14 +190,13 @@ function plan(insp, opts, deps) {
     ai: { mode: hasAi ? 'seed' : 'fresh', files: aiWalk.files.length },
     backups: collisions.map((f) => ({ from: f, to: backupName(dir, f) })),
     warnings,
-    venvs,
   };
 }
 
-const nextSteps = (laneDir, dir, p) => [
+const nextSteps = (laneDir, dir) => [
   `cd ${shellQuote(laneDir)}`,
-  ...(p.venvs.length ? [`recreate the virtualenv(s) in the lane (e.g. uv sync): ${p.venvs.join(', ')}`] : []),
-  `stop dev servers started from the old path and reopen editors on ${laneDir}`,
+  `the checkout moved from ${dir} to ${laneDir}: recreate anything that stored the old absolute path ` +
+    `(for example a language virtualenv or build cache), stop dev servers started from the old path and reopen editors on ${laneDir}`,
   `Claude's saved project memory for ${dir} now belongs to the container session`,
   'create more lanes: laines create',
 ];
@@ -402,5 +379,5 @@ export async function runAdopt(opts, deps) {
     );
   }
   appendAudit(containerPaths(insp.dir).audit, { ts: deps.now(), action: 'adopt', container: entry.id, lane: p.lane, ai: p.ai.mode }, { warn: deps.warn });
-  return { dryRun: false, ...summary(entry.id, entry.portRange, ports, p.backups), warnings, files: CONTAINER_FILES(p.agents), next: nextSteps(laneDir, insp.dir, p) };
+  return { dryRun: false, ...summary(entry.id, entry.portRange, ports, p.backups), warnings, files: CONTAINER_FILES(p.agents), next: nextSteps(laneDir, insp.dir) };
 }

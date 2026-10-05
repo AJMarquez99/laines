@@ -317,7 +317,7 @@ describe('adopt', () => {
     expect(gitIn(laneDir, 'status', '--porcelain')).toBe('');
   });
 
-  it('skips unreadable folders when looking for virtualenvs', async () => {
+  it('adopts a checkout holding an unreadable folder', async () => {
     const w = world();
     put(w.dir, 'locked/inner/x.txt', 'x\n');
     chmodSync(join(w.dir, 'locked'), 0o000);
@@ -340,7 +340,7 @@ describe('adopt', () => {
     expect(gitIn(join(w.dir, 'lane_1'), 'status', '--porcelain')).not.toContain('pre-laines');
   });
 
-  it('warns about virtualenvs, unpushed commits and .ai/ symlinks', async () => {
+  it('warns about unpushed commits and .ai/ symlinks, and tells every adopter to recreate path-bound state', async () => {
     const w = world();
     put(w.dir, 'api/.venv/pyvenv.cfg', 'home = /usr/bin\n');
     put(w.dir, 'local.txt', 'x\n');
@@ -350,9 +350,23 @@ describe('adopt', () => {
     symlinkSync(join(w.root, 'home'), join(w.dir, '.ai', 'linked'));
     const r = await w.adopt();
     const text = r.warnings.join('\n');
-    expect(text).toContain('api/.venv');
+    expect(text).not.toContain('api/.venv');
     expect(text).toContain('1 commit(s) exist on no remote');
     expect(text).toContain('linked');
+    expect(r).not.toHaveProperty('venvs');
+    const laneDir = join(w.dir, 'lane_1');
+    const moved = r.next.filter((s) => s.includes('recreate anything that stored the old absolute path'));
+    expect(moved).toEqual([
+      `the checkout moved from ${w.dir} to ${laneDir}: recreate anything that stored the old absolute path (for example a language virtualenv or build cache), stop dev servers started from the old path and reopen editors on ${laneDir}`,
+    ]);
+    expect(r.next.join('\n')).not.toMatch(/uv sync|virtualenv\(s\)/);
+    expect(r.next.filter((s) => s.includes('reopen editors'))).toHaveLength(1);
+  });
+
+  it('gives the same path-bound next step for a project with no virtualenv', async () => {
+    const w = world();
+    const r = await w.adopt();
+    expect(r.next.some((s) => s.startsWith(`the checkout moved from ${w.dir} to ${join(w.dir, 'lane_1')}:`))).toBe(true);
   });
 
   it('records the default branch on a detached HEAD', async () => {
