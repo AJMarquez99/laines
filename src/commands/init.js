@@ -12,7 +12,7 @@ import { emptyLanesState } from '../lib/lanes-state.js';
 import { renderBoard } from '../lib/board.js';
 import { readTemplate, renderTemplate } from '../lib/templates.js';
 import {
-  AGENT_FILES, AGENT_FLAGS, appendOnce, denyRules, mergeDenyRules, upsertBlock,
+  AGENT_FILES, AGENT_FLAGS, appendOnce, denyRules, mergeDenyRules, syncLanesBlocks,
 } from '../lib/agent-files.js';
 import { CURRENT_LAYOUT, LANE_TEMPLATES, RUNBOOK, indexPrivate } from '../lib/container-files.js';
 import { mergeMcpConfig } from '../lib/mcp-config.js';
@@ -102,8 +102,7 @@ export function writeContainer({ path, entry, config, agents, deps }) {
     }),
   );
 
-  const block = renderTemplate(readTemplate('lanes-block.md'), { containerId: entry.id });
-  for (const a of agents) upsertBlock(join(path, AGENT_FILES[a]), block);
+  syncLanesBlocks(path, agents, entry.id);
   mergeDenyRules(p.claudeSettings, denyRules());
   if (agents.includes('claude')) mergeMcpConfig(join(path, '.mcp.json'), path);
 }

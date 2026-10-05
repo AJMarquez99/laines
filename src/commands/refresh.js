@@ -4,14 +4,14 @@ import { laneFrom, loadContainer } from '../lib/container.js';
 import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
 import { dropRequests, putRequest, requestId, spinUpState } from '../lib/lanes-state.js';
 import { assertLaneDir } from '../lib/containment.js';
-import { writeLaneFiles } from '../lib/lane-files.js';
-import { denyRules, mergeDenyRules } from '../lib/agent-files.js';
+import { envArgs, envChanges, excludeChanges, writeLaneFiles } from '../lib/lane-files.js';
+import { denyRules, mergeDenyRules, syncLanesBlocks } from '../lib/agent-files.js';
 import { hookStates } from '../lib/hooks.js';
 import {
   dryRunHooks, hookBoardEntries, hookError, runEvent, runSummary, setupFailedNext, setupFailedRequest, unapprovedWarnings,
 } from '../lib/hook-events.js';
 import { readJson, writeJson } from '../lib/jsonfile.js';
-import { CURRENT_LAYOUT, migrateContainerFiles, unmigratedFiles } from '../lib/container-files.js';
+import { CURRENT_LAYOUT, migrateContainerFiles, rewriteStalePaths, unmigratedFiles } from '../lib/container-files.js';
 import { appendAudit } from '../lib/audit.js';
 import { withLock } from '../lib/lock.js';
 import { InvalidInputError, MalformedConfigError } from '../lib/errors.js';
@@ -63,12 +63,32 @@ export async function runRefresh(opts, deps) {
   if (!real || !existsSync(join(real, '.git'))) {
     throw new InvalidInputError(`${laneDir} is missing or not a git clone. Tear the lane down (\`laines teardown ${name} --remove-dir --force\`) and create it again.`);
   }
-  if (opts.dryRun) return { dryRun: true, lane: name, path: laneDir, hooks: dryRunHooks(ctx, 'post-create'), wouldMigrate: unmigratedFiles(ctx.paths.ai, ctx.layout).map((f) => `${f.dir}/${f.name}`) };
+  // The board and LANE_BRANCH follow the branch the clone is on now; a detached HEAD keeps the old one.
+  const head = deps.git(['branch', '--show-current'], { cwd: real });
+  const branch = head.status === 0 && head.stdout.trim() ? head.stdout.trim() : lane.repos[0].branch;
+  const record = { ...lane, repos: [{ ...lane.repos[0], branch }] };
+  const laneArgs = { name, number: lane.number, laneDir, branch, ports: lane.ports, compose: lane.compose };
+  if (opts.dryRun) {
+    return {
+      dryRun: true,
+      lane: name,
+      path: laneDir,
+      hooks: dryRunHooks(ctx, 'post-create'),
+      wouldMigrate: unmigratedFiles(ctx.paths.ai, ctx.layout).map((f) => `${f.dir}/${f.name}`),
+      wouldRewrite: rewriteStalePaths(ctx.paths.ai, { dryRun: true }),
+      envChanges: envChanges(join(laneDir, '.laines.env'), envArgs(ctx, laneArgs)),
+      excludeChanges: excludeChanges(deps, laneDir),
+      agentBlocks: syncLanesBlocks(ctx.root, ctx.config.agents, ctx.id, { dryRun: true }),
+      laneFiles: (({ written, skipped }) => ({ write: written, skip: skipped }))(writeLaneFiles(ctx, deps, laneArgs, { dryRun: true })),
+    };
+  }
   // Containers made before a new human-only command existed get its deny rules here. A malformed
   // container settings file is the container's problem (doctor reports it), not this lane's.
   const warnings = [];
   // Containers made before M4.6 keep laines' files under plain names; move them to `_` names.
   let migrated = [];
+  let rewritten = [];
+  let agentBlocks = [];
   try {
     // Under the container lock: two refreshes must not migrate, or stamp the marker, at once.
     await withLock(ctx.paths.lock, () => {
@@ -76,6 +96,14 @@ export async function runRefresh(opts, deps) {
       migrated = m.migrated;
       warnings.push(...m.warnings);
       if (ctx.layout < CURRENT_LAYOUT && !m.warnings.length) writeJson(ctx.paths.marker, { ...readJson(ctx.paths.marker), layout: CURRENT_LAYOUT });
+      rewritten = rewriteStalePaths(ctx.paths.ai);
+      // The container's agent-file block follows the current template (user text outside it is kept).
+      try {
+        agentBlocks = syncLanesBlocks(ctx.root, ctx.config.agents, ctx.id);
+      } catch (err) {
+        if (!(err instanceof InvalidInputError)) throw err;
+        warnings.push(`container agent-file block not refreshed: ${err.message}`);
+      }
     });
   } catch (err) {
     warnings.push(`container files not migrated to _ names: ${err.message}`);
@@ -87,10 +115,6 @@ export async function runRefresh(opts, deps) {
     warnings.push(`container deny rules not checked: ${ctx.paths.claudeSettings} is malformed. Fix it, then run \`laines refresh ${name}\` again.`);
   }
 
-  // The board and LANE_BRANCH follow the branch the clone is on now; a detached HEAD keeps the old one.
-  const head = deps.git(['branch', '--show-current'], { cwd: real });
-  const branch = head.status === 0 && head.stdout.trim() ? head.stdout.trim() : lane.repos[0].branch;
-  const record = { ...lane, repos: [{ ...lane.repos[0], branch }] };
   const event = { event: 'post-create', name, lane: record, cwd: real };
   // A refusal must not touch the lane: .laines.env keeps what the approved hooks appended to it.
   if (dryRunHooks(ctx, 'post-create').refused) {
@@ -98,7 +122,7 @@ export async function runRefresh(opts, deps) {
     await recordRun(ctx, deps, run, name, branch);
     throw hookError(run, setupFailedNext(run, name));
   }
-  const files = writeLaneFiles(ctx, deps, { name, number: lane.number, laneDir, branch, ports: lane.ports, compose: lane.compose });
+  const files = writeLaneFiles(ctx, deps, laneArgs);
   const run = await runEvent(ctx, deps, event);
   const ok = await recordRun(ctx, deps, run, name, branch);
   if (!ok) throw hookError(run, setupFailedNext(run, name));
@@ -109,6 +133,8 @@ export async function runRefresh(opts, deps) {
     branch,
     files: files.written,
     migrated,
+    rewritten,
+    agentBlocks,
     warnings: [...warnings, ...files.skipped.map((f) => `${f.file} not written: ${f.reason}`), ...unapprovedWarnings(run)],
     hooks: run,
   };

@@ -57,6 +57,31 @@ export function laneEnv(args) {
   );
 }
 
+// The arguments laneEnv/laneVars take for a lane, so the real write and the dry run agree.
+export const envArgs = (ctx, { name, number, laneDir, branch, ports, compose }) => (
+  { lane: name, number, containerId: ctx.id, laneDir, containerDir: ctx.root, ports, branch, compose }
+);
+
+// Keys laines owns in .laines.env; anything else was appended by a hook and is re-added by post-create.
+const OWNED_ENV = /^(LANE_|CONTAINER_|PORT$|COMPOSE_PROJECT_NAME$)/;
+const unq = (v) => (v.startsWith('"') && v.endsWith('"') ? v.slice(1, -1).replace(/\\([\\"$`])/g, '$1') : v);
+
+// What rewriting .laines.env would change, key by key: [{ key, from, to }] (null = absent).
+export function envChanges(file, args) {
+  const have = {};
+  if (existsSync(file)) {
+    for (const line of readFileSync(file, 'utf8').split('\n')) {
+      const m = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
+      if (m) have[m[1]] = unq(m[2]);
+    }
+  }
+  const want = laneVars(args);
+  return [
+    ...Object.keys(want).filter((k) => have[k] !== want[k]).map((key) => ({ key, from: have[key] ?? null, to: want[key] })),
+    ...Object.keys(have).filter((k) => !(k in want) && OWNED_ENV.test(k)).map((key) => ({ key, from: have[key], to: null })),
+  ];
+}
+
 // Exit 0 = tracked, 1 = not tracked; anything else (fatal, spawn error) must not read as "not tracked".
 export function isTracked(deps, repoDir, rel) {
   const args = ['ls-files', '--error-unmatch', '--', rel];
@@ -101,9 +126,24 @@ export function laneExcludes(deps, laneDir) {
   });
 }
 
-export function upsertExclude(deps, laneDir) {
+const excludeFile = (deps, laneDir) => {
   const rel = gitOut(deps, ['rev-parse', '--git-path', 'info/exclude'], laneDir).trim();
-  const file = isAbsolute(rel) ? rel : join(laneDir, rel);
+  return isAbsolute(rel) ? rel : join(laneDir, rel);
+};
+
+// Entries the lane's exclude block would gain or lose: { added, removed }.
+export function excludeChanges(deps, laneDir) {
+  const file = excludeFile(deps, laneDir);
+  const cur = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  const b = cur.indexOf(EXCLUDE_BEGIN);
+  const e = cur.indexOf(EXCLUDE_END);
+  const have = b === -1 ? [] : cur.slice(b, e > b ? e : undefined).split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+  const want = laneExcludes(deps, laneDir);
+  return { added: want.filter((l) => !have.includes(l)), removed: have.filter((l) => !want.includes(l)) };
+}
+
+export function upsertExclude(deps, laneDir) {
+  const file = excludeFile(deps, laneDir);
   const cur = existsSync(file) ? readFileSync(file, 'utf8') : '';
   const block = [EXCLUDE_BEGIN, ...laneExcludes(deps, laneDir), EXCLUDE_END].join('\n');
   const b = cur.indexOf(EXCLUDE_BEGIN);
@@ -132,8 +172,9 @@ export function untrackedEntries(deps, repoDir, relDir) {
 
 // Spec §4. Never overwrites a file the repository tracks: a lane must not change project files
 // behind the developer's back. Those are skipped and reported.
-export function writeLaneFiles(ctx, deps, lane) {
-  const { name, number, laneDir, branch, ports, compose } = lane;
+// `dryRun` runs the same decisions without writing anything and returns what it would write or skip.
+export function writeLaneFiles(ctx, deps, lane, { dryRun = false } = {}) {
+  const { name, number, laneDir, branch, ports } = lane;
   const vars = {
     lane: name,
     laneId: laneId(ctx.id, name),
@@ -145,9 +186,11 @@ export function writeLaneFiles(ctx, deps, lane) {
   };
   const written = [];
   const skipped = [];
-  upsertExclude(deps, laneDir); // first, so nothing written below ever shows in git status
-  mkdirSync(join(laneDir, '.ai', 'context'), { recursive: true });
-  mkdirSync(join(laneDir, '.ai', 'plans'), { recursive: true });
+  if (!dryRun) {
+    upsertExclude(deps, laneDir); // first, so nothing written below ever shows in git status
+    mkdirSync(join(laneDir, '.ai', 'context'), { recursive: true });
+    mkdirSync(join(laneDir, '.ai', 'plans'), { recursive: true });
+  }
 
   const tracked = (rel) => {
     if (!isTracked(deps, laneDir, rel)) return false;
@@ -156,9 +199,11 @@ export function writeLaneFiles(ctx, deps, lane) {
   };
   const put = (rel, content) => {
     if (tracked(rel)) return;
-    const file = join(laneDir, rel);
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, content);
+    if (!dryRun) {
+      const file = join(laneDir, rel);
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, content);
+    }
     written.push(rel);
   };
   // The container's copies of the lane templates win, so a team can customise them.
@@ -171,14 +216,16 @@ export function writeLaneFiles(ctx, deps, lane) {
   };
 
   if (!tracked('.ai/.lane.json')) {
-    mkdirSync(join(laneDir, '.ai'), { recursive: true });
-    writeJson(join(laneDir, '.ai', '.lane.json'), { lane: name, number, containerId: ctx.id, container: ctx.root });
+    if (!dryRun) {
+      mkdirSync(join(laneDir, '.ai'), { recursive: true });
+      writeJson(join(laneDir, '.ai', '.lane.json'), { lane: name, number, containerId: ctx.id, container: ctx.root });
+    }
     written.push('.ai/.lane.json');
   }
   put('.ai/README.md', template('lane-ai-readme.md'));
   put('.ai/context/README.md', template('lane-context-readme.md'));
   put('.ai/plans/README.md', template('lane-plans-readme.md'));
-  put('.laines.env', laneEnv({ lane: name, number, containerId: ctx.id, laneDir, containerDir: ctx.root, ports, branch, compose }));
+  put('.laines.env', laneEnv(envArgs(ctx, lane)));
 
   const local = template('lane-local-instructions.md');
   const agents = ctx.config.agents;
@@ -186,14 +233,16 @@ export function writeLaneFiles(ctx, deps, lane) {
     put('CLAUDE.local.md', local);
     const rel = '.claude/settings.local.json';
     if (!tracked(rel)) {
-      const file = join(laneDir, rel);
-      mergeDenyRules(file, denyRules());
-      const data = readJson(file);
-      if (data.plansDirectory === undefined) writeJson(file, { ...data, plansDirectory: '.ai/plans' });
+      if (!dryRun) {
+        const file = join(laneDir, rel);
+        mergeDenyRules(file, denyRules());
+        const data = readJson(file);
+        if (data.plansDirectory === undefined) writeJson(file, { ...data, plansDirectory: '.ai/plans' });
+      }
       written.push(rel);
     }
     if (!tracked('.mcp.json')) {
-      mergeMcpConfig(join(laneDir, '.mcp.json'), ctx.root);
+      if (!dryRun) mergeMcpConfig(join(laneDir, '.mcp.json'), ctx.root);
       written.push('.mcp.json');
     }
   }

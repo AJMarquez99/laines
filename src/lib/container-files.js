@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, renameSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { addPrivateIndexRow, hasIndexRow, removeIndexRow } from './agent-files.js';
 
@@ -70,4 +70,22 @@ export function migrateContainerFiles(ai, layout = 1) {
     if ((rowGone || rowAdded) && !migrated.includes(`${dir}/${name}`)) migrated.push(`${dir}/${name}`);
   }
   return { migrated, warnings };
+}
+
+// laines' own old path strings inside its five `_` files (the migration renamed the files but left
+// these references). Matched with the folder prefix, so prose about other files is untouched.
+const STALE = ALL.map(([dir, name]) => [`${dir}/${name}`, `${dir}/_${name}`]);
+
+// Rewrites the stale paths (`dryRun`: only reports); returns the `<dir>/_<name>` files changed.
+// Idempotent: the new spelling contains no old one.
+export function rewriteStalePaths(ai, { dryRun = false } = {}) {
+  return ALL.flatMap(([dir, name]) => {
+    const file = join(ai, dir, `_${name}`);
+    if (!existsSync(file)) return [];
+    const cur = readFileSync(file, 'utf8');
+    const next = STALE.reduce((t, [from, to]) => t.split(from).join(to), cur);
+    if (next === cur) return [];
+    if (!dryRun) writeFileSync(file, next);
+    return [`${dir}/_${name}`];
+  });
 }

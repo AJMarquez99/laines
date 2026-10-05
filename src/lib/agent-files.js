@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { readJson, writeJson } from './jsonfile.js';
+import { readTemplate, renderTemplate } from './templates.js';
 import { InvalidInputError, MalformedConfigError } from './errors.js';
 
 export const AGENT_FLAGS = { claude: '--claude', codex: '--codex', gemini: '--gemini' };
@@ -11,7 +12,8 @@ export const LANES_END = '<!-- END laines-lanes -->';
 
 // Appended at the end of the file, so it always follows dot-ai's convention block, which
 // `dot-ai sync` rewrites in place without touching anything after its END marker.
-export function upsertBlock(file, body) {
+// The file text after the laines block is (re)written; user text outside the markers is untouched.
+function withBlock(file, body) {
   const block = `${LANES_BEGIN}\n${body.replace(/\n+$/, '')}\n${LANES_END}`;
   const cur = existsSync(file) ? readFileSync(file, 'utf8') : '';
   const b = cur.indexOf(LANES_BEGIN);
@@ -24,10 +26,31 @@ export function upsertBlock(file, body) {
   } else {
     next = (cur ? cur.replace(/\n*$/, '\n\n') : '') + block + '\n';
   }
+  return { cur, next };
+}
+
+export function upsertBlock(file, body) {
+  const { cur, next } = withBlock(file, body);
   if (next === cur) return 'unchanged';
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, next);
   return 'written';
+}
+
+export const renderLanesBlock = (containerId) => renderTemplate(readTemplate('lanes-block.md'), { containerId });
+
+// Writes the container's lanes block into each configured agent file (`dryRun`: only reports);
+// returns the files whose block changed.
+export function syncLanesBlocks(root, agents, containerId, { dryRun = false } = {}) {
+  const body = renderLanesBlock(containerId);
+  return agents.filter((a) => {
+    const file = join(root, AGENT_FILES[a]);
+    if (dryRun) {
+      const { cur, next } = withBlock(file, body);
+      return cur !== next;
+    }
+    return upsertBlock(file, body) === 'written';
+  }).map((a) => AGENT_FILES[a]);
 }
 
 export const HUMAN_ONLY_COMMANDS = ['teardown', 'release', 'hooks approve', 'hooks policy', 'config set', 'adopt'];

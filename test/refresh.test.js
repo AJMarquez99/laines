@@ -9,6 +9,7 @@ import { readLanes, updateLanes } from '../src/lib/lanes-store.js';
 import { spinUpState } from '../src/lib/lanes-state.js';
 import { approveHooks } from '../src/lib/hooks.js';
 import { HookError, InvalidInputError, MalformedConfigError } from '../src/lib/errors.js';
+import { LANES_BEGIN, LANES_END } from '../src/lib/agent-files.js';
 import { cleanupTmp, setupContainer, gitIn, runCli, writeHook, setConfig } from './helpers.js';
 
 afterEach(cleanupTmp);
@@ -179,5 +180,68 @@ describe('refresh', () => {
     expect(r.code).toBe(0);
     expect(r.stdout).toContain('lane lane_1 refreshed');
     expect(r.stdout).toContain('hooks:   post-create: no hooks');
+  });
+});
+
+describe('refresh: laines own migrations and dry run writes', () => {
+  const OLD_BLOCK = `${LANES_BEGIN}\n## L.AI.nes lanes\nsee \`.ai/runbooks/lane-management.md\`\n${LANES_END}`;
+
+  it('re-renders the container agent-file block, keeps user text, and a second refresh is a no-op', async () => {
+    const s = await setupContainer();
+    await runCreate({ container: s.container }, s.deps);
+    const f = join(s.container, 'CLAUDE.md');
+    writeFileSync(f, `user above\n\n${OLD_BLOCK}\n\nuser below\n`);
+    const r = await runRefresh({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(r.agentBlocks).toEqual(['CLAUDE.md']);
+    const text = readFileSync(f, 'utf8');
+    expect(text.startsWith('user above\n\n')).toBe(true);
+    expect(text.endsWith('\n\nuser below\n')).toBe(true);
+    expect(text).toContain('runbooks/_lane-management.md');
+    expect(text).not.toContain('see `.ai/runbooks/lane-management.md`');
+    const again = await runRefresh({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(again.agentBlocks).toEqual([]);
+    expect(readFileSync(f, 'utf8')).toBe(text);
+  });
+
+  it('fixes laines own old paths in the migrated _ files, leaves other prose, and is idempotent', async () => {
+    const s = await setupContainer();
+    await runCreate({ container: s.container }, s.deps);
+    const f = join(s.container, '.ai', 'templates', '_lane-local-instructions.md');
+    writeFileSync(f, 'Full: `.ai/runbooks/lane-management.md` and .ai/templates/lane-plans-readme.md.\nMy note on lane-management.md stays.\n');
+    const r = await runRefresh({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(r.rewritten).toEqual(['templates/_lane-local-instructions.md']);
+    expect(readFileSync(f, 'utf8')).toBe('Full: `.ai/runbooks/_lane-management.md` and .ai/templates/_lane-plans-readme.md.\nMy note on lane-management.md stays.\n');
+    const again = await runRefresh({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(again.rewritten).toEqual([]);
+  });
+
+  it('dry run reports env, exclude and block changes plus lane files, and writes nothing', async () => {
+    const s = await setupContainer();
+    const { path } = await runCreate({ container: s.container }, s.deps);
+    const claude = join(s.container, 'CLAUDE.md');
+    writeFileSync(claude, `${OLD_BLOCK}\n`);
+    const env = join(path, '.laines.env');
+    writeFileSync(env, readFileSync(env, 'utf8').replace('LANE_BRANCH="main"', 'LANE_BRANCH="old"').replace(/^PORT=.*\n/m, ''));
+    const tpl = join(s.container, '.ai', 'templates', '_lane-ai-readme.md');
+    writeFileSync(tpl, 'see .ai/runbooks/lane-management.md\n');
+    const exclude = join(path, '.git', 'info', 'exclude');
+    writeFileSync(exclude, readFileSync(exclude, 'utf8').replace('/.mcp.json\n', ''));
+    const files = [env, claude, tpl, exclude];
+    const before = files.map((x) => readFileSync(x, 'utf8'));
+    const r = await runRefresh({ lane: 'lane_1', dryRun: true, container: s.container }, s.deps);
+    expect(r.envChanges).toEqual(expect.arrayContaining([
+      { key: 'LANE_BRANCH', from: 'old', to: 'main' },
+      { key: 'PORT', from: null, to: expect.any(String) },
+    ]));
+    expect(r.excludeChanges).toEqual({ added: ['/.mcp.json'], removed: [] });
+    expect(r.agentBlocks).toEqual(['CLAUDE.md']);
+    expect(r.wouldRewrite).toEqual(['templates/_lane-ai-readme.md']);
+    expect(r.laneFiles.write).toContain('.ai/README.md');
+    expect(r.laneFiles.skip).toEqual([]);
+    expect(files.map((x) => readFileSync(x, 'utf8'))).toEqual(before);
+    const t = await runCli(['refresh', '--dry-run', '--format', 'table'], { ...s.deps, cwd: () => path });
+    expect(t.stdout).toMatch(/env:\s+LANE_BRANCH "old" -> "main"/);
+    expect(t.stdout).toContain('exclude: +/.mcp.json');
+    expect(t.stdout).toContain('blocks:  CLAUDE.md');
   });
 });

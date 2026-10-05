@@ -52,6 +52,14 @@ export function formatRefresh(r) {
       `dry run: would refresh ${r.lane}`,
       `path:    ${r.path}`,
       ...(r.wouldMigrate?.length ? [`migrate: ${r.wouldMigrate.join(', ')}`] : []),
+      ...(r.wouldRewrite?.length ? [`rewrite: ${r.wouldRewrite.join(', ')}`] : []),
+      ...(r.agentBlocks?.length ? [`blocks:  ${r.agentBlocks.join(', ')}`] : []),
+      ...(r.envChanges ?? []).map((c) => `env:     ${c.key} ${c.from === null ? '(new)' : `"${c.from}"`} -> ${c.to === null ? '(removed)' : `"${c.to}"`}`),
+      ...(r.excludeChanges && (r.excludeChanges.added.length || r.excludeChanges.removed.length)
+        ? [`exclude: ${[...r.excludeChanges.added.map((e) => `+${e}`), ...r.excludeChanges.removed.map((e) => `-${e}`)].join(' ')}`]
+        : []),
+      ...(r.laneFiles ? [`write:   ${r.laneFiles.write.join(', ') || 'none'}`] : []),
+      ...(r.laneFiles?.skip.length ? [`skip:    ${r.laneFiles.skip.map((f) => `${f.file} (${f.reason})`).join(', ')}`] : []),
       formatDryHooks(r.hooks),
     ].join('\n');
   }
@@ -61,6 +69,8 @@ export function formatRefresh(r) {
     `branch:  ${r.branch}`,
     `hooks:   post-create: ${runSummary(r.hooks)}`,
     ...(r.migrated?.length ? [`migrated: ${r.migrated.join(', ')}`] : []),
+    ...(r.rewritten?.length ? [`rewrote:  ${r.rewritten.join(', ')}`] : []),
+    ...(r.agentBlocks?.length ? [`blocks:  ${r.agentBlocks.join(', ')}`] : []),
     ...r.warnings.map((w) => `warning: ${w}`),
   ].join('\n');
 }
