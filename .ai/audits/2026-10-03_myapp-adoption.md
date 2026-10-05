@@ -107,3 +107,44 @@ track (check `git ls-files`), as already happens for `CLAUDE.md` through `CLAUDE
 - **lane_1:** on `main`, clean, in sync with origin. `.env` has `COMPOSE_PROJECT_NAME=myapp`.
 - **Stack:** the venv is recreated and the stack is running from `lane_1` (API 8000, Vite 5180, DB `myapp-dev-postgres`).
 - **Not done:** `laines ai sync lane_1` (issue 2). The two README diffs remain the only `doctor` note.
+
+## Follow-up: applying the fixes (same day)
+
+laines at `efe6a17` (the global `laines` links to the repo, so the fixes were live; `--version` still says 0.1.0).
+The user's fix-up steps were applied to the existing container.
+
+| Step | Result |
+|---|---|
+| 1. `jq '.lanes.lane_1.compose = "myapp"'` into `lanes.json` | Worked, after one hiccup: the `mv` in the instructions hit an interactive `mv -i` alias and defaulted to "no", leaving `lanes.json` unchanged. Fine on retry with `command mv`. |
+| 2. `refresh lane_1 --dry-run` → `refresh` | The dry run listed the 5 files to migrate. The real run renamed them to `_` names, moved their index rows into `_README.md`, set `layout: 2` and rewrote `.laines.env` and the exclude block. It warned (correctly) that it didn't write three lane READMEs that myapp tracks. |
+| Issue 1 re-check | **Fixed.** With `.laines.env` sourced, the Compose project is `myapp`, the volume is the real `myapp_myapp_dev_pgdata`, `db:up` reports the healthy existing container, and the data is intact. |
+| Issue 2 re-check | **Fixed.** The committed `runbooks/README.md` and `templates/README.md` no longer list laines files. |
+| Issue 3 re-check | **Fixed.** `AGENTS.md` and `GEMINI.md` are gone from the exclude block. |
+| 3. `doctor` | All 16 checks ✓; `lane:lane_1 — ok` with no note. |
+| 4. `ai sync --dry-run` → `ai sync` | `0 to the lane, 0 to the container`. Correct for myapp: it already committed every dot-ai scaffold file the instructions expected to move (`audits/`, `data/`, `templates/folder-README.md`, …). The only differences were rightly excluded (`context/`, `_` files, `.lane.json`). The lane was clean, so no PR was needed. |
+
+### Still open
+
+1. **Major: new plans in a lane are silently git-ignored.** The rewritten exclude block now contains `/.ai/context/` and
+   `/.ai/plans/`, but myapp **tracks** `.ai/plans/` (`permissions-matrix.md`, `sso.md`, …).
+   - Tracked files are unaffected, but `git check-ignore -v .ai/plans/new-plan.md` →
+     `.git/info/exclude:11:/.ai/plans/`, so a plan written in the lane never shows up in `git status` and never
+     reaches a PR.
+   - The repository's own convention commits plans, so this loses work quietly.
+   - It also contradicts `c6f9411` ("exclude block lists only untracked files"): that check seems to be per path,
+     not per directory with tracked contents.
+   - **Suggestions:** don't exclude a directory the repo tracks anything under, or exclude only the lane-owned
+     files inside it. Decide whether a lane's plans are really lane-local when the repo commits them; the lane
+     rules ("a lane owns only its `.ai/context/` and `.ai/plans/`") assume a repo that doesn't.
+2. **Minor: stale references to the renamed runbook.** The container `CLAUDE.md` laines block (line ~142:
+   `.ai/runbooks/lane-management.md`) and `lane_1/CLAUDE.local.md` ("Full protocol: …/lane-management.md") still use
+   the old name after the migration. Both are laines-generated, so `refresh` (and the `CLAUDE.md` block writer)
+   should regenerate them with `_lane-management.md`.
+3. **Minor: the version wasn't bumped.** These are behaviour changes (layout 2, migration, `compose` in lane state),
+   yet `laines --version` and `container.json` still say 0.1.0. A bump would help a user (or `doctor`) tell
+   whether a container predates the fix.
+4. **Nit: the refresh dry run is incomplete.** It listed the migration but not that it would rewrite `.laines.env`
+   (whose `COMPOSE_PROJECT_NAME` changes here) and the exclude block. Those were the user-visible effects that
+   mattered most.
+5. **Nit: instructions vs aliases.** User-facing snippets that move or delete files should use `command mv` /
+   `command rm`, as the adopt instructions already did for `rm`. Interactive aliases are common on macOS setups.
