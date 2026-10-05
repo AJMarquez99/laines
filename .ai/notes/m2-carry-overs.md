@@ -42,3 +42,12 @@ that owns it, then delete this note.
 - `laneExcludes` runs one `git ls-files` per exact entry (≤8 per lane per doctor/refresh); one call would do.
 - The M4.5 design doc's §4.3 result shape lacks `why` and §5 still calls the drift text a "detail" (it is a doctor `note` since M4.6).
 - No concurrency test for refresh's locked migration.
+
+## From M4.7 (repo-agnostic fixes)
+
+- `syncLanesBlocks` throws on a malformed marker in `--dry-run` (exit 2) while the real run warns and skips the remaining agent files; catch per file so both agree.
+- `excludeChanges` treats an orphan BEGIN marker differently from `upsertExclude` (dry run vs real run disagree in that malformed edge).
+- `rewriteStalePaths`, `upsertBlock`, `upsertExclude` write with `writeFileSync`; switch the set to `writeFileAtomic` in one sweep.
+- `adopted` is `z.literal(true)` under a strict schema: a hand-edited `false` makes `lanes.json` malformed.
+- No unit test for an inherited `PORT` passing through an adopted lane's hook env (verified by probe).
+- Template lines over ~100 cols remain in `templates/lane-management.md` and `templates/lane-local-instructions.md`.
