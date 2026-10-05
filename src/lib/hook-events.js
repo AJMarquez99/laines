@@ -18,6 +18,7 @@ export function laneHookVars(ctx, name, lane) {
     ports: lane.ports,
     branch: lane.repos[0].branch,
     compose: lane.compose,
+    adopted: lane.adopted,
   });
 }
 

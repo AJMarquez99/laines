@@ -52,6 +52,18 @@ describe('laneEnv', () => {
     expect(laneEnv({ ...base, compose: 'myapp' })).toContain('COMPOSE_PROJECT_NAME="myapp"');
     expect(laneEnv(base)).toContain('COMPOSE_PROJECT_NAME="my-app-l1"');
   });
+
+  it("leaves PORT out of an adopted lane's variables and says so, keeping the rest", () => {
+    const base = { lane: 'lane_1', number: 1, containerId: 'my-app', laneDir: '/t/lane_1', containerDir: '/t', ports: [20000, 20009], branch: 'main', compose: 'myapp' };
+    const env = laneEnv({ ...base, adopted: true });
+    expect(env).not.toMatch(/^PORT=/m);
+    expect(env).toContain("# Adopted checkout: PORT is not set, so the project's own port settings stay in effect.");
+    expect(env).toContain('LANE_PORT_BASE="20000"');
+    expect(env).toContain('LANE_PORT_COUNT="10"');
+    expect(env).toContain('COMPOSE_PROJECT_NAME="myapp"');
+    expect(laneEnv(base)).toContain('PORT="20000"');
+    expect(laneEnv(base)).not.toContain('Adopted checkout');
+  });
 });
 
 describe('writeLaneFiles', () => {

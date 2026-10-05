@@ -15,9 +15,23 @@ Environment: `LANE_NAME`, `LANE_NUMBER`, `LANE_ID`, `LANE_DIR`, `CONTAINER_DIR`,
 `COMPOSE_PROJECT_NAME`, `LAINES_HOOK`, `LAINES_DRY_RUN`. Standard input is empty, so a hook cannot
 prompt.
 
+`PORT` is set for lanes laines cloned. For an adopted checkout laines does not set it (the project
+keeps its own ports; the block is in `LANE_PORT_BASE`/`LANE_PORT_COUNT`), though a `PORT` already in
+laines' own environment passes through.
+
 `post-create` may append variables to `$LANE_ENV_FILE`. `laines refresh` rewrites that file from
 scratch and runs `post-create` again, so append unconditionally, and don't edit the file by hand.
 Because it runs again, make `post-create` safe to repeat (for example `createdb … || true`).
+
+Toolchains (examples only; use whatever the project uses): lanes are clones, so version pins the
+repository commits (`.tool-versions`, `.node-version`, `.python-version`, `mise.toml`,
+`rust-toolchain.toml`, ...) reach every lane. Tools that trust per directory (`mise trust`,
+`direnv allow`) need that step once per lane path: put it in `post-create` if your policy allows.
+Install toolchains and dependencies there too (`mise install && npm ci`, `uv sync`), idempotently,
+since `laines refresh` re-runs it. Hooks inherit the environment laines runs with: launching laines
+through a wrapper that rewrites `PATH` (some version managers' `exec`/`x` commands do) puts that
+tool first for every hook. Prefer a wrapper that invokes the runtime binary directly, or call your
+version manager explicitly inside the hook.
 
 Anything a hook leaves running must redirect its output, for example
 `npm run dev >"$LANE_DIR/dev.log" 2>&1 &`: the hook's output pipes close when it exits.

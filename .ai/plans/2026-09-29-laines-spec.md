@@ -293,7 +293,10 @@ not change.
 
 Environment: `LANE_NAME`, `LANE_NUMBER`, `LANE_ID`, `LANE_DIR`, `CONTAINER_DIR`,
 `CONTAINER_ID`, `LANE_PORT_BASE`, `LANE_PORT_COUNT`, `LANE_SUFFIX`, `LANE_BRANCH`,
-`LANE_ENV_FILE`, `LAINES_HOOK`, `LAINES_DRY_RUN`.
+`LANE_ENV_FILE`, `PORT`, `COMPOSE_PROJECT_NAME`, `LAINES_HOOK`, `LAINES_DRY_RUN`. `PORT` (first port of the
+block) is set only for lanes laines cloned; a lane recorded as `adopted: true` (made by `laines adopt`) has
+none, so the project's own `PORT` stays in effect. `refresh` backfills `adopted` for a pre-M4.7 lane that has a
+`compose` name.
 
 `.laines.env` is written before `post-create` and contains `LANE_*`, `PORT` (first port of the
 block), and `COMPOSE_PROJECT_NAME` (`<id>-l<n>`, or the lane's recorded `compose` name: `adopt` keeps the project's own for `lane_1`). Hooks may append to it. `refresh` rewrites it from scratch before re-running `post-create`, so appended lines come back exactly once; hand edits are lost.

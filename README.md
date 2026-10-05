@@ -197,6 +197,26 @@ Anything a hook leaves running must redirect its output, for example
 Make both executable (`chmod +x`). A container's `.laines/hooks/README.md` documents the full
 contract.
 
+## Toolchains and version managers
+
+Toolchains are the project's business; laines has no version-manager logic. Examples below are
+only examples.
+
+- Version pins the repository commits (`.tool-versions`, `.node-version`, `.python-version`,
+  `mise.toml`, `rust-toolchain.toml`, ...) reach every lane, because lanes are clones.
+- Tools that trust per directory (for example `mise trust`, `direnv allow`) need that step once per
+  lane path. Put it in `post-create` if your policy allows it.
+- Install toolchains and dependencies in `post-create` (for example `mise install && npm ci`, or
+  `uv sync`), and make it idempotent: `laines refresh` runs it again.
+- Hooks inherit the environment laines runs with. Launching laines through a wrapper that rewrites
+  `PATH` (some version managers' `exec`/`x` commands do) puts that tool first for every hook. Prefer
+  a wrapper that invokes the runtime binary directly, or call your version manager explicitly inside
+  the hook.
+
+`PORT` in `.laines.env` and the hook environment is set for lanes laines cloned. A lane made by
+`laines adopt` keeps the project's own ports: `PORT` is left out (`LANE_PORT_BASE` and
+`LANE_PORT_COUNT` still carry the block).
+
 ## Agents
 
 L.AI.nes works with any agent: the board and plain files are how lanes coordinate. Claude Code is

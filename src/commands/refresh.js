@@ -50,7 +50,7 @@ async function recordRun(ctx, deps, run, name, branch) {
 export async function runRefresh(opts, deps) {
   const ctx = loadContainer(opts, deps);
   const name = laneFrom(opts, deps, ctx);
-  const lane = getLane(readLanes(ctx), name);
+  let lane = getLane(readLanes(ctx), name);
   if (!lane) throw new InvalidInputError(`No lane named ${name}. See \`laines list\`.`);
   // A malformed hooks.lock.json fails here, before anything is written.
   hookStates(ctx.paths);
@@ -66,13 +66,22 @@ export async function runRefresh(opts, deps) {
   // The board and LANE_BRANCH follow the branch the clone is on now; a detached HEAD keeps the old one.
   const head = deps.git(['branch', '--show-current'], { cwd: real });
   const branch = head.status === 0 && head.stdout.trim() ? head.stdout.trim() : lane.repos[0].branch;
+  // Only `adopt` records a compose name, so a lane with one and no `adopted` flag predates M4.7.
+  const needsAdopted = Boolean(lane.compose) && !lane.adopted;
+  if (needsAdopted && !opts.dryRun) {
+    lane = await updateLanes(ctx, deps, (s) => {
+      getLane(s, name).adopted = true;
+      return { state: s, result: { ...getLane(s, name) } };
+    });
+  }
   const record = { ...lane, repos: [{ ...lane.repos[0], branch }] };
-  const laneArgs = { name, number: lane.number, laneDir, branch, ports: lane.ports, compose: lane.compose };
+  const laneArgs = { name, number: lane.number, laneDir, branch, ports: lane.ports, compose: lane.compose, adopted: lane.adopted || needsAdopted || undefined };
   if (opts.dryRun) {
     return {
       dryRun: true,
       lane: name,
       path: laneDir,
+      wouldBackfill: needsAdopted ? ['adopted'] : [],
       hooks: dryRunHooks(ctx, 'post-create'),
       wouldMigrate: unmigratedFiles(ctx.paths.ai, ctx.layout).map((f) => `${f.dir}/${f.name}`),
       wouldRewrite: rewriteStalePaths(ctx.paths.ai, { dryRun: true }),
@@ -131,6 +140,7 @@ export async function runRefresh(opts, deps) {
     lane: name,
     path: laneDir,
     branch,
+    backfilled: needsAdopted ? ['adopted'] : [],
     files: files.written,
     migrated,
     rewritten,

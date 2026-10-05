@@ -249,4 +249,13 @@ describe('laneHookVars', () => {
     expect(laneHookVars(ctx, 'lane_1', { ...LANE, compose: 'myapp' }).COMPOSE_PROJECT_NAME).toBe('myapp');
     expect(laneHookVars(ctx, 'lane_1', LANE).COMPOSE_PROJECT_NAME).toBe(`${ctx.id}-l1`);
   });
+
+  it('has no PORT for an adopted lane, and still has LANE_PORT_BASE', async () => {
+    const s = await setupContainer();
+    const ctx = loadContainer({ container: s.container }, s.deps);
+    const vars = laneHookVars(ctx, 'lane_1', { ...LANE, adopted: true });
+    expect('PORT' in vars).toBe(false);
+    expect(vars.LANE_PORT_BASE).toBe(String(LANE.ports[0]));
+    expect(laneHookVars(ctx, 'lane_1', LANE).PORT).toBe(String(LANE.ports[0]));
+  });
 });

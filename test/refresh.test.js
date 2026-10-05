@@ -17,6 +17,46 @@ afterEach(cleanupTmp);
 const ctxOf = (s) => loadContainer({ container: s.container }, s.deps);
 const lane1 = (s) => readLanes(ctxOf(s)).lanes.lane_1;
 
+describe('refresh of a lane adopted before M4.7', () => {
+  const legacy = async () => {
+    const s = await setupContainer();
+    const { path } = await runCreate({ container: s.container }, s.deps);
+    await updateLanes(ctxOf(s), s.deps, (st) => {
+      st.lanes.lane_1.compose = 'myapp';
+      return { state: st, result: null };
+    });
+    return { s, path };
+  };
+
+  it('backfills adopted for a lane with compose, and writes .laines.env without PORT', async () => {
+    const { s, path } = await legacy();
+    expect(readFileSync(join(path, '.laines.env'), 'utf8')).toMatch(/^PORT=/m);
+    const r = await runRefresh({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(r.backfilled).toEqual(['adopted']);
+    expect(lane1(s).adopted).toBe(true);
+    expect(readFileSync(join(path, '.laines.env'), 'utf8')).not.toMatch(/^PORT=/m);
+    expect((await runRefresh({ lane: 'lane_1', container: s.container }, s.deps)).backfilled).toEqual([]);
+  });
+
+  it('a dry run reports the backfill and PORT being removed, and changes nothing', async () => {
+    const { s, path } = await legacy();
+    const before = readFileSync(join(path, '.laines.env'), 'utf8');
+    const r = await runRefresh({ lane: 'lane_1', container: s.container, dryRun: true }, s.deps);
+    expect(r.wouldBackfill).toEqual(['adopted']);
+    expect(r.envChanges).toContainEqual(expect.objectContaining({ key: 'PORT', to: null }));
+    expect(lane1(s).adopted).toBeUndefined();
+    expect(readFileSync(join(path, '.laines.env'), 'utf8')).toBe(before);
+  });
+
+  it('leaves a created lane (no compose) alone', async () => {
+    const s = await setupContainer();
+    await runCreate({ container: s.container }, s.deps);
+    const r = await runRefresh({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(r.backfilled).toEqual([]);
+    expect(lane1(s).adopted).toBeUndefined();
+  });
+});
+
 describe('refresh', () => {
   it('still refreshes the lane when the container settings file is malformed, with a warning', async () => {
     const s = await setupContainer();

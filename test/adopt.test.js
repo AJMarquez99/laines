@@ -119,6 +119,18 @@ describe('adopt refuses', () => {
   });
 });
 
+describe('adopt keeps the project ports', () => {
+  it("records the lane as adopted and writes .laines.env without PORT but with LANE_PORT_BASE", async () => {
+    const w = world();
+    await w.adopt();
+    const lane = readLanes(loadContainer({ container: w.dir }, w.deps)).lanes.lane_1;
+    expect(lane.adopted).toBe(true);
+    const env = readFileSync(join(w.dir, 'lane_1', '.laines.env'), 'utf8');
+    expect(env).not.toMatch(/^PORT=/m);
+    expect(env).toMatch(/^LANE_PORT_BASE=/m);
+  });
+});
+
 describe('adopt keeps the Compose project', () => {
   const laneEnvOf = (w) => readFileSync(join(w.dir, 'lane_1', '.laines.env'), 'utf8');
   const laneCompose = (w) => readLanes(loadContainer({ container: w.dir }, w.deps)).lanes.lane_1.compose;

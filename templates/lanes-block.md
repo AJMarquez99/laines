@@ -31,3 +31,5 @@ working in.
    policy allows) or another lane's files. Teardown, release, hook approval, hook policy and config
    changes are for a human.
 6. Source the lane's `.laines.env` before starting services, and use only the lane's ports.
+   `PORT` is set for lanes laines cloned; an adopted checkout does not get it and keeps the
+   project's own ports (laines' block is still in `LANE_PORT_BASE`/`LANE_PORT_COUNT`).

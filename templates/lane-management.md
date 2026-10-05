@@ -31,7 +31,8 @@ the lane's brief.
 1. Read the shared layer (`knowledge/`, `guidelines/`, `lessons/` in this container's `.ai/`) and
    the repository's own instructions.
 2. Check the lane's board entry, then its `context/` and `plans/`.
-3. Source `.laines.env` before starting services; use only the lane's ports.
+3. Source `.laines.env` before starting services; use only the lane's ports. `PORT` is set for lanes
+   laines cloned, not for an adopted checkout, which keeps the project's own ports.
 4. Report when status meaningfully changes (starting a task, blocked, in review, done):
 
        laines report <lane> --status in-progress --task "short description"
@@ -107,6 +108,14 @@ lane and the project's `.ai/` became this shared layer. Recreate Python virtuale
 - **Local services are shared unless namespaced.** Separate clones do not mean separate databases,
   caches or queues. Use `LANE_SUFFIX` and the lane's ports (from `.laines.env`) in your hooks and
   config.
+- **Toolchains are the project's business.** Lanes are clones, so version pins the repository commits
+  (examples: `.tool-versions`, `.node-version`, `.python-version`, `mise.toml`, `rust-toolchain.toml`)
+  reach every lane. Tools that trust per directory (examples: `mise trust`, `direnv allow`) need that
+  step once per lane path; put it in `post-create` if the project's policy allows. Install toolchains
+  and dependencies in `post-create` (examples: `mise install && npm ci`, `uv sync`) and make it safe to
+  repeat. Hooks inherit the environment laines runs with: a wrapper that rewrites `PATH` puts its tool
+  first for every hook, so launch laines through a wrapper that runs the runtime binary directly, or
+  call your version manager explicitly inside the hook.
 - **Keep lane-local config patches out of commits.** If isolation needs an edit to a tracked file,
   `git update-index --skip-worktree <file>` hides it; unset it before pulling changes to that file.
 - **Stop what you start.** Stop a lane's servers before tearing it down and check its ports are

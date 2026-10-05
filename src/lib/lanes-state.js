@@ -15,6 +15,8 @@ const Lane = z.strictObject({
   closed: z.string().nullable().optional(),
   // Set by `laines adopt`: the project's own Docker Compose project name, kept for lane_1.
   compose: z.string().optional(),
+  // Set by `laines adopt`: the lane is the project's own checkout, so laines does not set PORT for it.
+  adopted: z.literal(true).optional(),
 });
 
 export const LanesStateSchema = z.strictObject({

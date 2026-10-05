@@ -342,6 +342,7 @@ export async function runAdopt(opts, deps) {
         created: now,
         updated: now,
         closed: null,
+        adopted: true,
         ...(p.compose ? { compose: p.compose } : {}),
       };
       return { state, result: null, activity: [{ ts: now, lane: p.lane, text: `lane adopted from the existing checkout (branch ${p.branch})` }] };
@@ -390,7 +391,7 @@ export async function runAdopt(opts, deps) {
       }
     }
     const ctx = loadContainer({ container: insp.dir }, deps);
-    writeLaneFiles(ctx, deps, { name: p.lane, number: 1, laneDir, branch: p.branch, ports, compose: p.compose });
+    writeLaneFiles(ctx, deps, { name: p.lane, number: 1, laneDir, branch: p.branch, ports, compose: p.compose, adopted: true });
     const busy = await deps.busyPorts(ports);
     if (busy.length) warnings.push(`lane ports already in use: ${busy.join(', ')}`);
   } catch (err) {
