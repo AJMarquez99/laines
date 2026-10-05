@@ -1,9 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
-  laneEnv, laneExcludes, writeLaneFiles, isTracked, untrackedEntries, EXCLUDE_BEGIN,
+  laneEnv, laneExcludes, writeLaneFiles, isTracked, untrackedEntries, EXCLUDE_BEGIN, commitsUnder,
 } from '../src/lib/lane-files.js';
 import { buildConfig } from '../src/config.js';
 import { containerPaths } from '../src/lib/paths.js';
@@ -24,6 +24,14 @@ function setup({ files, agents = ['claude', 'codex'] } = {}) {
   const ctx = { root: container, paths: containerPaths(container), id: 'my-app', config, portRange: [20000, 20199] };
   return { ctx, deps: testDeps(root), lane: { name: 'lane_2', number: 2, laneDir, branch: 'main', ports: [20010, 20019] } };
 }
+
+describe('commitsUnder', () => {
+  it('is true only when the repository tracks something under the directory', () => {
+    const { deps, lane } = setup({ files: { 'README.md': 'x\n', '.ai/plans/a.md': 'p\n' } });
+    expect(commitsUnder(deps, lane.laneDir, '.ai/plans')).toBe(true);
+    expect(commitsUnder(deps, lane.laneDir, '.ai/context')).toBe(false);
+  });
+});
 
 describe('laneEnv', () => {
   it('writes every variable, quoted so paths with spaces and shell characters survive source', () => {
@@ -95,6 +103,41 @@ describe('writeLaneFiles', () => {
     expect(exclude).not.toContain('/.ai/README.md');
     for (const keep of ['/.ai/context/', '/*.pre-laines*', '/GEMINI.md']) expect(exclude).toContain(keep);
     expect(laneExcludes(deps, lane.laneDir)).toEqual(expect.not.arrayContaining(['/AGENTS.md', '/.ai/README.md']));
+  });
+
+  it('a repository tracking .ai/plans/ keeps new plans visible; laines hides only its own README', () => {
+    const { ctx, deps, lane } = setup({ files: { 'README.md': 'x\n', '.ai/plans/a.md': 'plan\n' } });
+    writeLaneFiles(ctx, deps, lane);
+    const exclude = readFileSync(join(lane.laneDir, '.git', 'info', 'exclude'), 'utf8').split('\n');
+    expect(exclude).toContain('/.ai/plans/README.md');
+    expect(exclude).not.toContain('/.ai/plans/');
+    expect(exclude).toContain('/.ai/context/');
+    writeFileSync(join(lane.laneDir, '.ai', 'plans', 'new.md'), 'n\n');
+    const ignored = (rel) => spawnSync('git', ['check-ignore', '-q', rel], { cwd: lane.laneDir }).status === 0;
+    expect(ignored('.ai/plans/new.md')).toBe(false);
+    expect(ignored('.ai/plans/README.md')).toBe(true);
+  });
+
+  it('a repository tracking .ai/context/ and its README leaves neither in the block', () => {
+    const { ctx, deps, lane } = setup({ files: { 'README.md': 'x\n', '.ai/context/README.md': 'c\n' } });
+    writeLaneFiles(ctx, deps, lane);
+    const exclude = readFileSync(join(lane.laneDir, '.git', 'info', 'exclude'), 'utf8').split('\n');
+    expect(exclude).not.toContain('/.ai/context/');
+    expect(exclude).not.toContain('/.ai/context/README.md');
+    expect(exclude).toContain('/.ai/plans/');
+  });
+
+  it('a repository tracking nothing under .ai/ gets the directory entries', () => {
+    const { deps, lane } = setup();
+    expect(laneExcludes(deps, lane.laneDir)).toEqual(expect.arrayContaining(['/.ai/context/', '/.ai/plans/']));
+  });
+
+  it('asks git once for the whole block', () => {
+    const { deps, lane } = setup();
+    const calls = [];
+    const counting = { ...deps, git: (args, o) => { calls.push(args[0]); return deps.git(args, o); } };
+    laneExcludes(counting, lane.laneDir);
+    expect(calls.filter((c) => c === 'ls-files')).toHaveLength(1);
   });
 
   it('treats tracked files with non-ASCII names as tracked', () => {

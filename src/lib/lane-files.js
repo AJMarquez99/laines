@@ -65,12 +65,39 @@ export function isTracked(deps, repoDir, rel) {
   return r.status === 0;
 }
 
-// Exact-file entries (no trailing `/`, no `*`) the repository tracks are left out: excluding a tracked
-// file does nothing, and the block should list only what laines really hides.
+// What laines itself writes inside each directory entry, used when the repository commits that directory.
+const OWN_FILES = {
+  '/.ai/context/': ['/.ai/context/README.md'],
+  '/.ai/plans/': ['/.ai/plans/README.md'],
+};
+
+// Tracked paths among `rels`, in one git call (the pathspec of a directory lists what is under it).
+function trackedAmong(deps, repoDir, rels) {
+  if (!rels.length) return [];
+  return gitOut(deps, ['ls-files', '-z', '--', ...rels], repoDir).split('\0').filter(Boolean);
+}
+
+const isUnder = (tracked, rel) => tracked.some((t) => t === rel || t.startsWith(`${rel}/`));
+
+// True when the repository tracks anything under relDir: that directory is project content here.
+export function commitsUnder(deps, repoDir, relDir) {
+  return trackedAmong(deps, repoDir, [relDir]).length > 0;
+}
+
+// The block lists only what laines really hides. An exact file the repository tracks is left out
+// (excluding it does nothing). A directory the repository tracks something under is replaced by the
+// files laines writes there, so the project's own files, new ones included, stay visible to git.
 export function laneExcludes(deps, laneDir) {
-  return LANE_EXCLUDES.filter((entry) => {
-    if (entry.endsWith('/') || entry.includes('*')) return true;
-    return !isTracked(deps, laneDir, entry.slice(1));
+  const rels = LANE_EXCLUDES.filter((e) => !e.includes('*'))
+    .flatMap((e) => [e, ...(OWN_FILES[e] ?? [])]).map((e) => e.slice(1).replace(/\/$/, ''));
+  const tracked = trackedAmong(deps, laneDir, rels);
+  const keep = (rel) => !isUnder(tracked, rel);
+  return LANE_EXCLUDES.flatMap((entry) => {
+    if (entry.includes('*')) return [entry];
+    const rel = entry.slice(1);
+    if (!entry.endsWith('/')) return keep(rel) ? [entry] : [];
+    if (keep(rel.slice(0, -1))) return [entry];
+    return OWN_FILES[entry].filter((f) => keep(f.slice(1)));
   });
 }
 

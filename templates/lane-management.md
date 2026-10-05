@@ -7,7 +7,8 @@ How lanes are created, used, monitored and closed in container `{{containerId}}`
 - **The container** (this directory) holds the shared `.ai/` layer, `.laines/` (settings, lane
   index, hooks, audit log), and the lanes. It is not a git repository.
 - **Lanes** (`lane_1/`, `lane_2/`, …) are standard `git clone`s of the project. Each lane has its
-  own port block, its own `.laines.env`, and lane-local `.ai/context/` and `.ai/plans/`. Everything
+  own port block, its own `.laines.env`, and lane-local `.ai/context/` and `.ai/plans/` (plans are part of the branch when the repository
+  commits `.ai/plans/`; otherwise local, archived at teardown). Everything
   else (knowledge, guidelines, lessons, data, audits) lives in the container's `.ai/` so it
   outlives any lane.
 - **The board** (`.ai/context/LANES_BOARD.md`) shows every lane's status, the requests waiting on a

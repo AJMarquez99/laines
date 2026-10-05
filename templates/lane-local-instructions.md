@@ -8,7 +8,9 @@ You are working in a lane: an isolated clone with its own ports and local enviro
   `lessons/`, and write durable findings there, not into this lane.
 - If this repository commits `.ai/`, don't edit the lane's `.ai/` files by hand: run
   `laines ai sync {{lane}}` before opening a PR.
-- This lane owns only `.ai/context/` and `.ai/plans/`. Never run `dot-ai init` or `dot-ai sync` here.
+- This lane owns its `.ai/context/` and `.ai/plans/`. If the repository commits files under
+  `.ai/plans/`, plans you write there are part of your branch: commit them with the work they
+  describe; otherwise they stay local and are archived at teardown. Never run `dot-ai init` or `dot-ai sync` here.
 - Report status with `laines report {{lane}} --status "..." --task "..."`. The board is
   `{{containerDir}}/.ai/context/LANES_BOARD.md`.
 - Teardown, release, hook approval, hook policy and config changes are for a human.

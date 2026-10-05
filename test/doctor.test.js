@@ -260,4 +260,14 @@ describe('doctor notes', () => {
     expect(r['lane:lane_1'].detail).not.toContain('outdated');
     expect(r['lane:lane_1'].ok).toBe(true);
   });
+
+  it('a repository tracking .ai/plans/ and one tracking nothing under .ai/ both pass the exclude check', async () => {
+    for (const files of [{ 'README.md': '#\n', '.ai/plans/a.md': 'p\n' }, { 'README.md': '#\n' }]) {
+      const s = await setupContainer({ files });
+      await runCreate({ container: s.container }, s.deps);
+      const r = byName(await runDoctor({ container: s.container }, s.deps));
+      expect(r['lane:lane_1'].detail).not.toContain('outdated');
+      expect(r['lane:lane_1'].ok).toBe(true);
+    }
+  });
 });

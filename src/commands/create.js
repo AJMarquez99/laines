@@ -207,7 +207,7 @@ export async function runCreate(opts, deps) {
     files: files.written,
     warnings: [...files.skipped.map((s) => `${s.file} not written: ${s.reason}`), ...(baseWarning ? [baseWarning] : []), ...unapprovedWarnings(run)],
     hooks: run,
-    brief: buildBrief(ctx, plan.name, lane),
+    brief: buildBrief(ctx, plan.name, lane, deps),
     next: [
       `cd ${shellQuote(plan.laneDir)} && ${ctx.config.agentCmd}`,
       `or hand \`laines brief ${plan.name}\` to a subagent`,

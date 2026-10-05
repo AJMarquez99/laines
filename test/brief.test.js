@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { buildBrief } from '../src/lib/brief.js';
 import { runBrief } from '../src/commands/brief.js';
@@ -33,7 +34,8 @@ async function withLane(over) {
     return { state, result: null };
   });
   const laneDir = join(s.container, 'lane_1');
-  mkdirSync(join(laneDir, '.git'), { recursive: true });
+  mkdirSync(laneDir, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: laneDir });
   mkdirSync(join(laneDir, '.ai', 'context'), { recursive: true });
   writeFileSync(join(laneDir, 'CLAUDE.md'), 'repo rules\n');
   writeFileSync(join(laneDir, '.ai', '.lane.json'), JSON.stringify({ lane: 'lane_1', number: 1, containerId: 'my-app', container: s.container }));
@@ -42,8 +44,8 @@ async function withLane(over) {
 
 describe('brief', () => {
   it('lists existing files to read, the rules and the board entry', async () => {
-    const { ctx, container, laneDir } = await withLane();
-    const b = buildBrief(ctx, 'lane_1', record());
+    const { ctx, container, laneDir, deps } = await withLane();
+    const b = buildBrief(ctx, 'lane_1', record(), deps);
     expect(b).toMatchObject({ lane: 'lane_1', id: 'my-app/lane_1', path: laneDir, branch: 'feat/x', ports: [20000, 20009], envFile: join(laneDir, '.laines.env') });
     const paths = b.readFirst.map((r) => r.path);
     expect(paths).toContain(join(laneDir, 'CLAUDE.md'));
@@ -55,6 +57,17 @@ describe('brief', () => {
     expect(b.rules.join('\n')).toContain('laines ai sync');
     expect(b.board).toContain('<!-- lane:lane_1:start -->');
     expect(b.text).toContain('# Lane brief: lane_1 (my-app/lane_1)');
+  });
+
+  it('the plans rule follows what the repository commits', async () => {
+    const { ctx, laneDir, deps } = await withLane();
+    expect(buildBrief(ctx, 'lane_1', record(), deps).rules.join('\n')).toContain('Plans in `.ai/plans/` stay local to this lane.');
+    mkdirSync(join(laneDir, '.ai', 'plans'), { recursive: true });
+    writeFileSync(join(laneDir, '.ai', 'plans', 'a.md'), 'p\n');
+    execFileSync('git', ['add', '.ai/plans/a.md'], { cwd: laneDir });
+    const rules = buildBrief(ctx, 'lane_1', record(), deps).rules.join('\n');
+    expect(rules).toContain('This repository commits `.ai/plans/`: commit plans with your work.');
+    expect(rules).not.toContain('stay local');
   });
 
   it('runs by name or from inside the lane, and refuses unknown or closed lanes', async () => {

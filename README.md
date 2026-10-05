@@ -162,6 +162,11 @@ collide:
 | Docker Compose project | `my-app-l2` |
 | Lane ID | `my-app/lane_2` |
 
+Lane-local files are hidden through each clone's `.git/info/exclude`, never the repository's own
+files. If the repository commits files under `.ai/plans/` (or `.ai/context/`), laines hides only
+the README it writes there, so plans you write in a lane show in `git status` and travel with the
+branch. Otherwise the lane's plans stay local and are archived at teardown.
+
 Anything specific to your stack, such as creating a per-lane database or copying secrets into a
 fresh clone, goes in hooks (`post-create`, `pre-teardown`, `post-teardown`) in `.laines/hooks/`.
 New containers start with hook policy `notify`, so agents can build and change the hooks while

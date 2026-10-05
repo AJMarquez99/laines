@@ -9,5 +9,5 @@ export async function runBrief(opts, deps) {
   const lane = getLane(readLanes(ctx), name);
   if (!lane) throw new InvalidInputError(`No lane named ${name}. See \`laines list\`.`);
   if (lane.state === 'closed') throw new InvalidInputError(`Lane ${name} is closed.`);
-  return buildBrief(ctx, name, lane);
+  return buildBrief(ctx, name, lane, deps);
 }

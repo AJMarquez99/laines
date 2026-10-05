@@ -101,6 +101,13 @@ produced.
 Lane-local files are hidden through `.git/info/exclude`, never the repo's `.gitignore`, so they
 never appear in `git status` or a PR.
 
+The block follows what the repository commits. A file the repository tracks is never excluded. If
+the repository tracks anything under `.ai/plans/` (or `.ai/context/`), that directory is project
+content: the block lists only the files laines writes there (`/.ai/plans/README.md`,
+`/.ai/context/README.md`), so a plan written in a lane shows in `git status` and travels with the
+branch. The lane rules and the brief say which case applies; `laines refresh` and `doctor` share one
+function (`laneExcludes`), so they agree.
+
 ## 5. Commands
 
 Every command returns JSON by default (`--format table` for humans). Every side-effecting

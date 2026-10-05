@@ -4,6 +4,9 @@ This lane of container `{{containerId}}` keeps only `context/` and `plans/` here
 guidelines, lessons, data and audits live in the container's shared layer:
 `{{containerDir}}/.ai/`. Do not create those folders in this lane.
 
+If the repository commits files under `plans/`, plans you write there are part of your branch:
+commit them with the work they describe. Otherwise they stay local and are archived at teardown.
+
 ## Rules for this lane
 
 1. **Read the shared layer first:** `{{containerDir}}/.ai/knowledge/`, `guidelines/` and
