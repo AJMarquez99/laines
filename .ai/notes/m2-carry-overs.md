@@ -51,3 +51,9 @@ that owns it, then delete this note.
 - `adopted` is `z.literal(true)` under a strict schema: a hand-edited `false` makes `lanes.json` malformed.
 - No unit test for an inherited `PORT` passing through an adopted lane's hook env (verified by probe).
 - Template lines over ~100 cols remain in `templates/lane-management.md` and `templates/lane-local-instructions.md`.
+
+## From 0.4.8 (forced teardown over MCP)
+
+- Teardown dry runs return the internal `fingerprint` in every result (CLI JSON and MCP `dry_run`); omit it unless the MCP handler asks, or document it.
+- The MCP handler re-derives "is a repo" from `plan.path`; expose `isRepo` in the dry-run result instead.
+- The lanes lock narrows but does not seal the window between the last fingerprint check and `removeLaneDir` (git activity in the clone isn't serialized by it).
