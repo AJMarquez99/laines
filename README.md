@@ -259,7 +259,18 @@ start it: installing the package globally provides both `laines` and `laines-mcp
 
 Every call checks the current setting; whether the tool is listed at all follows the setting the
 server started with, so restart the server (or the agent session) after switching to or from
-`off`. A kept lane is refused on every path, and unpushed work is never forced over MCP.
+`off`. A kept lane is refused on every path.
+
+**Forcing a teardown over MCP.** When the lane has unpushed work (commits on no remote, uncommitted
+changes or stashes) and `teardown.mcp` is `confirm`, a second prompt lists exactly what would be
+lost (each ref and its newest commit subjects, dirty files, stashes, and which other lanes hold the
+same commits) and asks you to type the lane name. Only that typed answer forces the teardown; an
+agent has no `force` argument. If the work changes after you were shown it, the teardown is refused.
+Declining, a wrong name, cancelling or a timeout does nothing. `teardown.mcpForce` set to `off`
+(`laines config set teardown.mcpForce off`), a locked container, or a client that cannot ask
+keeps the old behaviour: unpushed work is refused and you run
+`laines teardown <lane> --remove-dir --force` in a terminal. The audit log records
+`forcedVia: "mcp-typed-confirmation"` and what was discarded.
 
 `laines doctor` checks the registration. Containers made before the MCP server existed don't have
 one: run the `claude mcp add` command above in the container, and `laines refresh <lane>` for each
@@ -282,6 +293,7 @@ lane.
 | **M4: MCP server** | `laines-mcp`, capabilities, locked mode, human confirmation for teardown over MCP | ✅ Done |
 | **M4.5: Adopt** | `laines adopt`, `.ai/` seeding, `laines ai sync` | ✅ Done |
 | **M4.6: Adopt fixes** | Fixes from the first real adoption: Compose identity for adopted `lane_1`, `_` laines files, exclude block that lists only untracked files, doctor notes, `ai sync` reasons | ✅ Done |
+| **0.4.8: Forced teardown over MCP** | typed second confirmation (`teardown.mcpForce`), sibling-lane holdings in teardown prompts and refusals | ✅ Done |
 | **M5: Release** | CI on macOS and Linux, security documentation, npm package | Planned |
 
 Out of scope for v1: Windows and several repositories in one lane.

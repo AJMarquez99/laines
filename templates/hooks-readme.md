@@ -33,6 +33,15 @@ through a wrapper that rewrites `PATH` (some version managers' `exec`/`x` comman
 tool first for every hook. Prefer a wrapper that invokes the runtime binary directly, or call your
 version manager explicitly inside the hook.
 
+Example `pre-teardown` (example — use your project's own stop command): stop the lane's services
+while its clone still exists, so containers and volumes don't outlive it. It runs after the
+unpushed-work checks and before anything is deleted, with `COMPOSE_PROJECT_NAME` set per lane:
+
+```sh
+#!/bin/sh
+docker compose -p "$COMPOSE_PROJECT_NAME" down -v || true
+```
+
 Anything a hook leaves running must redirect its output, for example
 `npm run dev >"$LANE_DIR/dev.log" 2>&1 &`: the hook's output pipes close when it exits.
 

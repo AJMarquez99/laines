@@ -80,7 +80,9 @@ See `.laines/hooks/README.md`.
 Sessions in this container and in its lanes have the `laines_*` MCP tools (registered in
 `.mcp.json`, which is written when Claude is a configured agent). They do what the CLI does and refuse what an agent may not do. `laines_teardown`
 asks a human to confirm first (setting `teardown.mcp`); if the client cannot ask, the request
-waits on the board for `laines teardown <lane>` in a terminal.
+waits on the board for `laines teardown <lane>` in a terminal. If the lane has unpushed work, the
+human can force it by typing the lane name in a second prompt (setting `teardown.mcpForce`); you
+cannot force a teardown yourself.
 
 ## Knowledge and pull requests
 
