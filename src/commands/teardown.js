@@ -55,6 +55,9 @@ export const unpushedRefusal = (laneDir, problems, isRepo, holdings) =>
     'Nothing has been archived or deleted. Use --force only after confirming this work can be lost.',
   ].join('\n');
 
+const changedMessage = (laneDir) =>
+  `The unpushed work in ${laneDir} changed after you were shown it. Nothing was torn down; ask again to see the current state.`;
+
 // Human-only (deny rules in agent settings): the lane must always be named.
 export async function runTeardown(opts, deps) {
   if (!opts.lane) throw new InvalidInputError('Name the lane to tear down: `laines teardown <lane>`.');
@@ -82,10 +85,10 @@ export async function runTeardown(opts, deps) {
   let checks = null;
   if (opts.removeDir && real) checks = isRepo ? unpushedWork(deps, real) : unverifiable;
   if (checks?.refs.length) checks.holdings = siblingHoldings(deps, ctx, name, checks.refs);
-  const fingerprint = checks ? forceFingerprint(deps, real, checks) : null;
+  const fingerprint = checks && isRepo ? forceFingerprint(deps, real, checks) : null;
   // `expect` is set only by the MCP typed confirmation: what the human saw must still be what is there.
   if (opts.expect !== undefined && opts.expect !== fingerprint) {
-    throw new BlockedError(`The unpushed work in ${laneDir} changed after you were shown it. Nothing was torn down; ask again to see the current state.`);
+    throw new BlockedError(changedMessage(laneDir));
   }
   const risky = Boolean(checks && checks.problems.length);
   const blocked = risky && !opts.force;
@@ -144,6 +147,10 @@ export async function runTeardown(opts, deps) {
       const l = getLane(state, name);
       if (!l) throw new InvalidInputError(`Lane ${name} no longer exists.`);
       if (l.kept) throw new BlockedError(keptMessage(name, l.kept));
+      // A pre-teardown hook runs user code between the first check and here: re-verify what the human saw.
+      if (opts.expect !== undefined && isRepo && forceFingerprint(deps, real, unpushedWork(deps, real)) !== opts.expect) {
+        throw new BlockedError(changedMessage(laneDir));
+      }
       if (real) {
         archivedTo = archivePlans(ctx, deps, real, name);
         contextDeleted = deleteContext(deps, real);

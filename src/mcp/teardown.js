@@ -1,11 +1,11 @@
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { invoke } from '../commands/registry.js';
 import { loadContainer } from '../lib/container.js';
 import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
 import { putRequest } from '../lib/lanes-state.js';
 import { untrackedEntries } from '../lib/lane-files.js';
 import { holdingLines } from '../lib/lane-git.js';
-import { gitOut } from '../lib/git.js';
 import { BlockedError, InvalidInputError } from '../lib/errors.js';
 
 export const CONFIRM_SCHEMA = {
@@ -25,12 +25,14 @@ export const notConfirmed = 'Not confirmed: nothing was torn down.';
 export const declinedMessage = (lane) =>
   `Declined or no response — if you weren't prompted, run \`laines teardown ${lane}\` in your terminal.`;
 
-const refLines = (checks) => checks.refs.map((r) => `  - ${r.ref}: ${r.commits} commit(s) on no remote`);
-
 // Exactly what a forced teardown will lose, for the second (typed) form.
 function discardMessage(deps, plan, opts) {
   const { checks } = plan;
-  const subjects = (ref) => gitOut(deps, ['log', '--format=%s', '-n', '3', ref, '--not', '--remotes'], plan.path).split('\n').filter(Boolean);
+  // A ref deleted since the dry run shows no subjects; the fingerprint refuses the run anyway.
+  const subjects = (ref) => {
+    const r = deps.git(['log', '--format=%s', '-n', '3', ref, '--not', '--remotes'], { cwd: plan.path });
+    return r.status === 0 ? r.stdout.split('\n').filter(Boolean) : [];
+  };
   const dirty = checks.dirty.slice(0, 10).map((f) => `  - ${f}`);
   if (checks.dirty.length > 10) dirty.push(`  - and ${checks.dirty.length - 10} more`);
   return [
@@ -48,7 +50,7 @@ function confirmMessage(ctx, deps, plan, opts) {
   const lane = getLane(readLanes(ctx), opts.lane);
   const plans = existsSync(plan.path) ? untrackedEntries(deps, plan.path, '.ai/plans').length : 0;
   const unpushed = plan.blocked
-    ? ['present (the next prompt asks you to type the lane name to discard it)', ...plan.checks.problems.map((p) => `    ${p}`), ...refLines(plan.checks), ...holdingLines(plan.checks.holdings)].join('\n')
+    ? ['present (the next prompt asks you to type the lane name to discard it)', ...plan.checks.problems.map((p) => `    ${p}`), ...holdingLines(plan.checks.holdings)].join('\n')
     : !opts.removeDir ? 'not checked (the clone stays)' : plan.checks === null ? 'not checked (no clone)' : 'none';
   const clone = plan.removedDir ? 'deleted (remove_dir)' : opts.removeDir ? 'no clone to delete' : 'left in place';
   const hooks = plan.hooks.flatMap((h) => h.hooks.map((x) => `${x.hook} (${x.state})`)).join(', ') || 'none';
@@ -80,7 +82,7 @@ export async function runTeardownMcp(opts, deps) {
   // The dry run applies every check (capability, keep, closed, unpushed work) and touches nothing.
   const plan = await invoke('teardown', { ...args, dryRun: true }, deps);
   // Only unpushed work can be forced, and only when a human can be asked and the container is not locked.
-  const canForce = plan.blocked && ctx.config.teardown.mcpForce === 'confirm' && !ctx.config.locked && Boolean(deps.canElicit?.());
+  const canForce = plan.blocked && existsSync(join(plan.path, '.git')) && ctx.config.teardown.mcpForce === 'confirm' && !ctx.config.locked && Boolean(deps.canElicit?.());
   if (plan.blocked && !canForce) throw new BlockedError(plan.refusal); // never re-run the real teardown without an accept
   const command = `laines teardown ${opts.lane}${opts.removeDir ? ' --remove-dir' : ''}`;
   if (!deps.canElicit?.()) {

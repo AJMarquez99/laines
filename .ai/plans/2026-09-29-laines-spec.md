@@ -154,7 +154,7 @@ Writes to `lanes.json`, the board, and `containers.json` happen under their mkdi
   "maxLanes": 20,
   "ports": { "stride": 10 },
   "hooks": { "policy": "notify", "timeoutSec": 300, "stableAfter": 3 },
-  "teardown": { "mcp": "confirm" },
+  "teardown": { "mcp": "confirm", "mcpForce": "confirm" },
   "capabilities": { "create": true, "report": true, "keep": true, "teardown": true, "aiSync": true },
   "agents": ["claude"],
   "agentCmd": "claude",
@@ -357,6 +357,21 @@ through MCP, where §9.3 applies; humans run these commands in their own termina
 - `off`: the tool is not registered.
 
 Reason: a lane that looks finished may be the base of stacked PRs or related work.
+
+**Forced teardown (0.4.8).** `teardown.mcpForce` (`confirm` default | `off`). Under `teardown.mcp`
+`confirm`, when `remove_dir` finds unpushed work (commits on no remote, uncommitted changes,
+stashes), the server asks a second elicitation form listing exactly what would be lost (each ref with
+its count and up to 3 commit subjects, dirty files, stashes, and which sibling lanes also hold the
+commits). The human must type the lane name (trimmed, exact). Only `accept` with a matching name
+proceeds; decline, cancel, a wrong name, an empty answer or a timeout refuse with "Not confirmed:
+nothing was torn down." The run is `teardown` with `force` and an `expect` fingerprint (stable JSON of
+unpushed ref tips, sorted dirty entries and stash hashes). `runTeardown` recomputes it after the
+safety checks and again under the board lock after `pre-teardown`, and refuses with nothing touched
+if it differs. No MCP tool declares `force` or `expect`; the CLI never passes `expect`. Not offered
+(0.2.0 refusal naming the terminal command) when `mcpForce` is `off`, the container is locked, the
+client cannot elicit, the lane is kept or closed, or the clone is not a git repository. The audit
+entry records `forcedVia: "mcp-typed-confirmation"` and `discarded`. Limits: the fingerprint sees
+file names, not file contents, of uncommitted changes.
 
 ### 9.4 `keep`
 

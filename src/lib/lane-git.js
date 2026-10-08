@@ -59,7 +59,8 @@ export function forceFingerprint(deps, laneDir, checks) {
     const r = deps.git(['rev-parse', '--verify', '-q', `${ref}^{commit}`], { cwd: laneDir });
     return { ref, tip: r.status === 0 ? r.stdout.trim() : '' };
   });
-  return JSON.stringify({ refs, dirty: [...checks.dirty].sort(), stashes: checks.stashes });
+  const stashes = gitOut(deps, ['stash', 'list', '--format=%H'], laneDir).split('\n').filter(Boolean);
+  return JSON.stringify({ refs, dirty: [...checks.dirty].sort(), stashes });
 }
 
 const holdingLine = (h) =>

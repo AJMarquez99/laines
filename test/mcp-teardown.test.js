@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runCreate } from '../src/commands/create.js';
 import { loadContainer } from '../src/lib/container.js';
@@ -7,7 +7,8 @@ import { readLanes } from '../src/lib/lanes-store.js';
 import { invoke } from '../src/commands/registry.js';
 import { declinedMessage, runTeardownMcp } from '../src/mcp/teardown.js';
 import { BlockedError } from '../src/lib/errors.js';
-import { cleanupTmp, connectMcp, setupContainer, setConfig, gitIn } from './helpers.js';
+import { TOOLS } from '../src/mcp/tools.js';
+import { cleanupTmp, connectMcp, writeHook, setupContainer, setConfig, gitIn } from './helpers.js';
 
 afterEach(cleanupTmp);
 
@@ -289,11 +290,12 @@ describe('teardown over MCP: forced after a typed confirmation', () => {
     await m.close();
   });
 
-  it('leaves a kept lane refused and a non-eliciting client on the board', async () => {
+  it('refuses a blocked lane for a non-eliciting client with no board request, and a kept lane stays kept', async () => {
     const s = await blockedLane();
     const m = await connectMcp(s.deps, { container: s.container });
     const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
     expect(r.structuredContent.error.message).toContain('exist on no remote');
+    expect(s.state().requests.map((q) => q.id)).not.toContain('teardown-confirm:lane_1');
     await invoke('keep', { lane: 'lane_1', reason: 'base', container: s.container }, s.deps);
     const k = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
     expect((await k.call('laines_teardown', { lane: 'lane_1', remove_dir: true })).structuredContent.error.message).toContain('is kept');
@@ -301,11 +303,58 @@ describe('teardown over MCP: forced after a typed confirmation', () => {
     await k.close();
   });
 
-  it('declares no force in any tool schema and drops an injected expect', async () => {
+  it('declares no force in any tool schema', async () => {
     const s = await blockedLane();
     const m = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
     const { tools } = await m.client.listTools();
     for (const t of tools) expect(Object.keys(t.inputSchema.properties ?? {})).not.toContain('force');
+    await m.close();
+  });
+
+  it('maps only declared arguments: injected force, expect and fingerprint are dropped', () => {
+    const tool = TOOLS.find((t) => t.name === 'laines_teardown');
+    expect(tool.mapArgs({ lane: 'x', expect: 'y', force: true, fingerprint: 'z' })).toEqual({ lane: 'x' });
+  });
+
+  it('refuses when a pre-teardown hook commits after the human confirmed; nothing is touched', async () => {
+    const s = await blockedLane();
+    writeHook(s.container, 'pre-teardown', 'git -c user.name=a -c user.email=a@b commit -q --allow-empty -m from-hook');
+    const m = await connectMcp(s.deps, { container: s.container, elicit: responder([], yes, () => typed('lane_1')) });
+    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    expect(r.structuredContent.error.exitCode).toBe(3);
+    expect(r.structuredContent.error.message).toMatch(/changed/);
+    expect(existsSync(s.dir)).toBe(true);
+    expect(s.state().lanes.lane_1.state).toBe('active');
+    await m.close();
+  });
+
+  it('does not offer to force a clone that is not a git repository', async () => {
+    const s = await blockedLane();
+    rmSync(join(s.dir, '.git'), { recursive: true, force: true });
+    const m = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
+    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    expect(r.structuredContent.error.exitCode).toBe(3);
+    expect(r.structuredContent.error.message).toContain('not a git repository');
+    expect(existsSync(s.dir)).toBe(true);
+    await m.close();
+  });
+
+  it('refuses when a stash is swapped for another after the human was shown it', async () => {
+    const s = await blockedLane();
+    writeFileSync(join(s.dir, 'a.txt'), 'one\n');
+    gitIn(s.dir, 'add', 'a.txt');
+    gitIn(s.dir, 'stash', 'push', '-q');
+    const swap = () => {
+      gitIn(s.dir, 'stash', 'drop', '-q');
+      writeFileSync(join(s.dir, 'b.txt'), 'two\n');
+      gitIn(s.dir, 'add', 'b.txt');
+      gitIn(s.dir, 'stash', 'push', '-q');
+      return typed('lane_1');
+    };
+    const m = await connectMcp(s.deps, { container: s.container, elicit: responder([], yes, swap) });
+    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    expect(r.structuredContent.error.message).toMatch(/changed/);
+    expect(existsSync(s.dir)).toBe(true);
     await m.close();
   });
 });
