@@ -406,6 +406,9 @@ A failed clone removes the partial directory and releases the ports.
    (`git rev-list --all --not --remotes`, reporting which refs). Refuse unless CLI `--force`
    (exit 3). The check is commit-level and ref-agnostic on purpose: an upstream comparison
    misses branches with no upstream, and a branch-only walk misses backup refs and tags.
+   The refusal and the dry run's `checks.holdings` also say, per unpushed ref, which other open
+   lanes hold its tip as a local branch or tag (`also in lane_1 (refs/heads/x)`, or `held by no
+   other lane`). This is informational only and never exempts a commit.
 3. Over MCP: apply `teardown.mcp` (§9.3).
 4. Run `pre-teardown`; failure aborts with nothing touched.
 5. Move the lane's `.ai/plans/` to the container's `.ai/archive/<date>_<lane>/`; delete

@@ -5,7 +5,7 @@ import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
 import { dropRequests, putRequest, requestId } from '../lib/lanes-state.js';
 import { assertLaneDir, removeLaneDir } from '../lib/containment.js';
 import { untrackedEntries } from '../lib/lane-files.js';
-import { unpushedWork } from '../lib/lane-git.js';
+import { holdingLines, siblingHoldings, unpushedWork } from '../lib/lane-git.js';
 import { hookStates, listHooks } from '../lib/hooks.js';
 import { dryRunHooks, hookBoardEntries, hookError, runEvent, runSummary, unapprovedWarnings } from '../lib/hook-events.js';
 import { appendAudit } from '../lib/audit.js';
@@ -44,10 +44,11 @@ const recordHookRun = (ctx, deps, run, name, finish) =>
   });
 
 // The refusal the CLI throws for unpushed work; the dry run carries the same text for callers that must not re-run a real teardown.
-export const unpushedRefusal = (laneDir, problems, isRepo) =>
+export const unpushedRefusal = (laneDir, problems, isRepo, holdings) =>
   [
     `Refusing to remove ${laneDir}:`,
     ...problems.map((p) => `  - ${p}`),
+    ...(holdings?.length ? ['Other lanes holding these commits (informational; they do not make removal safe):', ...holdingLines(holdings)] : []),
     isRepo
       ? `Push the work, or save it first: git -C ${laneDir} bundle create <file> --all --not --remotes`
       : `Copy anything you need out of ${laneDir} first.`,
@@ -80,6 +81,7 @@ export async function runTeardown(opts, deps) {
   const unverifiable = { dirty: [], stashes: 0, unpushed: 0, refs: [], noUpstream: null, problems: ['not a git repository: unpushed work cannot be verified'] };
   let checks = null;
   if (opts.removeDir && real) checks = isRepo ? unpushedWork(deps, real) : unverifiable;
+  if (checks?.refs.length) checks.holdings = siblingHoldings(deps, ctx, name, checks.refs);
   const risky = Boolean(checks && checks.problems.length);
   const blocked = risky && !opts.force;
   const warnings = checks?.noUpstream ? [`branch ${checks.noUpstream} has no upstream`] : [];
@@ -90,10 +92,10 @@ export async function runTeardown(opts, deps) {
 
   if (opts.dryRun) {
     const hooks = [...(runPre ? [dryRunHooks(ctx, 'pre-teardown')] : []), ...(runPost ? [dryRunHooks(ctx, 'post-teardown')] : [])];
-    return { dryRun: true, lane: name, path: laneDir, blocked, removedDir: Boolean(opts.removeDir && real), forced: risky && Boolean(opts.force), checks, warnings, hooks, refusal: blocked ? unpushedRefusal(laneDir, checks.problems, isRepo) : null };
+    return { dryRun: true, lane: name, path: laneDir, blocked, removedDir: Boolean(opts.removeDir && real), forced: risky && Boolean(opts.force), checks, warnings, hooks, refusal: blocked ? unpushedRefusal(laneDir, checks.problems, isRepo, checks.holdings) : null };
   }
   if (blocked) {
-    throw new BlockedError(unpushedRefusal(laneDir, checks.problems, isRepo));
+    throw new BlockedError(unpushedRefusal(laneDir, checks.problems, isRepo, checks.holdings));
   }
 
   // Spec §10.3 step 4: pre-teardown runs after the safety checks and before anything is touched.

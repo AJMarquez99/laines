@@ -1,4 +1,5 @@
 import { runSummary } from './hook-events.js';
+import { holdingLines } from './lane-git.js';
 export function printJson(value) {
   process.stdout.write(JSON.stringify(value, null, 2) + '\n');
 }
@@ -129,6 +130,7 @@ export function formatTeardown(r) {
   if (r.dryRun) {
     const lines = [`dry run: ${r.blocked ? 'teardown would be refused' : `would tear down ${r.lane}`}`];
     for (const p of r.checks?.problems ?? []) lines.push(`  - ${p}`);
+    if (r.checks?.holdings?.length) lines.push('other lanes holding these commits (informational):', ...holdingLines(r.checks.holdings));
     if (r.removedDir) lines.push(`would remove ${r.path}`);
     for (const h of r.hooks ?? []) lines.push(formatDryHooks(h));
     return lines.join('\n');

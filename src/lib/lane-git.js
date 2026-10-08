@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { gitOut } from './git.js';
+import { readLanes } from './lanes-store.js';
 
 // The loss condition is commit-level, not branch-level: any commit reachable from a local ref but
 // on no remote dies with the clone. Comparing against upstream misses branches with no upstream,
@@ -26,6 +27,35 @@ export function unpushedWork(deps, laneDir) {
   if (unpushed) problems.push(`${unpushed} commit(s) that exist on no remote: ${refs.map((r) => `${r.ref} (${r.commits})`).join(', ')}`);
   return { dirty, stashes, unpushed, refs, noUpstream, problems };
 }
+
+// Informational only: which other open lanes also hold each unpushed ref's tip, as a local branch or
+// tag. A reflog or remote-tracking ref is not "held". It never exempts a commit from the check.
+export function siblingHoldings(deps, ctx, laneName, refs) {
+  const siblings = Object.entries(readLanes(ctx).lanes)
+    .filter(([name, l]) => name !== laneName && l.state !== 'closed')
+    .map(([name, l]) => ({ name, dir: join(ctx.root, l.repos[0].path) }))
+    .filter((l) => existsSync(join(l.dir, '.git')));
+  const mine = join(ctx.root, readLanes(ctx).lanes[laneName].repos[0].path);
+  return refs.map(({ ref, commits }) => {
+    const tip = deps.git(['rev-parse', '--verify', '-q', ref], { cwd: mine });
+    const sha = tip.status === 0 ? tip.stdout.trim() : '';
+    const heldBy = [];
+    for (const { name, dir } of sha ? siblings : []) {
+      const has = deps.git(['cat-file', '-e', `${sha}^{commit}`], { cwd: dir });
+      if (has.error || has.status !== 0) continue;
+      const found = deps.git(['for-each-ref', '--contains', sha, '--format=%(refname)', 'refs/heads', 'refs/tags'], { cwd: dir });
+      if (found.error || found.status !== 0) continue;
+      const names = found.stdout.split('\n').filter(Boolean);
+      if (names.length) heldBy.push({ lane: name, refs: names });
+    }
+    return { ref, commits, heldBy };
+  });
+}
+
+const holdingLine = (h) =>
+  `  - ${h.ref} (${h.commits} commits): ${h.heldBy.length ? `also in ${h.heldBy.map((x) => `${x.lane} (${x.refs.join(', ')})`).join('; ')}` : 'held by no other lane'}`;
+
+export const holdingLines = (holdings) => (holdings ?? []).map(holdingLine);
 
 const IN_PROGRESS = ['MERGE_HEAD', 'rebase-merge', 'rebase-apply', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG'];
 
