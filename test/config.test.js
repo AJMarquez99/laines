@@ -16,7 +16,7 @@ describe('config', () => {
       maxLanes: 20,
       ports: { stride: 10 },
       hooks: { policy: 'notify', timeoutSec: 300, stableAfter: 3 },
-      teardown: { mcp: 'confirm' },
+      teardown: { mcp: 'confirm', mcpForce: 'confirm' },
       capabilities: { create: true, report: true, keep: true, teardown: true, aiSync: true },
       agents: ['claude'],
       agentCmd: 'claude',

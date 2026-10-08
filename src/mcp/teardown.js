@@ -4,6 +4,8 @@ import { loadContainer } from '../lib/container.js';
 import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
 import { putRequest } from '../lib/lanes-state.js';
 import { untrackedEntries } from '../lib/lane-files.js';
+import { holdingLines } from '../lib/lane-git.js';
+import { gitOut } from '../lib/git.js';
 import { BlockedError, InvalidInputError } from '../lib/errors.js';
 
 export const CONFIRM_SCHEMA = {
@@ -12,13 +14,42 @@ export const CONFIRM_SCHEMA = {
   required: ['confirm'],
 };
 
+export const TYPED_SCHEMA = (lane) => ({
+  type: 'object',
+  properties: { lane: { type: 'string', title: `Type ${lane} to discard this work` } },
+  required: ['lane'],
+});
+
+export const notConfirmed = 'Not confirmed: nothing was torn down.';
+
 export const declinedMessage = (lane) =>
   `Declined or no response — if you weren't prompted, run \`laines teardown ${lane}\` in your terminal.`;
+
+const refLines = (checks) => checks.refs.map((r) => `  - ${r.ref}: ${r.commits} commit(s) on no remote`);
+
+// Exactly what a forced teardown will lose, for the second (typed) form.
+function discardMessage(deps, plan, opts) {
+  const { checks } = plan;
+  const subjects = (ref) => gitOut(deps, ['log', '--format=%s', '-n', '3', ref, '--not', '--remotes'], plan.path).split('\n').filter(Boolean);
+  const dirty = checks.dirty.slice(0, 10).map((f) => `  - ${f}`);
+  if (checks.dirty.length > 10) dirty.push(`  - and ${checks.dirty.length - 10} more`);
+  return [
+    `This permanently discards work in lane ${opts.lane} (${plan.path}):`,
+    ...checks.refs.flatMap((r) => [`- ${r.ref}: ${r.commits} commit(s) on no remote`, ...subjects(r.ref).map((t) => `    ${t}`)]),
+    ...(checks.dirty.length ? [`- ${checks.dirty.length} uncommitted change(s):`, ...dirty] : []),
+    ...(checks.stashes ? [`- ${checks.stashes} stash entr${checks.stashes === 1 ? 'y' : 'ies'}`] : []),
+    ...(checks.problems.length && !checks.refs.length && !checks.dirty.length && !checks.stashes ? checks.problems.map((p) => `- ${p}`) : []),
+    ...holdingLines(checks.holdings),
+    `Type the lane name (${opts.lane}) to delete it anyway. Anything else cancels.`,
+  ].join('\n');
+}
 
 function confirmMessage(ctx, deps, plan, opts) {
   const lane = getLane(readLanes(ctx), opts.lane);
   const plans = existsSync(plan.path) ? untrackedEntries(deps, plan.path, '.ai/plans').length : 0;
-  const unpushed = !opts.removeDir ? 'not checked (the clone stays)' : plan.checks === null ? 'not checked (no clone)' : 'none';
+  const unpushed = plan.blocked
+    ? ['present (the next prompt asks you to type the lane name to discard it)', ...plan.checks.problems.map((p) => `    ${p}`), ...refLines(plan.checks), ...holdingLines(plan.checks.holdings)].join('\n')
+    : !opts.removeDir ? 'not checked (the clone stays)' : plan.checks === null ? 'not checked (no clone)' : 'none';
   const clone = plan.removedDir ? 'deleted (remove_dir)' : opts.removeDir ? 'no clone to delete' : 'left in place';
   const hooks = plan.hooks.flatMap((h) => h.hooks.map((x) => `${x.hook} (${x.state})`)).join(', ') || 'none';
   return [
@@ -48,7 +79,9 @@ export async function runTeardownMcp(opts, deps) {
 
   // The dry run applies every check (capability, keep, closed, unpushed work) and touches nothing.
   const plan = await invoke('teardown', { ...args, dryRun: true }, deps);
-  if (plan.blocked) throw new BlockedError(plan.refusal); // never re-run the real teardown without an accept
+  // Only unpushed work can be forced, and only when a human can be asked and the container is not locked.
+  const canForce = plan.blocked && ctx.config.teardown.mcpForce === 'confirm' && !ctx.config.locked && Boolean(deps.canElicit?.());
+  if (plan.blocked && !canForce) throw new BlockedError(plan.refusal); // never re-run the real teardown without an accept
   const command = `laines teardown ${opts.lane}${opts.removeDir ? ' --remove-dir' : ''}`;
   if (!deps.canElicit?.()) {
     const ts = deps.now();
@@ -67,5 +100,18 @@ export async function runTeardownMcp(opts, deps) {
     deps.warn?.(`teardown confirmation failed: ${error?.message ?? error}`); // a timeout or a client error is no answer
   }
   if (answer?.action !== 'accept' || answer.content?.confirm !== true) throw new BlockedError(declinedMessage(opts.lane));
-  return invoke('teardown', args, deps);
+  if (!plan.blocked) return invoke('teardown', args, deps);
+
+  // The second form: the human types the lane name. The fingerprint of what they were shown rides along.
+  let typed = null;
+  try {
+    typed = await deps.elicit(discardMessage(deps, plan, opts), TYPED_SCHEMA(opts.lane));
+  } catch (error) {
+    deps.warn?.(`teardown discard confirmation failed: ${error?.message ?? error}`);
+  }
+  if (typed?.action !== 'accept') throw new BlockedError(notConfirmed);
+  if (typeof typed.content?.lane !== 'string' || typed.content.lane.trim() !== opts.lane) {
+    throw new BlockedError(`The name typed did not match ${opts.lane}. ${notConfirmed}`);
+  }
+  return invoke('teardown', { ...args, force: true, expect: plan.fingerprint }, deps);
 }

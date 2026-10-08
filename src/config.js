@@ -28,7 +28,12 @@ export const ConfigSchema = z.strictObject({
       stableAfter: z.number().int().min(1).max(100).default(3),
     })
     .prefault({}),
-  teardown: z.strictObject({ mcp: z.enum(['confirm', 'auto', 'off']).default('confirm') }).prefault({}),
+  teardown: z
+    .strictObject({
+      mcp: z.enum(['confirm', 'auto', 'off']).default('confirm'),
+      mcpForce: z.enum(['confirm', 'off']).default('confirm'),
+    })
+    .prefault({}),
   capabilities: z
     .strictObject({
       create: z.boolean().default(true),

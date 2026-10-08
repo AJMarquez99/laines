@@ -5,7 +5,7 @@ import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
 import { dropRequests, putRequest, requestId } from '../lib/lanes-state.js';
 import { assertLaneDir, removeLaneDir } from '../lib/containment.js';
 import { untrackedEntries } from '../lib/lane-files.js';
-import { holdingLines, siblingHoldings, unpushedWork } from '../lib/lane-git.js';
+import { forceFingerprint, holdingLines, siblingHoldings, unpushedWork } from '../lib/lane-git.js';
 import { hookStates, listHooks } from '../lib/hooks.js';
 import { dryRunHooks, hookBoardEntries, hookError, runEvent, runSummary, unapprovedWarnings } from '../lib/hook-events.js';
 import { appendAudit } from '../lib/audit.js';
@@ -82,6 +82,11 @@ export async function runTeardown(opts, deps) {
   let checks = null;
   if (opts.removeDir && real) checks = isRepo ? unpushedWork(deps, real) : unverifiable;
   if (checks?.refs.length) checks.holdings = siblingHoldings(deps, ctx, name, checks.refs);
+  const fingerprint = checks ? forceFingerprint(deps, real, checks) : null;
+  // `expect` is set only by the MCP typed confirmation: what the human saw must still be what is there.
+  if (opts.expect !== undefined && opts.expect !== fingerprint) {
+    throw new BlockedError(`The unpushed work in ${laneDir} changed after you were shown it. Nothing was torn down; ask again to see the current state.`);
+  }
   const risky = Boolean(checks && checks.problems.length);
   const blocked = risky && !opts.force;
   const warnings = checks?.noUpstream ? [`branch ${checks.noUpstream} has no upstream`] : [];
@@ -89,10 +94,11 @@ export async function runTeardown(opts, deps) {
   // closed lane again re-runs only a post-teardown that failed last time.
   const runPre = !closed && Boolean(real);
   const runPost = !closed || cleanupPending;
+  const viaMcp = risky && Boolean(opts.force) && opts.expect !== undefined;
 
   if (opts.dryRun) {
     const hooks = [...(runPre ? [dryRunHooks(ctx, 'pre-teardown')] : []), ...(runPost ? [dryRunHooks(ctx, 'post-teardown')] : [])];
-    return { dryRun: true, lane: name, path: laneDir, blocked, removedDir: Boolean(opts.removeDir && real), forced: risky && Boolean(opts.force), checks, warnings, hooks, refusal: blocked ? unpushedRefusal(laneDir, checks.problems, isRepo, checks.holdings) : null };
+    return { dryRun: true, lane: name, path: laneDir, blocked, removedDir: Boolean(opts.removeDir && real), forced: risky && Boolean(opts.force), checks, fingerprint, warnings, hooks, refusal: blocked ? unpushedRefusal(laneDir, checks.problems, isRepo, checks.holdings) : null };
   }
   if (blocked) {
     throw new BlockedError(unpushedRefusal(laneDir, checks.problems, isRepo, checks.holdings));
@@ -149,7 +155,8 @@ export async function runTeardown(opts, deps) {
       l.updated = now;
       state.requests = state.requests.filter((q) => q.lane !== name);
       const note = archivedTo ? `plans archived to ${archivedTo}` : 'no plans to archive';
-      return { state, result: null, activity: [...board.activity, { ts: now, lane: name, text: `lane torn down; ${note}` }] };
+      const via = viaMcp ? `; torn down over MCP; forced after a typed confirmation: ${checks.problems.join('; ')}` : '';
+      return { state, result: null, activity: [...board.activity, { ts: now, lane: name, text: `lane torn down; ${note}${via}` }] };
     });
   } else if (opts.removeDir && real) {
     // Second phase of a two-step teardown: anything written since the close is archived too.
@@ -190,7 +197,7 @@ export async function runTeardown(opts, deps) {
   const forced = risky && Boolean(opts.force);
   appendAudit(
     ctx.paths.audit,
-    { ts: now, action: 'teardown', container: ctx.id, lane: name, removedDir, forced, hooks: { pre: pre?.outcome ?? null, post: post?.outcome ?? null } },
+    { ts: now, action: 'teardown', container: ctx.id, lane: name, removedDir, forced, ...(viaMcp ? { forcedVia: 'mcp-typed-confirmation', discarded: checks.problems } : {}), hooks: { pre: pre?.outcome ?? null, post: post?.outcome ?? null } },
     { warn: deps.warn },
   );
   return { dryRun: false, lane: name, path: laneDir, archivedTo, contextDeleted, removedDir, forced, checks, warnings, hooks: [pre, post].filter(Boolean) };

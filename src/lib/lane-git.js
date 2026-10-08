@@ -52,6 +52,16 @@ export function siblingHoldings(deps, ctx, laneName, refs) {
   });
 }
 
+// What a human was shown before forcing: unpushed ref tips, dirty files, stash count. A forced run with
+// a different fingerprint is refused, so nothing is discarded that the human did not see.
+export function forceFingerprint(deps, laneDir, checks) {
+  const refs = checks.refs.map(({ ref }) => {
+    const r = deps.git(['rev-parse', '--verify', '-q', `${ref}^{commit}`], { cwd: laneDir });
+    return { ref, tip: r.status === 0 ? r.stdout.trim() : '' };
+  });
+  return JSON.stringify({ refs, dirty: [...checks.dirty].sort(), stashes: checks.stashes });
+}
+
 const holdingLine = (h) =>
   `  - ${h.ref} (${h.commits} commits): ${h.heldBy.length ? `also in ${h.heldBy.map((x) => `${x.lane} (${x.refs.join(', ')})`).join('; ')}` : 'held by no other lane'}`;
 
