@@ -48,7 +48,7 @@ export const unpushedRefusal = (laneDir, problems, isRepo, holdings) =>
   [
     `Refusing to remove ${laneDir}:`,
     ...problems.map((p) => `  - ${p}`),
-    ...(holdings?.length ? ['Other lanes holding these commits (informational; they do not make removal safe):', ...holdingLines(holdings)] : []),
+    ...holdingLines(holdings),
     isRepo
       ? `Push the work, or save it first: git -C ${laneDir} bundle create <file> --all --not --remotes`
       : `Copy anything you need out of ${laneDir} first.`,

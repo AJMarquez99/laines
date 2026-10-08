@@ -31,18 +31,18 @@ export function unpushedWork(deps, laneDir) {
 // Informational only: which other open lanes also hold each unpushed ref's tip, as a local branch or
 // tag. A reflog or remote-tracking ref is not "held". It never exempts a commit from the check.
 export function siblingHoldings(deps, ctx, laneName, refs) {
-  const siblings = Object.entries(readLanes(ctx).lanes)
-    .filter(([name, l]) => name !== laneName && l.state !== 'closed')
-    .map(([name, l]) => ({ name, dir: join(ctx.root, l.repos[0].path) }))
-    .filter((l) => existsSync(join(l.dir, '.git')));
-  const mine = join(ctx.root, readLanes(ctx).lanes[laneName].repos[0].path);
+  const lanes = readLanes(ctx).lanes;
+  const dirOf = (l) => join(ctx.root, l.repos[0].path);
+  const siblings = Object.entries(lanes)
+    .filter(([name, l]) => name !== laneName && l.state !== 'closed' && existsSync(join(dirOf(l), '.git')))
+    .map(([name, l]) => ({ name, dir: dirOf(l) }));
+  const mine = dirOf(lanes[laneName]);
   return refs.map(({ ref, commits }) => {
-    const tip = deps.git(['rev-parse', '--verify', '-q', ref], { cwd: mine });
+    const tip = deps.git(['rev-parse', '--verify', '-q', `${ref}^{commit}`], { cwd: mine });
     const sha = tip.status === 0 ? tip.stdout.trim() : '';
     const heldBy = [];
     for (const { name, dir } of sha ? siblings : []) {
-      const has = deps.git(['cat-file', '-e', `${sha}^{commit}`], { cwd: dir });
-      if (has.error || has.status !== 0) continue;
+      // A sibling without the object fails here and is skipped.
       const found = deps.git(['for-each-ref', '--contains', sha, '--format=%(refname)', 'refs/heads', 'refs/tags'], { cwd: dir });
       if (found.error || found.status !== 0) continue;
       const names = found.stdout.split('\n').filter(Boolean);
@@ -55,7 +55,9 @@ export function siblingHoldings(deps, ctx, laneName, refs) {
 const holdingLine = (h) =>
   `  - ${h.ref} (${h.commits} commits): ${h.heldBy.length ? `also in ${h.heldBy.map((x) => `${x.lane} (${x.refs.join(', ')})`).join('; ')}` : 'held by no other lane'}`;
 
-export const holdingLines = (holdings) => (holdings ?? []).map(holdingLine);
+// The header and one line per ref, shared by the refusal and the table; empty when there is nothing to say.
+export const holdingLines = (holdings) =>
+  holdings?.length ? ['Other lanes holding these commits (informational; they do not make removal safe):', ...holdings.map(holdingLine)] : [];
 
 const IN_PROGRESS = ['MERGE_HEAD', 'rebase-merge', 'rebase-apply', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG'];
 

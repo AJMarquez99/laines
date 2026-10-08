@@ -51,6 +51,15 @@ describe('siblingHoldings', () => {
   });
 });
 
+describe('siblingHoldings tips', () => {
+  it('resolves an annotated tag to its commit', async () => {
+    const s = await twoLanes();
+    gitIn(s.l2, 'tag', '-a', '-m', 'note', 'v-ann', 'feature');
+    const h = siblingHoldings(s.deps, s.ctx, 'lane_2', [{ ref: 'refs/tags/v-ann', commits: 2 }]);
+    expect(h[0].heldBy).toEqual([{ lane: 'lane_1', refs: ['refs/heads/x'] }]);
+  });
+});
+
 describe('teardown holdings', () => {
   it('the refusal says where each ref is also held', async () => {
     const s = await twoLanes();
