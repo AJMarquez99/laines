@@ -357,4 +357,18 @@ describe('teardown over MCP: forced after a typed confirmation', () => {
     expect(existsSync(s.dir)).toBe(true);
     await m.close();
   });
+
+  it('never offers the second form for a closed lane whose clone remains', async () => {
+    const s = await blockedLane();
+    await invoke('teardown', { lane: 'lane_1', container: s.container }, s.deps);
+    expect(s.state().lanes.lane_1.state).toBe('closed');
+    const prompts = [];
+    const m = await connectMcp(s.deps, { container: s.container, elicit: responder(prompts, yes, () => typed('lane_1')) });
+    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    expect(r.structuredContent.error.exitCode).toBe(3);
+    expect(r.structuredContent.error.message).toContain('exist on no remote');
+    expect(prompts.length).toBeLessThanOrEqual(1);
+    expect(existsSync(s.dir)).toBe(true);
+    await m.close();
+  });
 });

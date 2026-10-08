@@ -99,7 +99,7 @@ export const TOOLS = [
   {
     name: 'laines_teardown',
     command: 'teardown',
-    description: 'Close a lane: archive its plans, delete its context and, with remove_dir, its clone. A human confirms unless the container is set otherwise; a kept lane and unpushed work are always refused.',
+    description: 'Close a lane: archive its plans, delete its context and, with remove_dir, its clone. A human confirms unless the container is set otherwise; a kept lane is always refused; unpushed work is refused unless a human types the lane name in a second prompt (teardown.mcpForce).',
     inputSchema: {
       lane: z.string().describe('lane name, e.g. lane_2'),
       remove_dir: z.boolean().optional().describe('also delete the clone, after the unpushed-work checks'),

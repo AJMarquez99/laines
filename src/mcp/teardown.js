@@ -82,7 +82,7 @@ export async function runTeardownMcp(opts, deps) {
   // The dry run applies every check (capability, keep, closed, unpushed work) and touches nothing.
   const plan = await invoke('teardown', { ...args, dryRun: true }, deps);
   // Only unpushed work can be forced, and only when a human can be asked and the container is not locked.
-  const canForce = plan.blocked && existsSync(join(plan.path, '.git')) && ctx.config.teardown.mcpForce === 'confirm' && !ctx.config.locked && Boolean(deps.canElicit?.());
+  const canForce = plan.blocked && getLane(readLanes(ctx), opts.lane).state !== 'closed' && existsSync(join(plan.path, '.git')) && ctx.config.teardown.mcpForce === 'confirm' && !ctx.config.locked && Boolean(deps.canElicit?.());
   if (plan.blocked && !canForce) throw new BlockedError(plan.refusal); // never re-run the real teardown without an accept
   const command = `laines teardown ${opts.lane}${opts.removeDir ? ' --remove-dir' : ''}`;
   if (!deps.canElicit?.()) {

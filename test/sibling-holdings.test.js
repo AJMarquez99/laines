@@ -65,7 +65,7 @@ describe('teardown holdings', () => {
     const s = await twoLanes();
     const err = await runTeardown({ lane: 'lane_2', removeDir: true, container: s.container }, s.deps).catch((e) => e);
     expect(err.message).toContain('  - refs/heads/feature (2 commits): also in lane_1 (refs/heads/x)');
-    expect(err.message).toContain('  - refs/heads/solo (1 commits): held by no other lane');
+    expect(err.message).toContain('  - refs/heads/solo (1 commit): held by no other lane');
   });
 
   it('the dry run carries checks.holdings and the refusal text', async () => {

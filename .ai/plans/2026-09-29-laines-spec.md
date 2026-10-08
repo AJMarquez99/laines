@@ -371,7 +371,8 @@ if it differs. No MCP tool declares `force` or `expect`; the CLI never passes `e
 (0.2.0 refusal naming the terminal command) when `mcpForce` is `off`, the container is locked, the
 client cannot elicit, the lane is kept or closed, or the clone is not a git repository. The audit
 entry records `forcedVia: "mcp-typed-confirmation"` and `discarded`. Limits: the fingerprint sees
-file names, not file contents, of uncommitted changes.
+file names, not file contents, of uncommitted changes, and files git ignores (local env files,
+databases) are neither shown nor fingerprinted, same as the terminal `--force`.
 
 ### 9.4 `keep`
 

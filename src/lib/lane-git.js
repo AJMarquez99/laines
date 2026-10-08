@@ -64,7 +64,7 @@ export function forceFingerprint(deps, laneDir, checks) {
 }
 
 const holdingLine = (h) =>
-  `  - ${h.ref} (${h.commits} commits): ${h.heldBy.length ? `also in ${h.heldBy.map((x) => `${x.lane} (${x.refs.join(', ')})`).join('; ')}` : 'held by no other lane'}`;
+  `  - ${h.ref} (${h.commits} commit${h.commits === 1 ? '' : 's'}): ${h.heldBy.length ? `also in ${h.heldBy.map((x) => `${x.lane} (${x.refs.join(', ')})`).join('; ')}` : 'held by no other lane'}`;
 
 // The header and one line per ref, shared by the refusal and the table; empty when there is nothing to say.
 export const holdingLines = (holdings) =>
