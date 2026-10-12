@@ -278,6 +278,11 @@ confirmation has an optional "Also delete the clone" tick. Ticking it runs the u
 first: clean removes the clone in that one confirmation, unpushed work continues into the typed
 prompt (or is refused with nothing torn down).
 
+**Stale server.** A `laines-mcp` started before an upgrade keeps running the old code. When the installed
+version differs from the one the server loaded, `laines_status` and `laines_doctor` show
+`server: { running, installed, stale: true }`, doctor fails an `mcp-server` check, and every refusal gets a
+line telling you to reconnect laines in your MCP client (for example `/mcp` in Claude Code).
+
 `laines doctor` checks the registration. Containers made before the MCP server existed don't have
 one: run the `claude mcp add` command above in the container, and `laines refresh <lane>` for each
 lane.
@@ -300,6 +305,7 @@ lane.
 | **M4.5: Adopt** | `laines adopt`, `.ai/` seeding, `laines ai sync` | ✅ Done |
 | **M4.6: Adopt fixes** | Fixes from the first real adoption: Compose identity for adopted `lane_1`, `_` laines files, exclude block that lists only untracked files, doctor notes, `ai sync` reasons | ✅ Done |
 | **0.4.8: Forced teardown over MCP** | typed second confirmation (`teardown.mcpForce`), sibling-lane holdings in teardown prompts and refusals | ✅ Done |
+| **0.4.9: Closed-lane gaps** | doctor and `create` handle closed lanes with a leftover clone, teardown over MCP can delete it (typed force when work is unpushed), stale `laines-mcp` shown | ✅ Done |
 | **M5: Release** | CI on macOS and Linux, security documentation, npm package | Planned |
 
 Out of scope for v1: Windows and several repositories in one lane.

@@ -389,6 +389,13 @@ therefore offered for it too (clone exists, is a git repo), with every ref whose
 deleting anything and refuses with nothing touched on a mismatch. The audit entry adds
 `closedLane: true`.
 
+**Stale server.** The server records the version it loaded (`VERSION` at import) and re-reads its own
+`package.json` on every tool call. When the installed version differs, `laines_status` and `laines_doctor`
+results carry `server: { running, installed, stale: true }`, doctor adds a failing `mcp-server` check, and
+every refusal or error gets one appended line: "this laines-mcp is running <running>, but <installed> is
+installed: reconnect laines in your MCP client (for example /mcp in Claude Code)". The CLI `laines doctor`
+has no `mcp-server` check.
+
 ### 9.4 `keep`
 
 A kept lane refuses teardown from every path, including `auto` and CLI `--force`, until a human
