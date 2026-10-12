@@ -38,6 +38,16 @@ describe('doctor', () => {
     expect(r.checks.map((x) => x.name)).toEqual(['container-marker', 'config', 'machine-index', 'dot-ai', 'agent-files', 'deny-rules', 'mcp', 'board', 'lock', 'machine-lock', 'lanes-state', 'hooks', 'ai-sync', 'agent-reach', 'elicitation-hooks']);
   });
 
+  it('adds an mcp-server check only inside the MCP server', async () => {
+    const { deps, c } = await container();
+    expect(byName(await runDoctor({ container: c }, deps))['mcp-server']).toBeUndefined();
+    const stale = await runDoctor({ container: c }, { ...deps, mcpServer: { running: '1.0.0', installed: () => '1.1.0' } });
+    expect(byName(stale)['mcp-server']).toMatchObject({ ok: false });
+    expect(stale.ok).toBe(false);
+    const same = await runDoctor({ container: c }, { ...deps, mcpServer: { running: '1.0.0', installed: () => '1.0.0' } });
+    expect(byName(same)['mcp-server']).toMatchObject({ ok: true });
+  });
+
   it('reports each broken piece without throwing', async () => {
     const { deps, c } = await container();
     writeFileSync(join(c, 'CLAUDE.md'), 'wiped\n');

@@ -146,3 +146,38 @@ describe('MCP server', () => {
     await client.close();
   });
 });
+
+describe('stale MCP server', () => {
+  const MSG = 'this laines-mcp is running 0.4.8, but 0.4.9 is installed: reconnect laines in your MCP client (for example /mcp in Claude Code)';
+  const staleDeps = (s, installed) => ({ ...s.deps, mcpServer: { running: '0.4.8', installed: () => installed } });
+
+  it('marks status and doctor, and explains a refusal, when the installed version moved on', async () => {
+    const s = await setupContainer();
+    const m = await connectMcp(staleDeps(s, '0.4.9'), { container: s.container });
+    const status = await m.call('laines_status');
+    expect(status.structuredContent.server).toEqual({ running: '0.4.8', installed: '0.4.9', stale: true });
+    const doctor = await m.call('laines_doctor');
+    expect(doctor.structuredContent.server).toEqual({ running: '0.4.8', installed: '0.4.9', stale: true });
+    const check = doctor.structuredContent.checks.find((c) => c.name === 'mcp-server');
+    expect(check).toMatchObject({ ok: false, detail: MSG });
+    expect(doctor.structuredContent.ok).toBe(false);
+    const refused = await m.call('laines_brief', { lane: 'lane_9' });
+    expect(refused.isError).toBe(true);
+    expect(refused.content.at(-1).text).toBe(MSG);
+    await m.close();
+  });
+
+  it('adds nothing when running and installed agree', async () => {
+    const s = await setupContainer();
+    const m = await connectMcp(staleDeps(s, '0.4.8'), { container: s.container });
+    expect((await m.call('laines_status')).structuredContent.server).toBeUndefined();
+    const doctor = await m.call('laines_doctor');
+    expect(doctor.structuredContent.server).toBeUndefined();
+    expect(doctor.structuredContent.checks.find((c) => c.name === 'mcp-server')).toMatchObject({ ok: true });
+    const refused = await m.call('laines_brief', { lane: 'lane_9' });
+    expect(refused.isError).toBe(true);
+    expect(JSON.stringify(refused.content)).not.toContain('reconnect laines');
+    await m.close();
+  });
+});
+

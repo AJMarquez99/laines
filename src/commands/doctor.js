@@ -15,6 +15,7 @@ import { hookStates, isExecutable } from '../lib/hooks.js';
 import { hasMcpEntry, mcpAddCommand } from '../lib/mcp-config.js';
 import { lockSuggested } from '../lib/hook-events.js';
 import { aiDrift, readAiBases, repoCommitsAi } from '../lib/ai-tree.js';
+import { staleMessage } from '../version.js';
 import { changedSinceClose } from '../lib/lane-git.js';
 
 // Informational: a lane whose committed .ai/ differs from the container's shared one.
@@ -209,6 +210,15 @@ export async function runDoctor(opts, deps) {
     }
     return parts.join('; ');
   });
+  // Only inside laines-mcp: a long-running server keeps the code it loaded, however often laines is upgraded.
+  if (deps.mcpServer) {
+    check('mcp-server', () => {
+      const { running } = deps.mcpServer;
+      const installed = deps.mcpServer.installed();
+      if (installed !== running) throw new Error(staleMessage(running, installed));
+      return `running ${running}`;
+    });
+  }
   check('ai-sync', () => {
     const n = Object.keys(readAiBases(p)).length;
     return n ? `base for ${n} lane(s)` : 'no .ai/ sync base yet';

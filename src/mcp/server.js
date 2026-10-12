@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { VERSION } from '../version.js';
+import { VERSION, installedVersion, staleMessage } from '../version.js';
 import { invoke } from '../commands/registry.js';
 import { loadContainer } from '../lib/container.js';
 import { HookError, InvalidInputError, LainesError } from '../lib/errors.js';
@@ -17,14 +17,16 @@ export function toolResult(value) {
   return { content: [...note, { type: 'text', text }], structuredContent: value };
 }
 
-export function errorResult(err) {
+export function errorResult(err, staleNote) {
   const known = err instanceof LainesError;
   const error = {
     exitCode: known ? err.exitCode : 1,
     message: known ? err.message : `Unexpected error: ${err?.message ?? String(err)}`,
     ...(err instanceof HookError ? { hooks: err.run } : {}),
   };
-  return { ...toolResult({ error }), isError: true };
+  const result = { ...toolResult({ error }), isError: true };
+  if (staleNote) result.content.push({ type: 'text', text: staleNote });
+  return result;
 }
 
 export function parseServerArgs(argv) {
@@ -40,7 +42,9 @@ export function createServer(baseDeps, { container } = {}) {
   const server = new McpServer({ name: 'laines', version: VERSION });
   // Teardown asks with a form; a client that offers only URL elicitation cannot answer one.
   // (The SDK normalises a legacy `elicitation: {}` to `{ form: {} }`.)
-  const deps = { ...baseDeps, canElicit: () => server.server.getClientCapabilities()?.elicitation?.form !== undefined };
+  // The version this process loaded vs. the one on disk now; tests inject both.
+  const version = baseDeps.mcpServer ?? { running: VERSION, installed: installedVersion };
+  const deps = { ...baseDeps, mcpServer: version, canElicit: () => server.server.getClientCapabilities()?.elicitation?.form !== undefined };
   const bound = container ? { container } : {};
   let config = null;
   try {
@@ -59,11 +63,20 @@ export function createServer(baseDeps, { container } = {}) {
         elicit: (message, requestedSchema) =>
           server.server.elicitInput({ message, requestedSchema }, { timeout: ELICIT_TIMEOUT_MS, signal: extra?.signal }),
       };
+      let stale = null;
       try {
-        return toolResult(await run({ ...tool.mapArgs(args ?? {}), ...bound }, callDeps));
+        const installed = version.installed();
+        if (installed !== version.running) stale = { running: version.running, installed, stale: true };
+      } catch {
+        // package.json unreadable: say nothing rather than guess.
+      }
+      const note = stale && staleMessage(stale.running, stale.installed);
+      try {
+        const out = await run({ ...tool.mapArgs(args ?? {}), ...bound }, callDeps);
+        return toolResult(stale && ['laines_status', 'laines_doctor'].includes(tool.name) ? { ...out, server: stale } : out);
       } catch (err) {
         if (!(err instanceof LainesError)) deps.warn?.(err?.stack ?? String(err));
-        return errorResult(err);
+        return errorResult(err, note);
       }
     });
   }
