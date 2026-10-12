@@ -187,7 +187,7 @@ export async function runTeardown(opts, deps) {
     }
   }
   const removedDir = removeDir ? removeLaneDir(ctx.root, laneDir, lane.repos[0].path) : false;
-  if (closed && removeDir) {
+  if (closed && removeDir && (removedDir || !cleanupPending)) {
     const via = viaMcp ? `; closed lane; torn down over MCP; forced after a typed confirmation: ${checks.problems.join('; ')}` : '';
     const text = removedDir ? `clone removed${archivedTo ? `; plans archived to ${archivedTo}` : ''}${via}` : 'no clone left to remove';
     await updateLanes(ctx, deps, (state) => ({ state, result: null, activity: [{ ts: deps.now(), lane: name, text }] }));
@@ -198,7 +198,7 @@ export async function runTeardown(opts, deps) {
   if (runPost) {
     post = await runEvent(ctx, deps, { event: 'post-teardown', name, lane, cwd: ctx.root });
     const ok = post.outcome === 'ok';
-    const retry = `${post.outcome === 'refused' ? 'laines hooks approve && ' : ''}laines teardown ${name}`;
+    const retry = `${post.outcome === 'refused' ? 'laines hooks approve && ' : ''}laines teardown ${name}${opts.keepDir ? ' --keep-dir' : ''}`;
     warnings.push(...unapprovedWarnings(post));
     if (!ok) warnings.push(`cleanup incomplete: ${runSummary(post)}. Fix it, then run \`${retry}\` to retry.`);
     if (!ok || post.results.length || cleanupPending) {

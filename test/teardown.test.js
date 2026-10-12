@@ -274,6 +274,21 @@ describe('teardown deletes the clone by default (0.4.9 Task 7)', () => {
   });
 });
 
+describe('teardown --keep-dir retry hint', () => {
+  it('the printed post-teardown retry keeps the clone', async () => {
+    const s = await lane();
+    writeHook(s.container, 'post-teardown', 'exit 1');
+    const r = await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
+    expect(r.warnings.join('\n')).toContain('laines teardown lane_1 --keep-dir');
+    const q = readLanes(loadContainer({ container: s.container }, s.deps)).requests.find((x) => x.id === 'cleanup-incomplete:lane_1');
+    expect(q.command).toBe('laines teardown lane_1 --keep-dir');
+    writeHook(s.container, 'post-teardown', 'true');
+    const out = await runCli([...q.command.split(' ').slice(1), '--container', s.container], s.deps);
+    expect(out.code).toBe(0);
+    expect(existsSync(s.dir)).toBe(true);
+  });
+});
+
 describe('teardown hooks', () => {
   const requests = (s) => readLanes(loadContainer({ container: s.container }, s.deps)).requests;
   const board = (s) => readFileSync(join(s.container, '.ai', 'context', 'LANES_BOARD.md'), 'utf8');

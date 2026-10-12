@@ -461,6 +461,16 @@ describe('teardown over MCP: keep the clone instead', () => {
     await m.close();
   });
 
+  it('auto mode: an unpushed-work refusal points at keep_dir', async () => {
+    const s = await withLane('auto');
+    gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'local only work');
+    const m = await connectMcp(s.deps, { container: s.container });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
+    expect(r.structuredContent.error.exitCode).toBe(3);
+    expect(r.structuredContent.error.message).toContain('keep_dir');
+    await m.close();
+  });
+
   it('dry run says the clone will be deleted', async () => {
     const s = await withLane();
     const m = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
