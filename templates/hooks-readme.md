@@ -7,13 +7,15 @@ with `.` are ignored.
 | Hook | Runs | Working directory | On failure |
 |---|---|---|---|
 | `post-create` | after a lane is cloned and its files and `.laines.env` are written; again on `laines refresh <lane>` | lane | lane kept and marked `setup-failed`; fix the hook, then `laines refresh <lane>` |
-| `pre-teardown` | before anything is archived or deleted | lane | teardown aborted, nothing touched |
+| `pre-teardown` | before anything is archived or deleted; runs again when a closed lane's leftover clone is removed | lane | teardown aborted, nothing touched |
 | `post-teardown` | after the lane is closed (and its clone removed, unless `--keep-dir`) | container | warning and a board request; `laines teardown <lane>` retries it |
 
 Environment: `LANE_NAME`, `LANE_NUMBER`, `LANE_ID`, `LANE_DIR`, `CONTAINER_DIR`, `CONTAINER_ID`,
 `LANE_PORT_BASE`, `LANE_PORT_COUNT`, `LANE_SUFFIX`, `LANE_BRANCH`, `LANE_ENV_FILE`, `PORT`,
-`COMPOSE_PROJECT_NAME`, `LAINES_HOOK`, `LAINES_DRY_RUN`. Standard input is empty, so a hook cannot
-prompt.
+`COMPOSE_PROJECT_NAME`, `LAINES_HOOK`, `LAINES_DRY_RUN`. `pre-teardown` also gets
+`LAINES_TEARDOWN_PHASE`: `close` on a lane's first teardown, `remove-clone` when a closed lane's
+leftover clone is removed by a later `laines teardown` (the clone may have been reused since the close).
+Cleanup hooks must therefore be safe to run twice. Standard input is empty, so a hook cannot prompt.
 
 `PORT` is set for lanes laines cloned. For an adopted checkout laines does not set it (the project
 keeps its own ports; the block is in `LANE_PORT_BASE`/`LANE_PORT_COUNT`), though a `PORT` already in
@@ -41,6 +43,10 @@ unpushed-work checks and before anything is deleted, with `COMPOSE_PROJECT_NAME`
 #!/bin/sh
 docker compose -p "$COMPOSE_PROJECT_NAME" down -v || true
 ```
+
+This one is safe to run twice (`down` on nothing is a no-op); the hook runs again, with
+`LAINES_TEARDOWN_PHASE=remove-clone`, if the closed lane's clone is later removed. Branch on that
+variable if the second run should do something different.
 
 Anything a hook leaves running must redirect its output, for example
 `npm run dev >"$LANE_DIR/dev.log" 2>&1 &`: the hook's output pipes close when it exits.

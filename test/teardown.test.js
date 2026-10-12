@@ -421,3 +421,109 @@ describe('teardown hooks', () => {
     expect(board(s)).toContain('clone removed');
   });
 });
+
+describe('closed lane: clone removal is recorded (0.4.9 Task 6)', () => {
+  const board = (s) => readFileSync(join(s.container, '.ai', 'context', 'LANES_BOARD.md'), 'utf8');
+  const closedLine = (s) => board(s).split('\n').find((l) => l.startsWith('- `lane_1` · closed'));
+
+  it('close with --keep-dir says the clone remains; removing it later records when and on which branch', async () => {
+    const s = await lane();
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
+    expect(closedLine(s)).toContain('· clone remains');
+    expect(state(s).cloneRemoved).toBeUndefined();
+    gitIn(s.dir, 'checkout', '-q', '-b', 'feature-x');
+    const later = '2026-10-11T03:43:00.000Z';
+    s.deps.now = () => later;
+    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(state(s)).toMatchObject({ cloneRemoved: later, branchAtRemoval: 'feature-x', updated: later, closed: '2026-09-29T12:00:00.000Z' });
+    expect(closedLine(s)).toMatch(/last branch `[^`]+` · clone removed 2026-10-11 03:43 UTC \(on `feature-x`\)/);
+  });
+
+  it('records a short sha when the clone is on a detached HEAD', async () => {
+    const s = await lane();
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
+    gitIn(s.dir, 'checkout', '-q', '--detach');
+    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(state(s).branchAtRemoval).toMatch(/^[0-9a-f]{7,}$/);
+  });
+
+  it('a default first teardown records cloneRemoved at the close time; keep-dir does not', async () => {
+    const s = await lane();
+    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(state(s)).toMatchObject({ cloneRemoved: '2026-09-29T12:00:00.000Z' });
+    expect(closedLine(s)).toContain('· clone removed 2026-09-29 12:00 UTC');
+  });
+});
+
+describe('closed lane: pre-teardown on clone removal (H1)', () => {
+  const requests = (s) => readLanes(loadContainer({ container: s.container }, s.deps)).requests;
+  const log = (s) => (existsSync(join(s.container, 'phase.log')) ? readFileSync(join(s.container, 'phase.log'), 'utf8') : '');
+  const phaseHook = 'echo "$LAINES_HOOK $LAINES_TEARDOWN_PHASE" >> "$CONTAINER_DIR/phase.log"';
+
+  it('runs with LAINES_TEARDOWN_PHASE=close on a first teardown and =remove-clone on a closed lane', async () => {
+    const s = await lane();
+    writeHook(s.container, 'pre-teardown', phaseHook);
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
+    expect(log(s)).toBe('pre-teardown close\n');
+    const r = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(log(s)).toBe('pre-teardown close\npre-teardown remove-clone\n');
+    expect(r.hooks.map((h) => h.event)).toEqual(['pre-teardown']);
+    expect(existsSync(s.dir)).toBe(false);
+  });
+
+  it('does not run when the closed lane has no clone left, or only a post retry is pending', async () => {
+    const s = await lane();
+    writeHook(s.container, 'pre-teardown', phaseHook);
+    writeHook(s.container, 'post-teardown', 'exit 1');
+    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(log(s)).toBe('pre-teardown close\n');
+    writeHook(s.container, 'post-teardown', 'true');
+    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(log(s)).toBe('pre-teardown close\n');
+  });
+
+  it('dry run on a closed lane with a clone reports pre-teardown', async () => {
+    const s = await lane();
+    writeHook(s.container, 'pre-teardown', 'true');
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
+    const r = await runTeardown({ lane: 'lane_1', dryRun: true, container: s.container }, s.deps);
+    expect(r.hooks.map((h) => [h.event, h.wouldRun])).toEqual([['pre-teardown', true]]);
+  });
+
+  it('a failing pre-teardown aborts with the clone intact, and a blocked one leaves a retry that keeps --force', async () => {
+    const s = await lane();
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
+    writeHook(s.container, 'pre-teardown', 'exit 1');
+    await expect(runTeardown({ lane: 'lane_1', container: s.container }, s.deps)).rejects.toBeInstanceOf(HookError);
+    expect(existsSync(s.dir)).toBe(true);
+    expect(state(s).cloneRemoved).toBeUndefined();
+    writeHook(s.container, 'pre-teardown', 'exit 3');
+    await expect(runTeardown({ lane: 'lane_1', container: s.container, force: true }, s.deps)).rejects.toBeInstanceOf(HookError);
+    expect(existsSync(s.dir)).toBe(true);
+    expect(requests(s).find((q) => q.id === 'teardown-blocked:lane_1').command).toBe('laines teardown lane_1 --force');
+    writeHook(s.container, 'pre-teardown', 'true');
+    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(requests(s).map((q) => q.id)).not.toContain('teardown-blocked:lane_1');
+    expect(existsSync(s.dir)).toBe(false);
+  });
+
+  it('a pre-teardown that commits is refused by the expect fingerprint on the closed path', async () => {
+    const s = await lane();
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
+    gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'work');
+    const dry = await runTeardown({ lane: 'lane_1', dryRun: true, force: true, container: s.container }, s.deps);
+    writeHook(s.container, 'pre-teardown', 'git commit -q --allow-empty -m "from hook"');
+    await expect(runTeardown({ lane: 'lane_1', force: true, expect: dry.fingerprint, container: s.container }, s.deps)).rejects.toBeInstanceOf(BlockedError);
+    expect(existsSync(s.dir)).toBe(true);
+    expect(state(s).cloneRemoved).toBeUndefined();
+  });
+
+  it('audit records the pre hook outcome on a closed lane', async () => {
+    const s = await lane();
+    writeHook(s.container, 'pre-teardown', 'true');
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
+    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    const entry = readFileSync(join(s.container, '.laines', 'audit.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((e) => e.action === 'teardown').pop();
+    expect(entry.hooks.pre).toBe('ok');
+  });
+});

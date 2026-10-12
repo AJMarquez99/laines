@@ -31,7 +31,7 @@ const brief = (h) => ({ hook: h.rel, state: h.state, checksum: h.checksum });
 
 // Spec §8.3–8.4: run one event's hooks in order under the hook policy. Returns data only; the
 // caller records it through updateLanes. Must never be called while the container lock is held.
-export async function runEvent(ctx, deps, { event, name, lane, cwd }) {
+export async function runEvent(ctx, deps, { event, name, lane, cwd, vars: extraVars = {} }) {
   const { policy, timeoutSec } = ctx.config.hooks;
   const run = { event, policy, timeoutSec, hooks: [], unapproved: [], results: [], outcome: 'ok', error: null };
   let hooks;
@@ -54,7 +54,7 @@ export async function runEvent(ctx, deps, { event, name, lane, cwd }) {
       { warn: deps.warn },
     );
   }
-  const vars = { ...laneHookVars(ctx, name, lane), LAINES_HOOK: event, LAINES_DRY_RUN: '0' };
+  const vars = { ...laneHookVars(ctx, name, lane), LAINES_HOOK: event, LAINES_DRY_RUN: '0', ...extraVars };
   for (const h of hooks) {
     if (!isExecutable(h.path)) {
       run.results.push({ hook: h.rel, status: null, signal: null, timedOut: false, durationMs: 0, untrusted: false, output: `${h.path} is not executable: run chmod +x on it.` });

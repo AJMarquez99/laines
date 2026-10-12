@@ -293,7 +293,9 @@ not change.
 
 Environment: `LANE_NAME`, `LANE_NUMBER`, `LANE_ID`, `LANE_DIR`, `CONTAINER_DIR`,
 `CONTAINER_ID`, `LANE_PORT_BASE`, `LANE_PORT_COUNT`, `LANE_SUFFIX`, `LANE_BRANCH`,
-`LANE_ENV_FILE`, `PORT`, `COMPOSE_PROJECT_NAME`, `LAINES_HOOK`, `LAINES_DRY_RUN`. `PORT` (first port of the
+`LANE_ENV_FILE`, `PORT`, `COMPOSE_PROJECT_NAME`, `LAINES_HOOK`, `LAINES_DRY_RUN`, and for `pre-teardown` only
+`LAINES_TEARDOWN_PHASE` (`close` on a lane's first teardown, `remove-clone` when a closed lane's leftover clone is
+removed). `PORT` (first port of the
 block) is set only for lanes laines cloned; a lane recorded as `adopted: true` (made by `laines adopt`) has
 none, so the project's own `PORT` stays in effect. `refresh` backfills `adopted` for a pre-M4.7 lane that has a
 `compose` name.
@@ -466,6 +468,16 @@ no-op alias; `--keep-dir` together with `--remove-dir` is an input error (exit 2
 that is already closed deletes its leftover clone (same checks); `--keep-dir` there is an input error,
 as is tearing down a closed lane whose clone is already gone. The dry run reports `removedDir: true`
 when the clone will be deleted.
+
+Removing a closed lane's clone runs `pre-teardown` again (same policy, approval and timeout) with
+`LAINES_TEARDOWN_PHASE=remove-clone`, because the clone may have been reused since the close; a failure aborts
+with nothing touched, and on the forced MCP path the under-lock fingerprint re-check runs after the hook, so a
+hook that changes the clone gets the removal refused. The lane record gains `cloneRemoved` (when the clone was
+deleted: the close time for a first teardown that deletes it, else the later teardown's time) and
+`branchAtRemoval` (what the clone had checked out, read before deletion; omitted if unreadable), and a later
+removal bumps `updated`. The board's Closed line reads `· clone removed <ts> (on <branch>)` or, while
+`cloneRemoved` is unset, `· clone remains`. The board is rendered from state, so a lane whose clone was removed
+before 0.4.9 also reads "clone remains"; `laines doctor`'s `closed:<lane>` check is the on-disk truth.
 
 ### 10.4 `adopt`
 

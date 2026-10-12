@@ -13,6 +13,9 @@ const Lane = z.strictObject({
   created: z.string(),
   updated: z.string(),
   closed: z.string().nullable().optional(),
+  // Set when the clone is deleted (at the close, or by a later teardown); branchAtRemoval is what the clone had checked out then.
+  cloneRemoved: z.string().optional(),
+  branchAtRemoval: z.string().optional(),
   // Set by `laines adopt`: the project's own Docker Compose project name, kept for lane_1.
   compose: z.string().optional(),
   // Set by `laines adopt`: the lane is the project's own checkout, so laines does not set PORT for it.

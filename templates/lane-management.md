@@ -54,6 +54,10 @@ A kept lane cannot be torn down by any path until a human runs `laines release <
     laines teardown <lane>             # archive plans, delete context, mark closed, delete the clone
     laines teardown <lane> --keep-dir  # same, but the clone stays (no unpushed-work checks)
 
+If you kept the clone and later run `laines teardown <lane>` to delete it, `pre-teardown` runs again
+(`LAINES_TEARDOWN_PHASE=remove-clone`) in case the clone was reused; the board's Closed line then shows
+"clone removed <time> (on <branch>)" instead of "clone remains".
+
 Deleting the clone is the default (`--remove-dir` is a deprecated no-op alias). It refuses if the lane has uncommitted changes, stash entries, or commits that exist on
 no remote, and reports which refs hold them. Save unpushed work instead of forcing:
 

@@ -546,6 +546,29 @@ describe('teardown over MCP: a closed lane\'s leftover clone', () => {
     await m.close();
   });
 
+  it('runs pre-teardown on the closed lane\'s clone; a hook that commits gets the removal refused, clone intact', async () => {
+    const s = await closedWithWork();
+    writeHook(s.container, 'pre-teardown', 'git commit -q --allow-empty -m "from hook"');
+    const m = await connectMcp(s.deps, { container: s.container, elicit: responder([], yes, () => typed('lane_1')) });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
+    expect(r.structuredContent.error.exitCode).toBe(3);
+    expect(r.structuredContent.error.message).toMatch(/changed/);
+    expect(existsSync(s.dir)).toBe(true);
+    expect(s.state().lanes.lane_1.cloneRemoved).toBeUndefined();
+    await m.close();
+  });
+
+  it('audit hooks.pre is no longer null when the closed lane\'s clone is removed', async () => {
+    const s = await closedWithWork();
+    writeHook(s.container, 'pre-teardown', 'true');
+    const m = await connectMcp(s.deps, { container: s.container, elicit: responder([], yes, () => typed('lane_1')) });
+    await m.call('laines_teardown', { lane: 'lane_1' });
+    const entry = readFileSync(join(s.container, '.laines', 'audit.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((e) => e.action === 'teardown').pop();
+    expect(entry.hooks.pre).toBe('ok');
+    expect(s.state().lanes.lane_1).toMatchObject({ branchAtRemoval: 'feature-x' });
+    await m.close();
+  });
+
   it.each([
     ['force off', (s) => setConfig(s.container, (c) => { c.teardown.mcpForce = 'off'; })],
     ['a locked container', (s) => setConfig(s.container, (c) => { c.locked = true; })],

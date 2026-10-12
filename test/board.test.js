@@ -103,3 +103,12 @@ describe('board', () => {
     expect(renderBoard({ container, state })).toContain('- **Task:** #123 fix');
   });
 });
+
+describe('board Closed line: clone state', () => {
+  const md = (over) => renderBoard({ state: { ...emptyLanesState(), lanes: { lane_2: lane({ state: 'closed', closed: '2026-10-06T04:27:00.000Z', repos: [{ name: 'app', path: 'lane_2', branch: 'old' }], ...over }) } }, container });
+  it('says the clone remains unless cloneRemoved is set', () => {
+    expect(md({})).toContain('last branch `old` · clone remains');
+    expect(md({ cloneRemoved: '2026-10-11T03:43:00.000Z', branchAtRemoval: 'feature-x' })).toContain('last branch `old` · clone removed 2026-10-11 03:43 UTC (on `feature-x`)');
+    expect(md({ cloneRemoved: '2026-10-11T03:43:00.000Z' })).toMatch(/clone removed 2026-10-11 03:43 UTC\n/);
+  });
+});

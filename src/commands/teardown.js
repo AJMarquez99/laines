@@ -31,6 +31,14 @@ function deleteContext(deps, laneDir) {
   return entries.length > 0;
 }
 
+// What the clone has checked out (branch, else short sha); null when it cannot be read.
+function currentBranch(deps, dir) {
+  const branch = deps.git(['branch', '--show-current'], { cwd: dir });
+  if (branch.status === 0 && branch.stdout.trim()) return branch.stdout.trim();
+  const sha = deps.git(['rev-parse', '--short', 'HEAD'], { cwd: dir });
+  return sha.status === 0 && sha.stdout.trim() ? sha.stdout.trim() : null;
+}
+
 const keptMessage = (name, kept) =>
   `Lane ${name} is kept (${kept.reason}). A human must run \`laines release ${name}\` before it can be torn down.`;
 
@@ -99,7 +107,10 @@ export async function runTeardown(opts, deps) {
   const warnings = checks?.noUpstream ? [`branch ${checks.noUpstream} has no upstream`] : [];
   // A first teardown runs pre-teardown (when the clone exists) and post-teardown. Tearing down a
   // closed lane again re-runs only a post-teardown that failed last time.
-  const runPre = !closed && Boolean(real);
+  // H1: a closed lane's clone may have been reused since the close, so its removal runs pre-teardown again.
+  const runPre = Boolean(real) && (!closed || removeDir);
+  const phase = closed ? 'remove-clone' : 'close';
+  const retryCmd = (approve, withForce = false) => `${approve ? 'laines hooks approve && ' : ''}laines teardown ${name}${opts.keepDir ? ' --keep-dir' : ''}${withForce && opts.force && opts.expect === undefined ? ' --force' : ''}`;
   const runPost = !closed || cleanupPending;
   const viaMcp = risky && Boolean(opts.force) && opts.expect !== undefined;
 
@@ -118,7 +129,7 @@ export async function runTeardown(opts, deps) {
     // The under-lock re-check below still decides; the lock is never held while a hook runs.
     const fresh = getLane(readLanes(ctx), name);
     if (fresh?.kept) throw new BlockedError(keptMessage(name, fresh.kept));
-    pre = await runEvent(ctx, deps, { event: 'pre-teardown', name, lane, cwd: real });
+    pre = await runEvent(ctx, deps, { event: 'pre-teardown', name, lane, cwd: real, vars: { LAINES_TEARDOWN_PHASE: phase } });
     if (pre.outcome !== 'ok') {
       await recordHookRun(ctx, deps, pre, name, (state, ts) => ({
         state: pre.outcome === 'failed'
@@ -128,7 +139,7 @@ export async function runTeardown(opts, deps) {
             lane: name,
             kind: 'teardown-blocked',
             text: `teardown stopped — pre-teardown: ${runSummary(pre)}`,
-            command: `${pre.outcome === 'refused' ? 'laines hooks approve && ' : ''}laines teardown ${name}${opts.keepDir ? ' --keep-dir' : ''}`,
+            command: retryCmd(pre.outcome === 'refused', true),
           }),
         text: `teardown aborted, nothing touched — pre-teardown: ${runSummary(pre)}`,
       }));
@@ -142,6 +153,7 @@ export async function runTeardown(opts, deps) {
   const now = deps.now();
   let archivedTo = null;
   let contextDeleted = false;
+  let branchAtRemoval = null;
   if (!closed) {
     // Re-checked under the lock: a `keep` that landed during the git checks must win, and the
     // archive/delete happen only once the record is known to be closable.
@@ -164,19 +176,21 @@ export async function runTeardown(opts, deps) {
       l.blocked = null;
       l.closed = now;
       l.updated = now;
+      if (removeDir && real) l.cloneRemoved = now;
       state.requests = state.requests.filter((q) => q.lane !== name);
       const note = archivedTo ? `plans archived to ${archivedTo}` : 'no plans to archive';
       const via = viaMcp ? `; torn down over MCP; forced after a typed confirmation: ${checks.problems.join('; ')}` : '';
       return { state, result: null, activity: [...board.activity, { ts: now, lane: name, text: `lane torn down; ${note}${via}` }] };
     });
   } else if (removeDir && real) {
-    // No hook runs on this path, so re-verify what the human saw right before anything is touched.
+    // The pre-teardown hook ran user code just now: re-verify what the human saw right before anything is touched.
     if (opts.expect !== undefined && isRepo && forceFingerprint(deps, real, unpushedWork(deps, real)) !== opts.expect) {
       throw new BlockedError(changedMessage(laneDir));
     }
     // Second phase of a two-step teardown: anything written since the close is archived too.
     archivedTo = archivePlans(ctx, deps, real, name);
     contextDeleted = deleteContext(deps, real);
+    branchAtRemoval = currentBranch(deps, real);
   }
   if (!closed) {
     // A closed lane no longer syncs; a lane re-created under this name starts from its own clone.
@@ -190,7 +204,16 @@ export async function runTeardown(opts, deps) {
   if (closed && removeDir && (removedDir || !cleanupPending)) {
     const via = viaMcp ? `; closed lane; torn down over MCP; forced after a typed confirmation: ${checks.problems.join('; ')}` : '';
     const text = removedDir ? `clone removed${archivedTo ? `; plans archived to ${archivedTo}` : ''}${via}` : 'no clone left to remove';
-    await updateLanes(ctx, deps, (state) => ({ state, result: null, activity: [{ ts: deps.now(), lane: name, text }] }));
+    const ts = deps.now();
+    await updateLanes(ctx, deps, (state) => {
+      const l = getLane(state, name);
+      if (removedDir && l) {
+        l.cloneRemoved = ts;
+        l.updated = ts;
+        if (branchAtRemoval) l.branchAtRemoval = branchAtRemoval;
+      }
+      return { state: dropRequests(state, (q) => q.id === requestId('teardown-blocked', name)), result: null, activity: [{ ts, lane: name, text }] };
+    });
   }
 
   // Spec §10.3 step 7: post-teardown runs in the container; a failure leaves a request, never an error.
@@ -198,7 +221,7 @@ export async function runTeardown(opts, deps) {
   if (runPost) {
     post = await runEvent(ctx, deps, { event: 'post-teardown', name, lane, cwd: ctx.root });
     const ok = post.outcome === 'ok';
-    const retry = `${post.outcome === 'refused' ? 'laines hooks approve && ' : ''}laines teardown ${name}${opts.keepDir ? ' --keep-dir' : ''}`;
+    const retry = retryCmd(post.outcome === 'refused');
     warnings.push(...unapprovedWarnings(post));
     if (!ok) warnings.push(`cleanup incomplete: ${runSummary(post)}. Fix it, then run \`${retry}\` to retry.`);
     if (!ok || post.results.length || cleanupPending) {

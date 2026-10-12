@@ -22,6 +22,11 @@ export function laneBlock(name, lane) {
   return lines.join('\n');
 }
 
+const cloneNote = (l) =>
+  l.cloneRemoved
+    ? ` · clone removed ${fmtTs(l.cloneRemoved)}${l.branchAtRemoval ? ` (on \`${oneLine(l.branchAtRemoval)}\`)` : ''}`
+    : ' · clone remains';
+
 export function renderBoard({ container, state }) {
   const entries = Object.entries(state.lanes).sort(([, a], [, b]) => a.number - b.number);
   const open = entries.filter(([, l]) => l.state !== 'closed');
@@ -50,7 +55,7 @@ export function renderBoard({ container, state }) {
       ? [
           `<details><summary>${closed.length} closed lane${closed.length === 1 ? '' : 's'}</summary>`,
           '',
-          ...closed.map(([n, l]) => `- \`${n}\` · closed ${fmtTs(l.closed ?? l.updated)} · last branch \`${oneLine(l.repos[0].branch)}\``),
+          ...closed.map(([n, l]) => `- \`${n}\` · closed ${fmtTs(l.closed ?? l.updated)} · last branch \`${oneLine(l.repos[0].branch)}\`${cloneNote(l)}`),
           '',
           '</details>',
         ].join('\n')
