@@ -489,6 +489,7 @@ describe('teardown over MCP: a closed lane\'s leftover clone', () => {
     expect(existsSync(s.dir)).toBe(false);
     const entry = readFileSync(join(s.container, '.laines', 'audit.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((e) => e.action === 'teardown').pop();
     expect(entry).toMatchObject({ forced: true, forcedVia: 'mcp-typed-confirmation', closedLane: true });
+    expect(s.state().activity.map((a) => a.text).join('\n')).toMatch(/clone removed; closed lane; torn down over MCP; forced after a typed confirmation: .*exist on no remote/);
     await m.close();
   });
 
@@ -506,12 +507,25 @@ describe('teardown over MCP: a closed lane\'s leftover clone', () => {
     await m.close();
   });
 
-  it('is unchanged when force is off, locked, or the client cannot elicit', async () => {
+  it.each([
+    ['force off', (s) => setConfig(s.container, (c) => { c.teardown.mcpForce = 'off'; })],
+    ['a locked container', (s) => setConfig(s.container, (c) => { c.locked = true; })],
+  ])('is refused unchanged with %s', async (_n, arrange) => {
     const s = await closedWithWork();
-    setConfig(s.container, (c) => { c.teardown.mcpForce = 'off'; });
+    arrange(s);
     const m = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
     const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
     expect(r.structuredContent.error.message).toContain('exist on no remote');
+    expect(existsSync(s.dir)).toBe(true);
+    await m.close();
+  });
+
+  it('is refused for a client that cannot elicit, with no board request', async () => {
+    const s = await closedWithWork();
+    const m = await connectMcp(s.deps, { container: s.container });
+    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    expect(r.structuredContent.error.message).toContain('exist on no remote');
+    expect(s.state().requests.map((q) => q.id)).not.toContain('teardown-confirm:lane_1');
     expect(existsSync(s.dir)).toBe(true);
     await m.close();
   });

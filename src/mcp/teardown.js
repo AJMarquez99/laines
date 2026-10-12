@@ -64,14 +64,15 @@ function discardMessage(ctx, deps, plan, opts) {
 function confirmMessage(ctx, deps, plan, opts) {
   const lane = getLane(readLanes(ctx), opts.lane);
   const plans = existsSync(plan.path) ? untrackedEntries(deps, plan.path, '.ai/plans').length : 0;
+  const tickable = !opts.removeDir && lane.state !== 'closed';
   const unpushed = plan.blocked
     ? ['present (the next prompt asks you to type the lane name to discard it)', ...plan.checks.problems.map((p) => `    ${p}`), ...holdingLines(plan.checks.holdings)].join('\n')
-    : !opts.removeDir ? 'not checked (the clone stays)' : plan.checks === null ? 'not checked (no clone)' : 'none';
+    : !opts.removeDir ? (tickable ? 'not checked unless you tick "Also delete the clone"' : 'not checked (the clone stays)') : plan.checks === null ? 'not checked (no clone)' : 'none';
   const late = closedChanges(ctx, deps, plan, opts);
   const afterClose = late && (late.refs.length || late.dirty.length)
-    ? [`- Refs changed after the lane closed (${lane.closed}): ${[...late.refs.map((r) => r.ref), ...(late.dirty.length ? [`${late.dirty.length} uncommitted file(s)`] : [])].join(', ')}`]
+    ? [`- Refs changed after the lane closed (${lane.closed}): ${[...late.refs.map((r) => r.ref), ...(late.dirty.length ? [`${late.dirty.length} uncommitted file(s) present`] : [])].join(', ')}`]
     : [];
-  const clone = plan.removedDir ? 'deleted (remove_dir)' : opts.removeDir ? 'no clone to delete' : 'left in place';
+  const clone = plan.removedDir ? 'deleted (remove_dir)' : opts.removeDir ? 'no clone to delete' : tickable ? 'left in place unless you tick "Also delete the clone" (unpushed work is checked first)' : 'left in place';
   const hooks = plan.hooks.flatMap((h) => h.hooks.map((x) => `${x.hook} (${x.state})`)).join(', ') || 'none';
   return [
     `Tear down lane ${opts.lane} of container ${ctx.id}?`,

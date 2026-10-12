@@ -184,7 +184,8 @@ export async function runTeardown(opts, deps) {
   }
   const removedDir = opts.removeDir ? removeLaneDir(ctx.root, laneDir, lane.repos[0].path) : false;
   if (closed && opts.removeDir) {
-    const text = removedDir ? `clone removed${archivedTo ? `; plans archived to ${archivedTo}` : ''}` : 'no clone left to remove';
+    const via = viaMcp ? `; closed lane; torn down over MCP; forced after a typed confirmation: ${checks.problems.join('; ')}` : '';
+    const text = removedDir ? `clone removed${archivedTo ? `; plans archived to ${archivedTo}` : ''}${via}` : 'no clone left to remove';
     await updateLanes(ctx, deps, (state) => ({ state, result: null, activity: [{ ts: deps.now(), lane: name, text }] }));
   }
 
