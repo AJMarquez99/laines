@@ -66,3 +66,5 @@ that owns it, then delete this note.
 - Post-close detection uses the peeled commit's date, so an annotated tag created after the close on an old commit isn't flagged; state it in the spec's heuristic sentence. Add tests for tag peeling and ignored files.
 - `create`: "All N lanes are in use" wording with leftovers; custom names can take a number whose leftover clone carries the same ports and compose name.
 - MCP teardown reads `lanes.json` three times per call; the first form prints a full ms timestamp for the close.
+- (0.4.9 addendum) Closed lanes whose clone was removed before 0.4.9 read "clone remains" on the board (state-only renderer); doctor's `closed:<lane>` is the on-disk truth.
+- (0.4.9 addendum) No tests yet for: no `keep_dir` hint on a closed lane's refusal; the `state === 'closed'` guard on the post-removal update. The failed-removal test relies on a read-only dir, so it fails when run as root (relevant for CI containers).
