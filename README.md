@@ -270,7 +270,13 @@ Declining, a wrong name, cancelling or a timeout does nothing. `teardown.mcpForc
 (`laines config set teardown.mcpForce off`), a locked container, or a client that cannot ask
 keeps the old behaviour: unpushed work is refused and you run
 `laines teardown <lane> --remove-dir --force` in a terminal. The audit log records
-`forcedVia: "mcp-typed-confirmation"` and what was discarded.
+`forcedVia: "mcp-typed-confirmation"` and what was discarded. The same typed prompt is offered for
+a closed lane's leftover clone; refs changed after the lane closed are labelled as such.
+
+**Also delete the clone.** For an open lane, when the agent did not ask for `remove_dir`, the first
+confirmation has an optional "Also delete the clone" tick. Ticking it runs the unpushed-work check
+first: clean removes the clone in that one confirmation, unpushed work continues into the typed
+prompt (or is refused with nothing torn down).
 
 `laines doctor` checks the registration. Containers made before the MCP server existed don't have
 one: run the `claude mcp add` command above in the container, and `laines refresh <lane>` for each

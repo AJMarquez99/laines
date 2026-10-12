@@ -369,10 +369,25 @@ unpushed ref tips, sorted dirty entries and stash hashes). `runTeardown` recompu
 safety checks and again under the board lock after `pre-teardown`, and refuses with nothing touched
 if it differs. No MCP tool declares `force` or `expect`; the CLI never passes `expect`. Not offered
 (0.2.0 refusal naming the terminal command) when `mcpForce` is `off`, the container is locked, the
-client cannot elicit, the lane is kept or closed, or the clone is not a git repository. The audit
+client cannot elicit, the lane is kept, or the clone is not a git repository. The audit
 entry records `forcedVia: "mcp-typed-confirmation"` and `discarded`. Limits: the fingerprint sees
 file names, not file contents, of uncommitted changes, and files git ignores (local env files,
 databases) are neither shown nor fingerprinted, same as the terminal `--force`.
+
+**Also delete the clone (0.4.9).** When `remove_dir` was not passed and the lane is open, the first
+form carries an optional boolean `remove_dir` ("Also delete the clone"), a human's tick and never an
+agent argument. Ticked, the server re-plans with `removeDir` (dry run) before doing anything: clean
+proceeds with removal in that one confirmation; blocked by unpushed work continues into the typed
+form when forcing is allowed, otherwise refuses with the refusal text and nothing torn down, so a
+lane is never closed with its clone silently kept.
+
+**Closed lanes (0.4.9, lifting the 0.4.8 exclusion).** A closed lane's leftover clone is unowned: no
+board entry tracks it, so work done there after the close is the easiest to lose. The typed form is
+therefore offered for it too (clone exists, is a git repo), with every ref whose tip is newer than
+`closed` labelled "changed after the lane closed" in both forms. The closed path runs no
+`pre-teardown`, so `runTeardown` re-checks the `expect` fingerprint immediately before archiving or
+deleting anything and refuses with nothing touched on a mismatch. The audit entry adds
+`closedLane: true`.
 
 ### 9.4 `keep`
 

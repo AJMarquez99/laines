@@ -5,12 +5,19 @@ import { loadContainer } from '../lib/container.js';
 import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
 import { putRequest } from '../lib/lanes-state.js';
 import { untrackedEntries } from '../lib/lane-files.js';
-import { holdingLines } from '../lib/lane-git.js';
+import { changedSinceClose, holdingLines } from '../lib/lane-git.js';
 import { BlockedError, InvalidInputError } from '../lib/errors.js';
 
 export const CONFIRM_SCHEMA = {
   type: 'object',
   properties: { confirm: { type: 'boolean', title: 'Tear down this lane' } },
+  required: ['confirm'],
+};
+
+// The open-lane form also offers the clone's deletion; it is a human's tick, never an agent argument.
+export const CONFIRM_WITH_CLONE_SCHEMA = {
+  type: 'object',
+  properties: { ...CONFIRM_SCHEMA.properties, remove_dir: { type: 'boolean', title: 'Also delete the clone' } },
   required: ['confirm'],
 };
 
@@ -25,9 +32,17 @@ export const notConfirmed = 'Not confirmed: nothing was torn down.';
 export const declinedMessage = (lane) =>
   `Declined or no response — if you weren't prompted, run \`laines teardown ${lane}\` in your terminal.`;
 
+// For a closed lane's leftover clone: what changed there after the lane closed (no board entry tracks it).
+function closedChanges(ctx, deps, plan, opts) {
+  const lane = getLane(readLanes(ctx), opts.lane);
+  return lane.state === 'closed' && lane.closed && existsSync(plan.path) ? changedSinceClose(deps, plan.path, lane.closed) : null;
+}
+
 // Exactly what a forced teardown will lose, for the second (typed) form.
-function discardMessage(deps, plan, opts) {
+function discardMessage(ctx, deps, plan, opts) {
   const { checks } = plan;
+  const late = closedChanges(ctx, deps, plan, opts);
+  const note = (ref) => (late?.refs.some((r) => r.ref === ref) ? ' (changed after the lane closed)' : '');
   // A ref deleted since the dry run shows no subjects; the fingerprint refuses the run anyway.
   const subjects = (ref) => {
     const r = deps.git(['log', '--format=%s', '-n', '3', ref, '--not', '--remotes'], { cwd: plan.path });
@@ -37,7 +52,7 @@ function discardMessage(deps, plan, opts) {
   if (checks.dirty.length > 10) dirty.push(`  - and ${checks.dirty.length - 10} more`);
   return [
     `This permanently discards work in lane ${opts.lane} (${plan.path}):`,
-    ...checks.refs.flatMap((r) => [`- ${r.ref}: ${r.commits} commit(s) on no remote`, ...subjects(r.ref).map((t) => `    ${t}`)]),
+    ...checks.refs.flatMap((r) => [`- ${r.ref}: ${r.commits} commit(s) on no remote${note(r.ref)}`, ...subjects(r.ref).map((t) => `    ${t}`)]),
     ...(checks.dirty.length ? [`- ${checks.dirty.length} uncommitted change(s):`, ...dirty] : []),
     ...(checks.stashes ? [`- ${checks.stashes} stash entr${checks.stashes === 1 ? 'y' : 'ies'}`] : []),
     ...(checks.problems.length && !checks.refs.length && !checks.dirty.length && !checks.stashes ? checks.problems.map((p) => `- ${p}`) : []),
@@ -52,6 +67,10 @@ function confirmMessage(ctx, deps, plan, opts) {
   const unpushed = plan.blocked
     ? ['present (the next prompt asks you to type the lane name to discard it)', ...plan.checks.problems.map((p) => `    ${p}`), ...holdingLines(plan.checks.holdings)].join('\n')
     : !opts.removeDir ? 'not checked (the clone stays)' : plan.checks === null ? 'not checked (no clone)' : 'none';
+  const late = closedChanges(ctx, deps, plan, opts);
+  const afterClose = late && (late.refs.length || late.dirty.length)
+    ? [`- Refs changed after the lane closed (${lane.closed}): ${[...late.refs.map((r) => r.ref), ...(late.dirty.length ? [`${late.dirty.length} uncommitted file(s)`] : [])].join(', ')}`]
+    : [];
   const clone = plan.removedDir ? 'deleted (remove_dir)' : opts.removeDir ? 'no clone to delete' : 'left in place';
   const hooks = plan.hooks.flatMap((h) => h.hooks.map((x) => `${x.hook} (${x.state})`)).join(', ') || 'none';
   return [
@@ -61,6 +80,7 @@ function confirmMessage(ctx, deps, plan, opts) {
     `- Archived: ${plans} entr${plans === 1 ? 'y' : 'ies'} of .ai/plans/ move to the container's .ai/archive/; .ai/context/ is deleted`,
     `- Clone: ${clone}`,
     `- Unpushed work: ${unpushed}`,
+    ...afterClose,
     ...plan.warnings.map((w) => `- Warning: ${w}`),
     `- Hooks that run: ${hooks}`,
     'A lane that looks finished may still be the base of stacked PRs or related work.',
@@ -80,10 +100,12 @@ export async function runTeardownMcp(opts, deps) {
   if (opts.dryRun || mode === 'auto') return invoke('teardown', { ...args, dryRun: opts.dryRun }, deps);
 
   // The dry run applies every check (capability, keep, closed, unpushed work) and touches nothing.
-  const plan = await invoke('teardown', { ...args, dryRun: true }, deps);
+  const planFor = (removeDir) => invoke('teardown', { ...args, removeDir, dryRun: true }, deps);
   // Only unpushed work can be forced, and only when a human can be asked and the container is not locked.
-  const canForce = plan.blocked && getLane(readLanes(ctx), opts.lane).state !== 'closed' && existsSync(join(plan.path, '.git')) && ctx.config.teardown.mcpForce === 'confirm' && !ctx.config.locked && Boolean(deps.canElicit?.());
-  if (plan.blocked && !canForce) throw new BlockedError(plan.refusal); // never re-run the real teardown without an accept
+  const forceable = (plan) => plan.blocked && existsSync(join(plan.path, '.git')) && ctx.config.teardown.mcpForce === 'confirm' && !ctx.config.locked && Boolean(deps.canElicit?.());
+  let plan = await planFor(opts.removeDir);
+  if (plan.blocked && !forceable(plan)) throw new BlockedError(plan.refusal); // never re-run the real teardown without an accept
+  const offerClone = !opts.removeDir && getLane(readLanes(ctx), opts.lane).state !== 'closed';
   const command = `laines teardown ${opts.lane}${opts.removeDir ? ' --remove-dir' : ''}`;
   if (!deps.canElicit?.()) {
     const ts = deps.now();
@@ -97,17 +119,24 @@ export async function runTeardownMcp(opts, deps) {
   const message = confirmMessage(ctx, deps, plan, opts);
   let answer = null;
   try {
-    answer = await deps.elicit(message, CONFIRM_SCHEMA);
+    answer = await deps.elicit(message, offerClone ? CONFIRM_WITH_CLONE_SCHEMA : CONFIRM_SCHEMA);
   } catch (error) {
     deps.warn?.(`teardown confirmation failed: ${error?.message ?? error}`); // a timeout or a client error is no answer
   }
   if (answer?.action !== 'accept' || answer.content?.confirm !== true) throw new BlockedError(declinedMessage(opts.lane));
+  if (offerClone && answer.content.remove_dir === true) {
+    // Re-plan with the clone included before anything happens: a half-teardown (closed, clone silently kept) is never allowed.
+    opts = { ...opts, removeDir: true };
+    args.removeDir = true;
+    plan = await planFor(true);
+    if (plan.blocked && !forceable(plan)) throw new BlockedError(plan.refusal);
+  }
   if (!plan.blocked) return invoke('teardown', args, deps);
 
   // The second form: the human types the lane name. The fingerprint of what they were shown rides along.
   let typed = null;
   try {
-    typed = await deps.elicit(discardMessage(deps, plan, opts), TYPED_SCHEMA(opts.lane));
+    typed = await deps.elicit(discardMessage(ctx, deps, plan, opts), TYPED_SCHEMA(opts.lane));
   } catch (error) {
     deps.warn?.(`teardown discard confirmation failed: ${error?.message ?? error}`);
   }

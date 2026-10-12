@@ -166,6 +166,10 @@ export async function runTeardown(opts, deps) {
       return { state, result: null, activity: [...board.activity, { ts: now, lane: name, text: `lane torn down; ${note}${via}` }] };
     });
   } else if (opts.removeDir && real) {
+    // No hook runs on this path, so re-verify what the human saw right before anything is touched.
+    if (opts.expect !== undefined && isRepo && forceFingerprint(deps, real, unpushedWork(deps, real)) !== opts.expect) {
+      throw new BlockedError(changedMessage(laneDir));
+    }
     // Second phase of a two-step teardown: anything written since the close is archived too.
     archivedTo = archivePlans(ctx, deps, real, name);
     contextDeleted = deleteContext(deps, real);
@@ -204,7 +208,7 @@ export async function runTeardown(opts, deps) {
   const forced = risky && Boolean(opts.force);
   appendAudit(
     ctx.paths.audit,
-    { ts: now, action: 'teardown', container: ctx.id, lane: name, removedDir, forced, ...(viaMcp ? { forcedVia: 'mcp-typed-confirmation', discarded: checks.problems } : {}), hooks: { pre: pre?.outcome ?? null, post: post?.outcome ?? null } },
+    { ts: now, action: 'teardown', container: ctx.id, lane: name, removedDir, forced, ...(viaMcp ? { ...(closed ? { closedLane: true } : {}), forcedVia: 'mcp-typed-confirmation', discarded: checks.problems } : {}), hooks: { pre: pre?.outcome ?? null, post: post?.outcome ?? null } },
     { warn: deps.warn },
   );
   return { dryRun: false, lane: name, path: laneDir, archivedTo, contextDeleted, removedDir, forced, checks, warnings, hooks: [pre, post].filter(Boolean) };
