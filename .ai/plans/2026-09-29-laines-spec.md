@@ -125,7 +125,7 @@ would happen, exit 0. MCP tool names are `laines_<command>` with snake_case argu
 | `report <lane> [--status --task --blocked --note]` | ✅ | ✅ | Update the lane's board entry. |
 | `keep <lane> --reason <text>` | ✅ | ✅ | Pin a lane: teardown refused from every path. |
 | `release <lane>` | ✅ | — | Unpin a lane. Human-only. |
-| `teardown <lane> [--remove-dir]` | ✅ | ✅ (gated, §9.3) | Close a lane (§10.3). |
+| `teardown <lane> [--keep-dir]` | ✅ | ✅ (gated, §9.3) | Close a lane (§10.3). |
 | `teardown … --force` | ✅ | — | Override unpushed-work checks (never overrides `keep`). |
 | `hooks status` | ✅ | ✅ | Approved / changed / new hooks with diffs. |
 | `hooks approve [--lock]` | ✅ | — | Approve current hooks; `--lock` also sets policy `approve`. |
@@ -359,7 +359,7 @@ through MCP, where §9.3 applies; humans run these commands in their own termina
 Reason: a lane that looks finished may be the base of stacked PRs or related work.
 
 **Forced teardown (0.4.8).** `teardown.mcpForce` (`confirm` default | `off`). Under `teardown.mcp`
-`confirm`, when `remove_dir` finds unpushed work (commits on no remote, uncommitted changes,
+`confirm`, when the clone's deletion (the default) finds unpushed work (commits on no remote, uncommitted changes,
 stashes), the server asks a second elicitation form listing exactly what would be lost (each ref with
 its count and up to 3 commit subjects, dirty files, stashes, and which sibling lanes also hold the
 commits). The human must type the lane name (trimmed, exact). Only `accept` with a matching name
@@ -374,12 +374,14 @@ entry records `forcedVia: "mcp-typed-confirmation"` and `discarded`. Limits: the
 file names, not file contents, of uncommitted changes, and files git ignores (local env files,
 databases) are neither shown nor fingerprinted, same as the terminal `--force`.
 
-**Also delete the clone (0.4.9).** When `remove_dir` was not passed and the lane is open, the first
-form carries an optional boolean `remove_dir` ("Also delete the clone"), a human's tick and never an
-agent argument. Ticked, the server re-plans with `removeDir` (dry run) before doing anything: clean
-proceeds with removal in that one confirmation; blocked by unpushed work continues into the typed
-form when forcing is allowed, otherwise refuses with the refusal text and nothing torn down, so a
-lane is never closed with its clone silently kept.
+**Keep the clone instead (0.4.9).** Deleting the clone is the default (§10.3). When `keep_dir` was not
+passed and the lane is open, the first form carries an optional boolean `keep_dir` ("Keep the clone
+instead"), a human's tick and never an agent argument. Ticked, the server re-plans with `keepDir` (dry
+run) before doing anything: the lane closes and the clone stays, with no unpushed-work checks (the
+0.4.8 default). Unticked: clean deletes the clone in that one confirmation; blocked by unpushed work
+continues into the typed form when forcing is allowed, otherwise refuses before prompting (the
+refusal points at `keep_dir`), so a lane is never closed with its clone silently kept. `keep_dir`
+only makes things safer, so an agent may pass it; `remove_dir` is accepted and ignored (deprecated).
 
 **Closed lanes (0.4.9, lifting the 0.4.8 exclusion).** A closed lane's leftover clone is unowned: no
 board entry tracks it, so work done there after the close is the easiest to lose. The typed form is
@@ -425,7 +427,7 @@ anything with filesystem access, and hooks themselves (they are the user's code)
 
 1. Check capability, `maxLanes`, name (if omitted, the lowest `lane_N` that is neither an open lane nor an existing path, so a closed
    lane's leftover clone is skipped; `maxLanes` counts open lanes only and an exhausted range names the
-   leftovers; an explicit name at an existing path is refused, naming `teardown --remove-dir` when it
+   leftovers; an explicit name at an existing path is refused, naming `teardown` when it
    is a closed lane's clone), path containment.
 2. Allocate ports; verify they are free.
 3. `git clone` the remote into the lane path; check out `--branch` (tracking the remote branch
@@ -442,7 +444,7 @@ A failed clone removes the partial directory and releases the ports.
 ### 10.3 `teardown`
 
 1. Refuse if the lane is kept (exit 3, from every path).
-2. If `--remove-dir`: check for uncommitted changes (excluding lane-local files), stash
+2. Unless `--keep-dir`: check for uncommitted changes (excluding lane-local files), stash
    entries, and any commit reachable from a local ref that exists on no remote
    (`git rev-list --all --not --remotes`, reporting which refs). Refuse unless CLI `--force`
    (exit 3). The check is commit-level and ref-agnostic on purpose: an upstream comparison
@@ -454,10 +456,16 @@ A failed clone removes the partial directory and releases the ports.
 4. Run `pre-teardown`; failure aborts with nothing touched.
 5. Move the lane's `.ai/plans/` to the container's `.ai/archive/<date>_<lane>/`; delete
    `.ai/context/`. Mark the lane `closed` and drop its `ai sync` base.
-6. If `--remove-dir`: re-verify containment and delete the lane directory.
+6. Unless `--keep-dir`: re-verify containment and delete the lane directory.
 7. Run `post-teardown`; audit; release the lane's ports.
 
-Without `--remove-dir`, the clone is left in place and nothing irreversible happens to it.
+Deleting the clone is the default (0.4.9): tearing a lane down closes it and removes its directory after
+the checks in step 2. `--keep-dir` (MCP `keep_dir`) is the opt-out: steps 2 and 6 are skipped, the clone
+is left in place and nothing irreversible happens to it. `--remove-dir` (MCP `remove_dir`) is a deprecated
+no-op alias; `--keep-dir` together with `--remove-dir` is an input error (exit 2). Tearing down a lane
+that is already closed deletes its leftover clone (same checks); `--keep-dir` there is an input error,
+as is tearing down a closed lane whose clone is already gone. The dry run reports `removedDir: true`
+when the clone will be deleted.
 
 ### 10.4 `adopt`
 
@@ -538,7 +546,7 @@ CI: lint and `npm audit`; tests on Node 20, 22, 24 on macOS and Linux.
    the same repo elsewhere loads only the repo's.
 4. A project reproduces per-lane database isolation (create on `post-create`, drop on
    `post-teardown`) purely with hooks.
-5. `laines teardown --remove-dir` refuses every unpushed-work case in §10.3 and succeeds once
+5. `laines teardown` (which deletes the clone by default) refuses every unpushed-work case in §10.3 and succeeds once
    the work is pushed; a kept lane is refused even with `--force`.
 6. Over MCP an agent can create, brief, report, keep, and request teardown, but cannot release,
    approve hooks, change policy or config, or force anything.

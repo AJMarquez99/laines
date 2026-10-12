@@ -208,7 +208,7 @@ describe('doctor lane checks', () => {
     r = byName(await runDoctor({ container: s.container }, s.deps));
     expect(r['lane:lane_2'].detail).toContain('create was interrupted');
     expect(r['lane:lane_2'].detail).toContain('laines refresh lane_2');
-    expect(r['lane:lane_2'].detail).toContain('laines teardown lane_2 --remove-dir --force');
+    expect(r['lane:lane_2'].detail).toContain('laines teardown lane_2 --force');
   });
 
   it('flags a container or lane whose MCP wiring is missing', async () => {
@@ -333,7 +333,7 @@ describe('doctor: closed lanes whose clone remains', () => {
   async function closedLane() {
     const s = await setupContainer();
     const lane = await runCreate({ container: s.container }, s.deps);
-    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
     // Pin the close time so the committer dates below are unambiguous.
     await updateLanes(loadContainer({ container: s.container }, s.deps), s.deps, (state) => {
       state.lanes.lane_1.closed = CLOSED;
@@ -355,7 +355,7 @@ describe('doctor: closed lanes whose clone remains', () => {
     const r = await runDoctor({ container: s.container }, s.deps);
     const c = byName(r)['closed:lane_1'];
     expect(c.ok).toBe(true);
-    expect(c.note).toBe('closed, but its clone remains: delete it with `laines teardown lane_1 --remove-dir`, or ignore');
+    expect(c.note).toBe('closed, but its clone remains: delete it with `laines teardown lane_1`, or ignore');
     expect(formatDoctor(r)).toContain('  • closed, but its clone remains');
   });
 

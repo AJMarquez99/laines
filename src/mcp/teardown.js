@@ -14,10 +14,10 @@ export const CONFIRM_SCHEMA = {
   required: ['confirm'],
 };
 
-// The open-lane form also offers the clone's deletion; it is a human's tick, never an agent argument.
+// The open-lane form also offers to keep the clone (deleting it is the default); a human's tick, never an agent argument.
 export const CONFIRM_WITH_CLONE_SCHEMA = {
   type: 'object',
-  properties: { ...CONFIRM_SCHEMA.properties, remove_dir: { type: 'boolean', title: 'Also delete the clone' } },
+  properties: { ...CONFIRM_SCHEMA.properties, keep_dir: { type: 'boolean', title: 'Keep the clone instead' } },
   required: ['confirm'],
 };
 
@@ -64,15 +64,17 @@ function discardMessage(ctx, deps, plan, opts) {
 function confirmMessage(ctx, deps, plan, opts) {
   const lane = getLane(readLanes(ctx), opts.lane);
   const plans = existsSync(plan.path) ? untrackedEntries(deps, plan.path, '.ai/plans').length : 0;
-  const tickable = !opts.removeDir && lane.state !== 'closed';
+  const tickable = !opts.keepDir && lane.state !== 'closed';
   const unpushed = plan.blocked
-    ? ['present (the next prompt asks you to type the lane name to discard it)', ...plan.checks.problems.map((p) => `    ${p}`), ...holdingLines(plan.checks.holdings)].join('\n')
-    : !opts.removeDir ? (tickable ? 'not checked unless you tick "Also delete the clone"' : 'not checked (the clone stays)') : plan.checks === null ? 'not checked (no clone)' : 'none';
+    ? [`present (unless you tick "Keep the clone instead", the next prompt asks you to type the lane name to discard it)`, ...plan.checks.problems.map((p) => `    ${p}`), ...holdingLines(plan.checks.holdings)].join('\n')
+    : opts.keepDir ? 'not checked (the clone is kept)' : plan.checks === null ? 'not checked (no clone)' : 'none';
   const late = closedChanges(ctx, deps, plan, opts);
   const afterClose = late && (late.refs.length || late.dirty.length)
     ? [`- Refs changed after the lane closed (${lane.closed}): ${[...late.refs.map((r) => r.ref), ...(late.dirty.length ? [`${late.dirty.length} uncommitted file(s) present`] : [])].join(', ')}`]
     : [];
-  const clone = plan.removedDir ? 'deleted (remove_dir)' : opts.removeDir ? 'no clone to delete' : tickable ? 'left in place unless you tick "Also delete the clone" (unpushed work is checked first)' : 'left in place';
+  const clone = plan.removedDir
+    ? `deleted, after the unpushed-work checks${tickable ? '; tick "Keep the clone instead" to keep it (no checks then)' : ''}`
+    : opts.keepDir ? 'kept (keep_dir)' : 'no clone to delete';
   const hooks = plan.hooks.flatMap((h) => h.hooks.map((x) => `${x.hook} (${x.state})`)).join(', ') || 'none';
   return [
     `Tear down lane ${opts.lane} of container ${ctx.id}?`,
@@ -97,17 +99,20 @@ export async function runTeardownMcp(opts, deps) {
   if (mode === 'off') {
     throw new BlockedError('Teardown over MCP is turned off for this container (teardown.mcp is "off"). A human can run `laines teardown <lane>` in a terminal.');
   }
-  const args = { lane: opts.lane, removeDir: opts.removeDir, container: opts.container };
+  const args = { lane: opts.lane, keepDir: opts.keepDir, removeDir: opts.removeDir, container: opts.container };
   if (opts.dryRun || mode === 'auto') return invoke('teardown', { ...args, dryRun: opts.dryRun }, deps);
 
   // The dry run applies every check (capability, keep, closed, unpushed work) and touches nothing.
-  const planFor = (removeDir) => invoke('teardown', { ...args, removeDir, dryRun: true }, deps);
+  const planFor = (keepDir) => invoke('teardown', { ...args, keepDir, dryRun: true }, deps);
   // Only unpushed work can be forced, and only when a human can be asked and the container is not locked.
   const forceable = (plan) => plan.blocked && existsSync(join(plan.path, '.git')) && ctx.config.teardown.mcpForce === 'confirm' && !ctx.config.locked && Boolean(deps.canElicit?.());
-  let plan = await planFor(opts.removeDir);
-  if (plan.blocked && !forceable(plan)) throw new BlockedError(plan.refusal); // never re-run the real teardown without an accept
-  const offerClone = !opts.removeDir && getLane(readLanes(ctx), opts.lane).state !== 'closed';
-  const command = `laines teardown ${opts.lane}${opts.removeDir ? ' --remove-dir' : ''}`;
+  let plan = await planFor(opts.keepDir);
+  if (plan.blocked && !forceable(plan)) {
+    // never re-run the real teardown without an accept
+    throw new BlockedError(opts.keepDir ? plan.refusal : `${plan.refusal}\nTo close the lane and keep its clone instead, ask again with keep_dir.`);
+  }
+  const offerClone = !opts.keepDir && getLane(readLanes(ctx), opts.lane).state !== 'closed';
+  const command = `laines teardown ${opts.lane}${opts.keepDir ? ' --keep-dir' : ''}`;
   if (!deps.canElicit?.()) {
     const ts = deps.now();
     await updateLanes(ctx, deps, (state) => ({
@@ -125,12 +130,12 @@ export async function runTeardownMcp(opts, deps) {
     deps.warn?.(`teardown confirmation failed: ${error?.message ?? error}`); // a timeout or a client error is no answer
   }
   if (answer?.action !== 'accept' || answer.content?.confirm !== true) throw new BlockedError(declinedMessage(opts.lane));
-  if (offerClone && answer.content.remove_dir === true) {
-    // Re-plan with the clone included before anything happens: a half-teardown (closed, clone silently kept) is never allowed.
-    opts = { ...opts, removeDir: true };
-    args.removeDir = true;
+  if (offerClone && answer.content.keep_dir === true) {
+    // The human ticked "keep": re-plan without the clone's deletion (and so without its unpushed-work checks) before anything happens.
+    opts = { ...opts, keepDir: true, removeDir: undefined };
+    args.keepDir = true;
+    args.removeDir = undefined; // the deprecated alias would contradict the tick
     plan = await planFor(true);
-    if (plan.blocked && !forceable(plan)) throw new BlockedError(plan.refusal);
   }
   if (!plan.blocked) return invoke('teardown', args, deps);
 

@@ -33,7 +33,7 @@ describe('teardown over MCP: confirm', () => {
     const m = await connectMcp(s.deps, { container: s.container, elicit: (p) => (prompts.push(p), { action: 'accept', content: { confirm: true } }) });
     const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.isError).toBeFalsy();
-    expect(r.structuredContent).toMatchObject({ lane: 'lane_1', removedDir: false });
+    expect(r.structuredContent).toMatchObject({ lane: 'lane_1', removedDir: true });
     expect(prompts).toHaveLength(1);
     for (const part of ['lane_1', 'Branch: main', 'Unpushed work', 'stacked PRs']) expect(prompts[0].message).toContain(part);
     expect(prompts[0].requestedSchema.properties.confirm.type).toBe('boolean');
@@ -53,7 +53,7 @@ describe('teardown over MCP: confirm', () => {
     ];
     for (const answer of answers) {
       const m = await connectMcp(s.deps, { container: s.container, elicit: answer });
-      const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+      const r = await m.call('laines_teardown', { lane: 'lane_1' });
       expect(r.isError).toBe(true);
       expect(r.structuredContent.error).toEqual({ exitCode: 3, message: declinedMessage('lane_1') });
       await m.close();
@@ -64,13 +64,13 @@ describe('teardown over MCP: confirm', () => {
   it('leaves a board request when the client cannot ask a human', async () => {
     const s = await withLane();
     const m = await connectMcp(s.deps, { container: s.container });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.isError).toBe(true);
     expect(r.structuredContent.error.exitCode).toBe(3);
-    expect(r.structuredContent.error.message).toContain('laines teardown lane_1 --remove-dir');
-    expect(s.state().requests.find((q) => q.id === 'teardown-confirm:lane_1')).toMatchObject({ command: 'laines teardown lane_1 --remove-dir' });
+    expect(r.structuredContent.error.message).toContain('laines teardown lane_1');
+    expect(s.state().requests.find((q) => q.id === 'teardown-confirm:lane_1')).toMatchObject({ command: 'laines teardown lane_1' });
     expect(s.state().lanes.lane_1.state).toBe('active');
-    await invoke('teardown', { lane: 'lane_1', removeDir: true, container: s.container }, s.deps);
+    await invoke('teardown', { lane: 'lane_1', container: s.container }, s.deps);
     expect(s.state().requests.filter((q) => q.lane === 'lane_1')).toEqual([]);
     await m.close();
   });
@@ -119,7 +119,7 @@ describe('teardown over MCP: confirm', () => {
     const s = await withLane('confirm', 'off');
     const m = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
     gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'local only');
-    const unpushed = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const unpushed = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(unpushed.structuredContent.error.exitCode).toBe(3);
     expect(unpushed.structuredContent.error.message).toContain('exist on no remote');
     await invoke('keep', { lane: 'lane_1', reason: 'base of PR #1', container: s.container }, s.deps);
@@ -145,7 +145,7 @@ describe('teardown over MCP: confirm', () => {
         return s.deps.git(args, o);
       },
     };
-    await expect(runTeardownMcp({ lane: 'lane_1', removeDir: true, container: s.container }, deps)).rejects.toMatchObject({ exitCode: 3, message: expect.stringContaining('exist on no remote') });
+    await expect(runTeardownMcp({ lane: 'lane_1', container: s.container }, deps)).rejects.toMatchObject({ exitCode: 3, message: expect.stringContaining('exist on no remote') });
     expect(prompts).toEqual([]);
     expect(s.state().lanes.lane_1.state).toBe('active');
     expect(existsSync(s.dir)).toBe(true);
@@ -155,7 +155,7 @@ describe('teardown over MCP: confirm', () => {
     const s = await withLane('auto');
     gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'local only');
     const m = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true, force: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1', force: true });
     expect(r.structuredContent.error.exitCode).toBe(3);
     expect(s.state().lanes.lane_1.state).toBe('active');
     await m.close();
@@ -219,7 +219,7 @@ describe('teardown over MCP: forced after a typed confirmation', () => {
     const s = await blockedLane();
     const prompts = [];
     const m = await connectMcp(s.deps, { container: s.container, elicit: responder(prompts, yes, () => typed(' lane_1 ')) });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.isError).toBeFalsy();
     expect(r.structuredContent).toMatchObject({ forced: true, removedDir: true });
     expect(existsSync(s.dir)).toBe(false);
@@ -242,7 +242,7 @@ describe('teardown over MCP: forced after a typed confirmation', () => {
   ])('refuses on the second form with %s', async (_n, second, text) => {
     const s = await blockedLane();
     const m = await connectMcp(s.deps, { container: s.container, elicit: responder([], yes, second) });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.exitCode).toBe(3);
     expect(r.structuredContent.error.message).toMatch(text);
     expect(r.structuredContent.error.message).toContain(NOT_CONFIRMED);
@@ -255,7 +255,7 @@ describe('teardown over MCP: forced after a typed confirmation', () => {
     const s = await blockedLane();
     const prompts = [];
     const m = await connectMcp(s.deps, { container: s.container, elicit: responder(prompts, { action: 'decline' }, () => typed('lane_1')) });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.exitCode).toBe(3);
     expect(prompts).toHaveLength(1);
     expect(existsSync(s.dir)).toBe(true);
@@ -269,7 +269,7 @@ describe('teardown over MCP: forced after a typed confirmation', () => {
       return typed('lane_1');
     };
     const m = await connectMcp(s.deps, { container: s.container, elicit: responder([], yes, second) });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.exitCode).toBe(3);
     expect(r.structuredContent.error.message).toMatch(/changed/);
     expect(existsSync(s.dir)).toBe(true);
@@ -284,7 +284,7 @@ describe('teardown over MCP: forced after a typed confirmation', () => {
     const s = await blockedLane();
     await arrange(s);
     const m = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.exitCode).toBe(3);
     expect(r.structuredContent.error.message).toContain('exist on no remote');
     expect(existsSync(s.dir)).toBe(true);
@@ -294,12 +294,12 @@ describe('teardown over MCP: forced after a typed confirmation', () => {
   it('refuses a blocked lane for a non-eliciting client with no board request, and a kept lane stays kept', async () => {
     const s = await blockedLane();
     const m = await connectMcp(s.deps, { container: s.container });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.message).toContain('exist on no remote');
     expect(s.state().requests.map((q) => q.id)).not.toContain('teardown-confirm:lane_1');
     await invoke('keep', { lane: 'lane_1', reason: 'base', container: s.container }, s.deps);
     const k = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
-    expect((await k.call('laines_teardown', { lane: 'lane_1', remove_dir: true })).structuredContent.error.message).toContain('is kept');
+    expect((await k.call('laines_teardown', { lane: 'lane_1' })).structuredContent.error.message).toContain('is kept');
     await m.close();
     await k.close();
   });
@@ -321,7 +321,7 @@ describe('teardown over MCP: forced after a typed confirmation', () => {
     const s = await blockedLane();
     writeHook(s.container, 'pre-teardown', 'git -c user.name=a -c user.email=a@b commit -q --allow-empty -m from-hook');
     const m = await connectMcp(s.deps, { container: s.container, elicit: responder([], yes, () => typed('lane_1')) });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.exitCode).toBe(3);
     expect(r.structuredContent.error.message).toMatch(/changed/);
     expect(existsSync(s.dir)).toBe(true);
@@ -333,7 +333,7 @@ describe('teardown over MCP: forced after a typed confirmation', () => {
     const s = await blockedLane();
     rmSync(join(s.dir, '.git'), { recursive: true, force: true });
     const m = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.exitCode).toBe(3);
     expect(r.structuredContent.error.message).toContain('not a git repository');
     expect(existsSync(s.dir)).toBe(true);
@@ -353,36 +353,38 @@ describe('teardown over MCP: forced after a typed confirmation', () => {
       return typed('lane_1');
     };
     const m = await connectMcp(s.deps, { container: s.container, elicit: responder([], yes, swap) });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.message).toMatch(/changed/);
     expect(existsSync(s.dir)).toBe(true);
     await m.close();
   });
 });
 
-describe('teardown over MCP: also delete the clone', () => {
-  const tick = { action: 'accept', content: { confirm: true, remove_dir: true } };
+describe('teardown over MCP: keep the clone instead', () => {
+  const tick = { action: 'accept', content: { confirm: true, keep_dir: true } };
   const typed = (lane) => ({ action: 'accept', content: { lane } });
   const responder = (prompts, first, second) => (p) => {
     prompts.push(p);
     return p.requestedSchema.properties.confirm ? first : second(p);
   };
 
-  it('offers the field only when remove_dir was not passed', async () => {
+  it('offers the field only when keep_dir was not passed', async () => {
     const s = await withLane();
     const prompts = [];
     const m = await connectMcp(s.deps, { container: s.container, elicit: responder(prompts, { action: 'decline' }, () => ({ action: 'decline' })) });
     await m.call('laines_teardown', { lane: 'lane_1' });
-    await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
-    expect(prompts[0].requestedSchema.properties.remove_dir).toMatchObject({ type: 'boolean', title: 'Also delete the clone' });
-    expect(prompts[1].requestedSchema.properties.remove_dir).toBeUndefined();
+    await m.call('laines_teardown', { lane: 'lane_1', keep_dir: true });
+    expect(prompts[0].requestedSchema.properties.keep_dir).toMatchObject({ type: 'boolean', title: 'Keep the clone instead' });
+    expect(prompts[0].requestedSchema.properties.remove_dir).toBeUndefined();
+    expect(prompts[1].requestedSchema.properties.keep_dir).toBeUndefined();
+    expect(prompts[0].message).toContain('Keep the clone instead');
     await m.close();
   });
 
-  it('ticked on a clean lane: closes and removes the clone in one confirmation', async () => {
+  it('unticked on a clean lane: closes and deletes the clone in one confirmation', async () => {
     const s = await withLane();
     const prompts = [];
-    const m = await connectMcp(s.deps, { container: s.container, elicit: responder(prompts, tick, () => typed('lane_1')) });
+    const m = await connectMcp(s.deps, { container: s.container, elicit: responder(prompts, { action: 'accept', content: { confirm: true } }, () => typed('lane_1')) });
     const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.isError).toBeFalsy();
     expect(r.structuredContent).toMatchObject({ removedDir: true });
@@ -392,20 +394,40 @@ describe('teardown over MCP: also delete the clone', () => {
     await m.close();
   });
 
-  it('unticked keeps the clone as before', async () => {
-    const s = await withLane();
-    const m = await connectMcp(s.deps, { container: s.container, elicit: () => ({ action: 'accept', content: { confirm: true, remove_dir: false } }) });
-    const r = await m.call('laines_teardown', { lane: 'lane_1' });
-    expect(r.structuredContent).toMatchObject({ removedDir: false });
-    expect(existsSync(s.dir)).toBe(true);
-    await m.close();
-  });
-
-  it('ticked on a lane with unpushed work: continues into the typed form and removes', async () => {
+  it('ticked keeps the clone, with no unpushed-work checks (as 0.4.8 did by default)', async () => {
     const s = await withLane();
     gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'local only work');
     const prompts = [];
-    const m = await connectMcp(s.deps, { container: s.container, elicit: responder(prompts, tick, () => typed('lane_1')) });
+    const m = await connectMcp(s.deps, { container: s.container, elicit: responder(prompts, tick, neverPrompted) });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
+    expect(r.isError).toBeFalsy();
+    expect(r.structuredContent).toMatchObject({ removedDir: false, forced: false });
+    expect(prompts).toHaveLength(1);
+    expect(existsSync(s.dir)).toBe(true);
+    expect(s.state().lanes.lane_1.state).toBe('closed');
+    await m.close();
+  });
+
+  it('keep_dir passed by the agent keeps the clone without checks, and the deprecated remove_dir changes nothing', async () => {
+    const s = await withLane();
+    gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'local only work');
+    const m = await connectMcp(s.deps, { container: s.container, elicit: () => ({ action: 'accept', content: { confirm: true } }) });
+    const r = await m.call('laines_teardown', { lane: 'lane_1', keep_dir: true });
+    expect(r.structuredContent).toMatchObject({ removedDir: false });
+    expect(existsSync(s.dir)).toBe(true);
+    await m.close();
+    const t = await withLane();
+    const m2 = await connectMcp(t.deps, { container: t.container, elicit: () => ({ action: 'accept', content: { confirm: true } }) });
+    const r2 = await m2.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    expect(r2.structuredContent).toMatchObject({ removedDir: true });
+    await m2.close();
+  });
+
+  it('unticked with unpushed work: continues into the typed form and removes', async () => {
+    const s = await withLane();
+    gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'local only work');
+    const prompts = [];
+    const m = await connectMcp(s.deps, { container: s.container, elicit: responder(prompts, { action: 'accept', content: { confirm: true } }, () => typed('lane_1')) });
     const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.isError).toBeFalsy();
     expect(r.structuredContent).toMatchObject({ forced: true, removedDir: true });
@@ -415,10 +437,10 @@ describe('teardown over MCP: also delete the clone', () => {
     await m.close();
   });
 
-  it('ticked, then the typed form declined: lane stays open, clone intact', async () => {
+  it('unticked, then the typed form declined: lane stays open, clone intact', async () => {
     const s = await withLane();
     gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'local only work');
-    const m = await connectMcp(s.deps, { container: s.container, elicit: responder([], tick, () => ({ action: 'decline' })) });
+    const m = await connectMcp(s.deps, { container: s.container, elicit: responder([], { action: 'accept', content: { confirm: true } }, () => ({ action: 'decline' })) });
     const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.exitCode).toBe(3);
     expect(s.state().lanes.lane_1.state).toBe('active');
@@ -426,31 +448,38 @@ describe('teardown over MCP: also delete the clone', () => {
     await m.close();
   });
 
-  it('ticked with unpushed work and no force: refuses, nothing torn down', async () => {
+  it('with unpushed work and no force: refuses before prompting, pointing at keep_dir', async () => {
     const s = await withLane('confirm', 'off');
     gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'local only work');
-    const prompts = [];
-    const m = await connectMcp(s.deps, { container: s.container, elicit: responder(prompts, tick, neverPrompted) });
+    const m = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
     const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.exitCode).toBe(3);
     expect(r.structuredContent.error.message).toContain('exist on no remote');
-    expect(prompts).toHaveLength(1);
+    expect(r.structuredContent.error.message).toContain('keep_dir');
     expect(s.state().lanes.lane_1.state).toBe('active');
+    expect(existsSync(s.dir)).toBe(true);
+    await m.close();
+  });
+
+  it('dry run says the clone will be deleted', async () => {
+    const s = await withLane();
+    const m = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
+    const r = await m.call('laines_teardown', { lane: 'lane_1', dry_run: true });
+    expect(r.structuredContent).toMatchObject({ dryRun: true, removedDir: true });
     expect(existsSync(s.dir)).toBe(true);
     await m.close();
   });
 
   it('is not offered for a closed lane, and adds no force-like parameter', async () => {
     const s = await withLane();
-    await invoke('teardown', { lane: 'lane_1', container: s.container }, s.deps);
+    await invoke('teardown', { lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
     const prompts = [];
     const m = await connectMcp(s.deps, { container: s.container, elicit: (p) => (prompts.push(p), { action: 'decline' }) });
-    await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    await m.call('laines_teardown', { lane: 'lane_1' });
     expect(Object.keys(prompts[0].requestedSchema.properties)).toEqual(['confirm']);
     await m.close();
   });
 });
-
 describe('teardown over MCP: a closed lane\'s leftover clone', () => {
   const CLOSED = '2026-01-01T00:00:00.000Z';
   const yes = { action: 'accept', content: { confirm: true } };
@@ -464,7 +493,7 @@ describe('teardown over MCP: a closed lane\'s leftover clone', () => {
 
   async function closedWithWork() {
     const s = await withLane();
-    await invoke('teardown', { lane: 'lane_1', container: s.container }, s.deps);
+    await invoke('teardown', { lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
     await updateLanes(loadContainer({ container: s.container }, s.deps), s.deps, (state) => {
       state.lanes.lane_1.closed = CLOSED;
       return { state, result: null };
@@ -479,7 +508,7 @@ describe('teardown over MCP: a closed lane\'s leftover clone', () => {
     const s = await closedWithWork();
     const prompts = [];
     const m = await connectMcp(s.deps, { container: s.container, elicit: responder(prompts, yes, () => typed('lane_1')) });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.isError).toBeFalsy();
     expect(r.structuredContent).toMatchObject({ forced: true, removedDir: true });
     expect(prompts).toHaveLength(2);
@@ -500,7 +529,7 @@ describe('teardown over MCP: a closed lane\'s leftover clone', () => {
       return typed('lane_1');
     };
     const m = await connectMcp(s.deps, { container: s.container, elicit: responder([], yes, second) });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.exitCode).toBe(3);
     expect(r.structuredContent.error.message).toMatch(/changed/);
     expect(existsSync(s.dir)).toBe(true);
@@ -514,7 +543,7 @@ describe('teardown over MCP: a closed lane\'s leftover clone', () => {
     const s = await closedWithWork();
     arrange(s);
     const m = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.message).toContain('exist on no remote');
     expect(existsSync(s.dir)).toBe(true);
     await m.close();
@@ -523,7 +552,7 @@ describe('teardown over MCP: a closed lane\'s leftover clone', () => {
   it('is refused for a client that cannot elicit, with no board request', async () => {
     const s = await closedWithWork();
     const m = await connectMcp(s.deps, { container: s.container });
-    const r = await m.call('laines_teardown', { lane: 'lane_1', remove_dir: true });
+    const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.message).toContain('exist on no remote');
     expect(s.state().requests.map((q) => q.id)).not.toContain('teardown-confirm:lane_1');
     expect(existsSync(s.dir)).toBe(true);

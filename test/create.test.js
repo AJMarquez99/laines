@@ -96,7 +96,7 @@ describe('create', () => {
     };
     await expect(runCreate({ container: s.container }, deps)).rejects.toBeInstanceOf(GitError);
     expect(warnings.join('\n')).toContain('lane_1');
-    expect(warnings.join('\n')).toContain('laines teardown lane_1 --remove-dir --force');
+    expect(warnings.join('\n')).toContain('laines teardown lane_1 --force');
   });
 
   it('names the clone remote origin even when git is configured otherwise', async () => {
@@ -284,7 +284,7 @@ describe('create with hooks', () => {
       const s = await setupContainer();
       await invoke('create', { container: s.container }, s.deps);
       await invoke('create', { container: s.container }, s.deps);
-      await invoke('teardown', { lane: 'lane_2', container: s.container }, s.deps);
+      await invoke('teardown', { lane: 'lane_2', keepDir: true, container: s.container }, s.deps);
       expect(existsSync(join(s.container, 'lane_2'))).toBe(true);
       return s;
     }
@@ -304,7 +304,7 @@ describe('create with hooks', () => {
 
     it('names the teardown command when an explicit name is a closed lane\'s clone', async () => {
       const { deps, container } = await closedSecond();
-      await expect(runCreate({ container, name: 'lane_2' }, deps)).rejects.toThrow(/laines teardown lane_2 --remove-dir/);
+      await expect(runCreate({ container, name: 'lane_2' }, deps)).rejects.toThrow(/laines teardown lane_2/);
     });
 
     it('counts only open lanes against maxLanes and names the leftovers when they fill the range', async () => {

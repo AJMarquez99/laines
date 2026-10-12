@@ -39,7 +39,7 @@ function planLane(ctx, state, opts) {
     if (used.has(number)) throw new InvalidInputError(`Lane number ${number} is already in use. See \`laines list\`.`);
   } else {
     // A number is free when no open lane holds it and nothing sits at its path: a closed lane's clone
-    // stays on disk until `teardown --remove-dir`, and a stray directory blocks the clone just the same.
+    // stays on disk until `teardown`, and a stray directory blocks the clone just the same.
     const leftovers = [];
     number = 1;
     for (; number <= maxLanes; number += 1) {
@@ -51,7 +51,7 @@ function planLane(ctx, state, opts) {
     }
     if (number > maxLanes) {
       const left = leftovers.length
-        ? ` ${leftovers.join(', ')} ${leftovers.length === 1 ? 'is a leftover directory' : 'are leftover directories'} (a closed lane's clone: delete it with \`laines teardown <lane> --remove-dir\`, or remove it by hand).`
+        ? ` ${leftovers.join(', ')} ${leftovers.length === 1 ? 'is a leftover directory' : 'are leftover directories'} (a closed lane's clone: delete it with \`laines teardown <lane>\`, or remove it by hand).`
         : '';
       throw new BlockedError(`All ${maxLanes} lanes are in use.${left} Tear one down, or raise maxLanes in .laines/config.json.`);
     }
@@ -62,7 +62,7 @@ function planLane(ctx, state, opts) {
   const laneDir = join(ctx.root, name);
   assertLaneDir(ctx.root, laneDir, name);
   if (existsSync(laneDir)) {
-    const hint = existing ? ` It is a closed lane's clone: delete it with \`laines teardown ${name} --remove-dir\`, or pick another name.` : ' Remove it or pick another name.';
+    const hint = existing ? ` It is a closed lane's clone: delete it with \`laines teardown ${name}\`, or pick another name.` : ' Remove it or pick another name.';
     throw new InvalidInputError(`${laneDir} already exists.${hint}`);
   }
   return { name, number, laneDir, ports: lanePorts(ctx.portRange, number, ctx.config.ports.stride) };
@@ -150,7 +150,7 @@ export async function runCreate(opts, deps) {
     }
     if (failures.length) {
       // Teardown finds only a registered lane; an unregistered leftover directory is removed by hand.
-      const fix = registered ? `run \`laines teardown ${plan.name} --remove-dir --force\`` : `remove ${plan.laneDir} by hand`;
+      const fix = registered ? `run \`laines teardown ${plan.name} --force\`` : `remove ${plan.laneDir} by hand`;
       deps.warn(`Cleanup after the failed create of lane ${plan.name} was incomplete (${failures.join('; ')}). Once the cause is fixed, ${fix}.`);
     }
   };

@@ -51,10 +51,10 @@ A kept lane cannot be torn down by any path until a human runs `laines release <
 
 ## Closing a lane
 
-    laines teardown <lane>               # archive plans, delete context, mark closed; clone stays
-    laines teardown <lane> --remove-dir  # also delete the clone
+    laines teardown <lane>             # archive plans, delete context, mark closed, delete the clone
+    laines teardown <lane> --keep-dir  # same, but the clone stays (no unpushed-work checks)
 
-`--remove-dir` refuses if the lane has uncommitted changes, stash entries, or commits that exist on
+Deleting the clone is the default (`--remove-dir` is a deprecated no-op alias). It refuses if the lane has uncommitted changes, stash entries, or commits that exist on
 no remote, and reports which refs hold them. Save unpushed work instead of forcing:
 
     git -C <lane> bundle create ~/lane-backup.bundle --all --not --remotes

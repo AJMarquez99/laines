@@ -139,9 +139,10 @@ export function buildProgram(deps = defaultDeps) {
     .action(handle('status', { table: formatStatus, args: ['lane'] }, deps));
 
   withGlobals(program.command('teardown'))
-    .description('Close a lane: archive plans, delete context, and optionally remove the clone (human-only)')
+    .description('Close a lane: archive plans, delete context, and delete the clone unless --keep-dir (human-only)')
     .argument('<lane>', 'lane name')
-    .option('--remove-dir', 'also delete the clone, after the unpushed-work checks')
+    .option('--keep-dir', 'keep the clone instead of deleting it (skips the unpushed-work checks)')
+    .option('--remove-dir', 'deprecated: deleting the clone is the default; accepted and ignored')
     .option('--force', 'remove even if the lane holds unpushed work (never overrides keep)')
     .option('--dry-run', 'show what would happen without changing anything')
     .action(handle('teardown', { table: formatTeardown, args: ['lane'] }, deps));

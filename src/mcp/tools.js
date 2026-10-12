@@ -99,13 +99,14 @@ export const TOOLS = [
   {
     name: 'laines_teardown',
     command: 'teardown',
-    description: 'Close a lane: archive its plans, delete its context and, with remove_dir, its clone. A human confirms unless the container is set otherwise; a kept lane is always refused; unpushed work is refused unless a human types the lane name in a second prompt (teardown.mcpForce).',
+    description: 'Close a lane: archive its plans, delete its context and its clone (pass keep_dir to keep the clone). A human confirms unless the container is set otherwise; a kept lane is always refused; unpushed work is refused unless a human types the lane name in a second prompt (teardown.mcpForce).',
     inputSchema: {
       lane: z.string().describe('lane name, e.g. lane_2'),
-      remove_dir: z.boolean().optional().describe('also delete the clone, after the unpushed-work checks'),
+      keep_dir: z.boolean().optional().describe('keep the clone instead of deleting it (deleting is the default, after the unpushed-work checks)'),
+      remove_dir: z.boolean().optional().describe('deprecated, ignored: deleting the clone is the default'),
       dry_run: dryRun(),
     },
-    mapArgs: (a) => pick({ lane: a.lane, removeDir: a.remove_dir, dryRun: a.dry_run }),
+    mapArgs: (a) => pick({ lane: a.lane, keepDir: a.keep_dir, removeDir: a.remove_dir, dryRun: a.dry_run }),
     handler: runTeardownMcp,
     enabled: (config) => config.teardown.mcp !== 'off',
   },

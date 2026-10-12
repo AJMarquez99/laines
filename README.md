@@ -83,7 +83,7 @@ Create a lane, report its progress, and tear it down when it is merged:
 ```bash
 laines create
 laines report lane_1 --status in-progress --task "add the export endpoint"
-laines teardown lane_1 --remove-dir
+laines teardown lane_1                # closes the lane and deletes its clone (--keep-dir keeps it)
 ```
 
 Preview without writing anything:
@@ -122,8 +122,8 @@ human-readable output.
 | `laines adopt <dir> [--id] [--agents] [--dry-run]` | Turn an existing git checkout into a container (human-only). The folder becomes the container and its contents become `lane_1` unchanged (uncommitted work, stashes and ignored files included); the project's `.ai/` becomes the shared layer. Needs a reachable `origin`. The checkout moves, so recreate anything that stored its old absolute path afterwards (examples: a language virtualenv, a build cache). `lane_1` keeps the project's Docker Compose project name, so existing volumes and containers stay attached; other lanes get their own (`<id>-l<n>`). Containers made before M4.5 get its deny rule from `laines refresh <lane>`. |
 | `laines config get [key]` | Print the container's settings, or one dotted key such as `hooks.policy`. |
 | `laines config set <key> <value> [--dry-run]` | Change one setting (human-only). The value is JSON when it parses (`true`, `20`, `["claude"]`), else a string. Only that key changes in the file; the whole config is validated first. |
-| `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board, locks, the `.ai/` sync base (`ai-sync`), every open lane (noting when a committed `.ai/` differs from the container's: reported as an informational `note` on the check, shown as a `•` line in the table, never a failure), and how each agent reaches the lanes. For each closed lane whose clone remains it adds a `closed:<lane>` check: a `•` note (delete with `laines teardown <lane> --remove-dir`, or ignore) when nothing changed since the close, and a failure when a branch or tag tip was committed after the close or the clone has uncommitted files, since that work belongs to no open lane (committer dates are a heuristic: they can be rewritten). It flags a pre-M4.6 container whose laines files still need moving to `_` names (`laines refresh` does it). `--prune` removes machine-index entries for containers that no longer exist. |
-| `laines create [name] [--branch <b>] [--dry-run]` | Create a lane: clone the repository, allocate ports, write the lane's env file, identity and deny rules, run the `post-create` hook, and print its brief. If the hook fails the lane is kept, marked `setup-failed`, and `refresh` retries it. With no name it takes the lowest number that is neither an open lane nor already a directory, so a closed lane's leftover clone (or any stray `lane_N` folder) is skipped rather than failing with "already exists"; delete a leftover with `laines teardown <lane> --remove-dir`. |
+| `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board, locks, the `.ai/` sync base (`ai-sync`), every open lane (noting when a committed `.ai/` differs from the container's: reported as an informational `note` on the check, shown as a `•` line in the table, never a failure), and how each agent reaches the lanes. For each closed lane whose clone remains it adds a `closed:<lane>` check: a `•` note (delete with `laines teardown <lane>`, or ignore) when nothing changed since the close, and a failure when a branch or tag tip was committed after the close or the clone has uncommitted files, since that work belongs to no open lane (committer dates are a heuristic: they can be rewritten). It flags a pre-M4.6 container whose laines files still need moving to `_` names (`laines refresh` does it). `--prune` removes machine-index entries for containers that no longer exist. |
+| `laines create [name] [--branch <b>] [--dry-run]` | Create a lane: clone the repository, allocate ports, write the lane's env file, identity and deny rules, run the `post-create` hook, and print its brief. If the hook fails the lane is kept, marked `setup-failed`, and `refresh` retries it. With no name it takes the lowest number that is neither an open lane nor already a directory, so a closed lane's leftover clone (or any stray `lane_N` folder) is skipped rather than failing with "already exists"; delete a leftover with `laines teardown <lane>`. |
 | `laines refresh [lane] [--dry-run]` | Rewrite a lane's local files and `.laines.env` from scratch, then run `post-create` again. Recovers a `setup-failed` lane. Also finishes laines' own container migrations: moves a pre-M4.6 container's laines files to their `_` names, rewrites laines' old `runbooks/lane-management.md` / `templates/lane-*.md` paths inside those files, and re-renders the lanes block in the container's `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` (text outside the block is untouched). `--dry-run` lists every write: migrations, `.laines.env` key changes, exclude-block entries, agent-file blocks, and the lane files it would write or skip. |
 | `laines list [--all]` | List open lanes (`--all` includes closed ones). |
 | `laines status [lane]` | Show one lane's state, task, branch and ports. With no lane named and outside a lane, shows the container overview. |
@@ -131,7 +131,7 @@ human-readable output.
 | `laines brief [lane]` | Print a lane's brief (identity, ports, rules). |
 | `laines keep [lane] --reason <why>` | Mark a lane to be kept, so it is not torn down as finished. |
 | `laines release <lane>` | Release a kept lane. Human-only: the lane name is required and agents are denied it. |
-| `laines teardown <lane> [--remove-dir] [--force] [--dry-run]` | Close a lane (human-only): archive its plans, delete its context and mark it closed. Without `--remove-dir` the clone stays in place. With `--remove-dir`, teardown refuses when the lane has uncommitted changes, stash entries, commits that exist on no remote (any ref: branches, tags, backup refs, detached HEAD), or is not a git repository. `--force` overrides those but never `keep`. The refusal also lists, for each unpushed ref, which other open lanes hold the same commits (informational only; it never makes removal safe). A branch with no upstream whose commits are on a remote is only a warning. Runs `pre-teardown` first (a failure aborts with nothing touched) and `post-teardown` last (a failure leaves a board request; running `teardown` again retries it). |
+| `laines teardown <lane> [--keep-dir] [--force] [--dry-run]` | Close a lane (human-only): archive its plans, delete its context, mark it closed and delete its clone. `--keep-dir` keeps the clone instead (and skips the unpushed-work checks); `--remove-dir` is the deprecated name for the default and is ignored, and the two together are an input error. Run on an already-closed lane it deletes the leftover clone. Unless `--keep-dir`, teardown refuses when the lane has uncommitted changes, stash entries, commits that exist on no remote (any ref: branches, tags, backup refs, detached HEAD), or is not a git repository. `--force` overrides those but never `keep`. The refusal also lists, for each unpushed ref, which other open lanes hold the same commits (informational only; it never makes removal safe). A branch with no upstream whose commits are on a remote is only a warning. Runs `pre-teardown` first (a failure aborts with nothing touched) and `post-teardown` last (a failure leaves a board request; running `teardown` again retries it). |
 | `laines hooks status` | List each hook in `.laines/hooks/` as approved, changed or new, with a diff against the approved copy. |
 | `laines hooks approve [--lock] [--dry-run]` | Approve the current hooks (human-only). `--lock` also sets policy `approve`, so later changes are refused until a human approves them. It shows the diff of each hook it approves (with `--dry-run`, before approving). |
 | `laines hooks policy <approve\|notify\|open> [--dry-run]` | Set the hook policy (human-only). |
@@ -269,14 +269,16 @@ agent has no `force` argument. If the work changes after you were shown it, the 
 Declining, a wrong name, cancelling or a timeout does nothing. `teardown.mcpForce` set to `off`
 (`laines config set teardown.mcpForce off`), a locked container, or a client that cannot ask
 keeps the old behaviour: unpushed work is refused and you run
-`laines teardown <lane> --remove-dir --force` in a terminal. The audit log records
+`laines teardown <lane> --force` in a terminal. The audit log records
 `forcedVia: "mcp-typed-confirmation"` and what was discarded. The same typed prompt is offered for
 a closed lane's leftover clone; refs changed after the lane closed are labelled as such.
 
-**Also delete the clone.** For an open lane, when the agent did not ask for `remove_dir`, the first
-confirmation has an optional "Also delete the clone" tick. Ticking it runs the unpushed-work check
-first: clean removes the clone in that one confirmation, unpushed work continues into the typed
-prompt (or is refused with nothing torn down).
+**Keep the clone instead.** Tearing a lane down deletes its clone by default. For an open lane, when
+the agent did not pass `keep_dir`, the first confirmation has an optional "Keep the clone instead"
+tick. Ticking it closes the lane and keeps the clone with no unpushed-work check. Left unticked, the
+check runs first: clean deletes the clone in that one confirmation, unpushed work continues into the
+typed prompt (or is refused with nothing torn down). An agent can pass `keep_dir` itself, which only
+makes teardown safer; `remove_dir` is accepted and ignored (deprecated).
 
 **Stale server.** A `laines-mcp` started before an upgrade keeps running the old code. When the installed
 version differs from the one the server loaded, `laines_status` and `laines_doctor` show

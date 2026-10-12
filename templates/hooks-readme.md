@@ -8,7 +8,7 @@ with `.` are ignored.
 |---|---|---|---|
 | `post-create` | after a lane is cloned and its files and `.laines.env` are written; again on `laines refresh <lane>` | lane | lane kept and marked `setup-failed`; fix the hook, then `laines refresh <lane>` |
 | `pre-teardown` | before anything is archived or deleted | lane | teardown aborted, nothing touched |
-| `post-teardown` | after the lane is closed (and its clone removed, with `--remove-dir`) | container | warning and a board request; `laines teardown <lane>` retries it |
+| `post-teardown` | after the lane is closed (and its clone removed, unless `--keep-dir`) | container | warning and a board request; `laines teardown <lane>` retries it |
 
 Environment: `LANE_NAME`, `LANE_NUMBER`, `LANE_ID`, `LANE_DIR`, `CONTAINER_DIR`, `CONTAINER_ID`,
 `LANE_PORT_BASE`, `LANE_PORT_COUNT`, `LANE_SUFFIX`, `LANE_BRANCH`, `LANE_ENV_FILE`, `PORT`,

@@ -19,22 +19,22 @@ async function lane(opts = {}) {
 
 const state = (s) => readLanes(loadContainer({ container: s.container }, s.deps)).lanes.lane_1;
 
-describe('teardown without --remove-dir', () => {
+describe('teardown with --keep-dir', () => {
   it('archives plans, deletes context, marks closed and leaves the clone', async () => {
     const s = await lane();
     writeFileSync(join(s.dir, '.ai', 'plans', 'task.md'), 'plan\n');
     writeFileSync(join(s.dir, '.ai', 'context', 'handoff.md'), 'notes\n');
-    const r = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    const r = await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
     expect(r).toMatchObject({ dryRun: false, lane: 'lane_1', archivedTo: '.ai/archive/2026-09-29_lane_1', contextDeleted: true, removedDir: false });
     expect(readFileSync(join(s.container, '.ai', 'archive', '2026-09-29_lane_1', 'plans', 'task.md'), 'utf8')).toBe('plan\n');
     expect(existsSync(join(s.dir, '.ai', 'context', 'handoff.md'))).toBe(false);
     expect(existsSync(s.dir)).toBe(true);
     expect(state(s)).toMatchObject({ state: 'closed', status: 'closed', closed: '2026-09-29T12:00:00.000Z' });
     expect(readFileSync(join(s.container, '.ai', 'context', 'LANES_BOARD.md'), 'utf8')).toContain('1 closed lane');
-    await expect(runTeardown({ lane: 'lane_1', container: s.container }, s.deps)).rejects.toBeInstanceOf(InvalidInputError);
+    await expect(runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps)).rejects.toBeInstanceOf(InvalidInputError);
   });
 
-  it('tears down a lane left in "spinning up" by an interrupted create, without --remove-dir', async () => {
+  it('tears down a lane left in "spinning up" by an interrupted create, with --keep-dir', async () => {
     const s = await lane();
     const ctx = loadContainer({ container: s.container }, s.deps);
     await updateLanes(ctx, s.deps, (st) => {
@@ -42,7 +42,7 @@ describe('teardown without --remove-dir', () => {
       return { state: st, result: null, activity: [] };
     });
     expect(state(s).status).toBe('spinning up');
-    const r = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    const r = await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
     expect(r).toMatchObject({ removedDir: false });
     expect(state(s)).toMatchObject({ state: 'closed', status: 'closed' });
     expect(existsSync(s.dir)).toBe(true);
@@ -51,7 +51,7 @@ describe('teardown without --remove-dir', () => {
   it('never archives or deletes files the repository tracks', async () => {
     const s = await lane({ files: { 'README.md': 'x\n', '.ai/plans/README.md': 'project plans\n', '.ai/context/README.md': 'project context\n' } });
     writeFileSync(join(s.dir, '.ai', 'plans', 'mine.md'), 'm\n');
-    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
     expect(readFileSync(join(s.dir, '.ai', 'plans', 'README.md'), 'utf8')).toBe('project plans\n');
     expect(readFileSync(join(s.dir, '.ai', 'context', 'README.md'), 'utf8')).toBe('project context\n');
     expect(existsSync(join(s.dir, '.ai', 'plans', 'mine.md'))).toBe(false);
@@ -59,10 +59,10 @@ describe('teardown without --remove-dir', () => {
   });
 });
 
-describe('teardown --remove-dir safety', () => {
+describe('teardown clone-removal safety (the default)', () => {
   it('removes a clean lane', async () => {
     const s = await lane();
-    const r = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps);
+    const r = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
     expect(r.removedDir).toBe(true);
     expect(existsSync(s.dir)).toBe(false);
   });
@@ -97,7 +97,7 @@ describe('teardown --remove-dir safety', () => {
       const s = await lane();
       make(s.dir);
       writeFileSync(join(s.dir, '.ai', 'plans', 'task.md'), 'plan\n');
-      const err = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps).catch((e) => e);
+      const err = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps).catch((e) => e);
       expect(err).toBeInstanceOf(BlockedError);
       expect(err.exitCode).toBe(3);
       expect(err.message).toContain('Nothing has been archived or deleted');
@@ -110,7 +110,7 @@ describe('teardown --remove-dir safety', () => {
     const s = await lane();
     gitIn(s.dir, 'checkout', '-q', '--detach');
     gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'detached');
-    const err = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps).catch((e) => e);
+    const err = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps).catch((e) => e);
     expect(err).toBeInstanceOf(BlockedError);
     expect(err.message).toContain('HEAD (1)');
   });
@@ -118,14 +118,14 @@ describe('teardown --remove-dir safety', () => {
   it('refuses a directory that is not a git repository unless forced', async () => {
     const s = await lane();
     rmSync(join(s.dir, '.git'), { recursive: true, force: true });
-    const err = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps).catch((e) => e);
+    const err = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps).catch((e) => e);
     expect(err).toBeInstanceOf(BlockedError);
     expect(err.exitCode).toBe(3);
     expect(err.message).toContain('not a git repository');
     expect(err.message).toContain(`Copy anything you need out of ${s.dir} first.`);
     expect(err.message).not.toContain('bundle');
     expect(existsSync(s.dir)).toBe(true);
-    const r = await runTeardown({ lane: 'lane_1', removeDir: true, force: true, container: s.container }, s.deps);
+    const r = await runTeardown({ lane: 'lane_1', force: true, container: s.container }, s.deps);
     expect(r).toMatchObject({ removedDir: true, forced: true });
     expect(existsSync(s.dir)).toBe(false);
   });
@@ -142,7 +142,7 @@ describe('teardown --remove-dir safety', () => {
       }
       return s.deps.git(args, o);
     };
-    const err = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, { ...s.deps, git }).catch((e) => e);
+    const err = await runTeardown({ lane: 'lane_1', container: s.container }, { ...s.deps, git }).catch((e) => e);
     expect(err).toBeInstanceOf(BlockedError);
     expect(err.message).toContain('kept');
     expect(existsSync(s.dir)).toBe(true);
@@ -153,25 +153,25 @@ describe('teardown --remove-dir safety', () => {
   it('names the refs that hold unpushed commits', async () => {
     const s = await lane();
     unsafe['a commit only in refs/backup'](s.dir);
-    const err = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps).catch((e) => e);
+    const err = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps).catch((e) => e);
     expect(err.message).toContain('refs/backup/pre-rebase');
   });
 
   it('--force overrides unpushed work, but never a kept lane', async () => {
     const s = await lane();
     unsafe['uncommitted changes'](s.dir);
-    const r = await runTeardown({ lane: 'lane_1', removeDir: true, force: true, container: s.container }, s.deps);
+    const r = await runTeardown({ lane: 'lane_1', force: true, container: s.container }, s.deps);
     expect(r).toMatchObject({ removedDir: true, forced: true });
     const k = await lane();
     await runKeep({ lane: 'lane_1', reason: 'stack base', container: k.container }, k.deps);
-    await expect(runTeardown({ lane: 'lane_1', removeDir: true, force: true, container: k.container }, k.deps)).rejects.toThrow(/kept/);
+    await expect(runTeardown({ lane: 'lane_1', force: true, container: k.container }, k.deps)).rejects.toThrow(/kept/);
     expect(existsSync(k.dir)).toBe(true);
   });
 
   it('dry run reports what would happen and changes nothing', async () => {
     const s = await lane();
     unsafe['uncommitted changes'](s.dir);
-    const r = await runTeardown({ lane: 'lane_1', removeDir: true, dryRun: true, container: s.container }, s.deps);
+    const r = await runTeardown({ lane: 'lane_1', dryRun: true, container: s.container }, s.deps);
     expect(r).toMatchObject({ dryRun: true, blocked: true, removedDir: true });
     expect(r).not.toHaveProperty('removeDir');
     expect(r.checks.problems[0]).toContain('uncommitted');
@@ -181,10 +181,10 @@ describe('teardown --remove-dir safety', () => {
 
   it('archives plans written after a lane was closed before removing its clone', async () => {
     const s = await lane();
-    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
     writeFileSync(join(s.dir, '.ai', 'plans', 'late.md'), 'late\n');
     writeFileSync(join(s.dir, '.ai', 'context', 'late.md'), 'ctx\n');
-    const r = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps);
+    const r = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
     expect(r).toMatchObject({ removedDir: true, archivedTo: '.ai/archive/2026-09-29_lane_1-2', contextDeleted: true });
     expect(readFileSync(join(s.container, '.ai', 'archive', '2026-09-29_lane_1-2', 'plans', 'late.md'), 'utf8')).toBe('late\n');
     expect(existsSync(s.dir)).toBe(false);
@@ -196,16 +196,81 @@ describe('teardown --remove-dir safety', () => {
     writeFileSync(join(outside, 'precious.txt'), 'x\n');
     renameSync(s.dir, join(s.root, 'moved'));
     symlinkSync(outside, s.dir);
-    await expect(runTeardown({ lane: 'lane_1', removeDir: true, force: true, container: s.container }, s.deps)).rejects.toBeInstanceOf(BlockedError);
+    await expect(runTeardown({ lane: 'lane_1', force: true, container: s.container }, s.deps)).rejects.toBeInstanceOf(BlockedError);
     expect(existsSync(join(outside, 'precious.txt'))).toBe(true);
   });
 
   it('requires an explicit lane name and wires into the CLI', async () => {
     const s = await lane();
     await expect(runTeardown({ container: s.container }, { ...s.deps, cwd: () => s.dir })).rejects.toBeInstanceOf(InvalidInputError);
-    const r = await runCli(['teardown', 'lane_1', '--remove-dir', '--container', s.container, '--format', 'table'], s.deps);
+    const r = await runCli(['teardown', 'lane_1', '--container', s.container, '--format', 'table'], s.deps);
     expect(r.code).toBe(0);
     expect(r.stdout).toContain('lane_1 torn down');
+  });
+});
+
+describe('teardown deletes the clone by default (0.4.9 Task 7)', () => {
+  it('default deletes a clean lane\'s clone', async () => {
+    const s = await lane();
+    const r = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(r.removedDir).toBe(true);
+    expect(existsSync(s.dir)).toBe(false);
+    expect(state(s).state).toBe('closed');
+  });
+
+  it('default refuses unpushed work over the CLI (exit 3, naming --force), touching nothing', async () => {
+    const s = await lane();
+    writeFileSync(join(s.dir, 'new.txt'), 'x\n');
+    const r = await runCli(['teardown', 'lane_1', '--container', s.container], s.deps);
+    expect(r.code).toBe(3);
+    expect(r.stderr).toContain('--force');
+    expect(existsSync(s.dir)).toBe(true);
+    expect(state(s).state).toBe('active');
+  });
+
+  it('--keep-dir keeps the clone and skips the unpushed-work checks', async () => {
+    const s = await lane();
+    writeFileSync(join(s.dir, 'new.txt'), 'x\n');
+    const r = await runCli(['teardown', 'lane_1', '--keep-dir', '--container', s.container, '--format', 'json'], s.deps);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ removedDir: false });
+    expect(existsSync(join(s.dir, 'new.txt'))).toBe(true);
+    expect(state(s).state).toBe('closed');
+  });
+
+  it('--keep-dir together with --remove-dir is an input error (exit 2)', async () => {
+    const s = await lane();
+    const r = await runCli(['teardown', 'lane_1', '--keep-dir', '--remove-dir', '--container', s.container], s.deps);
+    expect(r.code).toBe(2);
+    expect(state(s).state).toBe('active');
+    await expect(runTeardown({ lane: 'lane_1', keepDir: true, removeDir: true, container: s.container }, s.deps)).rejects.toBeInstanceOf(InvalidInputError);
+  });
+
+  it('--remove-dir is still accepted as a no-op alias, and its help text says deprecated', async () => {
+    const s = await lane();
+    const r = await runCli(['teardown', 'lane_1', '--remove-dir', '--container', s.container, '--format', 'json'], s.deps);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ removedDir: true });
+    const help = await runCli(['teardown', '--help'], s.deps);
+    expect(help.stdout).toMatch(/--keep-dir/);
+    expect(help.stdout).toMatch(/deprecated/i);
+  });
+
+  it('re-tearing a closed lane that kept its clone deletes it; --keep-dir on a closed lane is the input error', async () => {
+    const s = await lane();
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
+    expect(existsSync(s.dir)).toBe(true);
+    await expect(runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps)).rejects.toBeInstanceOf(InvalidInputError);
+    const r = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(r.removedDir).toBe(true);
+    expect(existsSync(s.dir)).toBe(false);
+  });
+
+  it('dry run shows the clone will be deleted by default, and kept with keepDir', async () => {
+    const s = await lane();
+    expect(await runTeardown({ lane: 'lane_1', dryRun: true, container: s.container }, s.deps)).toMatchObject({ dryRun: true, removedDir: true });
+    expect(await runTeardown({ lane: 'lane_1', dryRun: true, keepDir: true, container: s.container }, s.deps)).toMatchObject({ removedDir: false });
+    expect(existsSync(s.dir)).toBe(true);
   });
 });
 
@@ -218,7 +283,7 @@ describe('teardown hooks', () => {
     writeFileSync(join(s.dir, '.ai', 'plans', 'task.md'), 'plan\n');
     writeHook(s.container, 'pre-teardown', 'test -f .ai/plans/task.md && echo "pre $LANE_NAME" >> "$CONTAINER_DIR/hooks.log"');
     writeHook(s.container, 'post-teardown', 'test ! -d "$LANE_DIR" && echo "post $(pwd -P)" >> "$CONTAINER_DIR/hooks.log"');
-    const r = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps);
+    const r = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
     expect(readFileSync(join(s.container, 'hooks.log'), 'utf8')).toBe(`pre lane_1\npost ${s.container}\n`);
     expect(r.hooks.map((h) => [h.event, h.outcome])).toEqual([['pre-teardown', 'ok'], ['post-teardown', 'ok']]);
   });
@@ -231,7 +296,7 @@ describe('teardown hooks', () => {
     const two = await runCreate({ container: s.container }, s.deps);
     expect(readdirSync(join(s.container, 'dbs')).sort()).toEqual(['app_my_app_l1', 'app_my_app_l2']);
     expect(readFileSync(join(two.path, '.laines.env'), 'utf8')).toContain('DATABASE=app_my_app_l2');
-    await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps);
+    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
     expect(readdirSync(join(s.container, 'dbs'))).toEqual(['app_my_app_l2']);
   });
 
@@ -239,7 +304,7 @@ describe('teardown hooks', () => {
     const s = await lane();
     writeFileSync(join(s.dir, '.ai', 'plans', 'task.md'), 'plan\n');
     writeHook(s.container, 'pre-teardown', 'echo "server still running" >&2; exit 1');
-    const err = await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps).catch((e) => e);
+    const err = await runTeardown({ lane: 'lane_1', container: s.container }, s.deps).catch((e) => e);
     expect(err).toBeInstanceOf(HookError);
     expect(err.exitCode).toBe(1);
     expect(err.message).toContain('server still running');
@@ -336,8 +401,8 @@ describe('teardown hooks', () => {
 
   it('logs the second phase of a two-step teardown on the board', async () => {
     const s = await lane();
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
     await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
-    await runTeardown({ lane: 'lane_1', removeDir: true, container: s.container }, s.deps);
     expect(board(s)).toContain('clone removed');
   });
 });

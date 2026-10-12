@@ -61,6 +61,9 @@ const changedMessage = (laneDir) =>
 // Human-only (deny rules in agent settings): the lane must always be named.
 export async function runTeardown(opts, deps) {
   if (!opts.lane) throw new InvalidInputError('Name the lane to tear down: `laines teardown <lane>`.');
+  // Deleting the clone is the default; --keep-dir opts out. --remove-dir is a deprecated no-op alias.
+  if (opts.keepDir && opts.removeDir) throw new InvalidInputError('--keep-dir and --remove-dir contradict each other: --remove-dir is the default now, so drop it.');
+  const removeDir = !opts.keepDir;
   const ctx = loadContainer(opts, deps);
   const name = opts.lane;
   const before = readLanes(ctx);
@@ -74,16 +77,17 @@ export async function runTeardown(opts, deps) {
   const closed = lane.state === 'closed';
   const cleanupId = requestId('cleanup-incomplete', name);
   const cleanupPending = before.requests.some((q) => q.id === cleanupId);
-  if (closed && !opts.removeDir && !cleanupPending) {
-    throw new InvalidInputError(`Lane ${name} is already closed. Pass --remove-dir to delete its clone.`);
+  if (closed && !removeDir && !cleanupPending) {
+    throw new InvalidInputError(`Lane ${name} is already closed, so --keep-dir has nothing left to do. Run \`laines teardown ${name}\` to delete its clone.`);
   }
   const laneDir = join(ctx.root, lane.repos[0].path);
   const real = assertLaneDir(ctx.root, laneDir, lane.repos[0].path);
+  if (closed && !real && !cleanupPending) throw new InvalidInputError(`Lane ${name} is already closed and its clone is gone: nothing left to tear down.`);
   const isRepo = Boolean(real) && existsSync(join(real, '.git'));
   // A directory that is not a repository cannot be proven safe to delete: refuse unless --force.
   const unverifiable = { dirty: [], stashes: 0, unpushed: 0, refs: [], noUpstream: null, problems: ['not a git repository: unpushed work cannot be verified'] };
   let checks = null;
-  if (opts.removeDir && real) checks = isRepo ? unpushedWork(deps, real) : unverifiable;
+  if (removeDir && real) checks = isRepo ? unpushedWork(deps, real) : unverifiable;
   if (checks?.refs.length) checks.holdings = siblingHoldings(deps, ctx, name, checks.refs);
   const fingerprint = checks && isRepo ? forceFingerprint(deps, real, checks) : null;
   // `expect` is set only by the MCP typed confirmation: what the human saw must still be what is there.
@@ -101,7 +105,7 @@ export async function runTeardown(opts, deps) {
 
   if (opts.dryRun) {
     const hooks = [...(runPre ? [dryRunHooks(ctx, 'pre-teardown')] : []), ...(runPost ? [dryRunHooks(ctx, 'post-teardown')] : [])];
-    return { dryRun: true, lane: name, path: laneDir, blocked, removedDir: Boolean(opts.removeDir && real), forced: risky && Boolean(opts.force), checks, fingerprint, warnings, hooks, refusal: blocked ? unpushedRefusal(laneDir, checks.problems, isRepo, checks.holdings) : null };
+    return { dryRun: true, lane: name, path: laneDir, blocked, removedDir: removeDir && Boolean(real), forced: risky && Boolean(opts.force), checks, fingerprint, warnings, hooks, refusal: blocked ? unpushedRefusal(laneDir, checks.problems, isRepo, checks.holdings) : null };
   }
   if (blocked) {
     throw new BlockedError(unpushedRefusal(laneDir, checks.problems, isRepo, checks.holdings));
@@ -124,7 +128,7 @@ export async function runTeardown(opts, deps) {
             lane: name,
             kind: 'teardown-blocked',
             text: `teardown stopped — pre-teardown: ${runSummary(pre)}`,
-            command: `${pre.outcome === 'refused' ? 'laines hooks approve && ' : ''}laines teardown ${name}${opts.removeDir ? ' --remove-dir' : ''}`,
+            command: `${pre.outcome === 'refused' ? 'laines hooks approve && ' : ''}laines teardown ${name}${opts.keepDir ? ' --keep-dir' : ''}`,
           }),
         text: `teardown aborted, nothing touched — pre-teardown: ${runSummary(pre)}`,
       }));
@@ -165,7 +169,7 @@ export async function runTeardown(opts, deps) {
       const via = viaMcp ? `; torn down over MCP; forced after a typed confirmation: ${checks.problems.join('; ')}` : '';
       return { state, result: null, activity: [...board.activity, { ts: now, lane: name, text: `lane torn down; ${note}${via}` }] };
     });
-  } else if (opts.removeDir && real) {
+  } else if (removeDir && real) {
     // No hook runs on this path, so re-verify what the human saw right before anything is touched.
     if (opts.expect !== undefined && isRepo && forceFingerprint(deps, real, unpushedWork(deps, real)) !== opts.expect) {
       throw new BlockedError(changedMessage(laneDir));
@@ -182,8 +186,8 @@ export async function runTeardown(opts, deps) {
       warnings.push(`.ai/ sync base for ${name} not removed: ${String(err.message).split('\n')[0]}`);
     }
   }
-  const removedDir = opts.removeDir ? removeLaneDir(ctx.root, laneDir, lane.repos[0].path) : false;
-  if (closed && opts.removeDir) {
+  const removedDir = removeDir ? removeLaneDir(ctx.root, laneDir, lane.repos[0].path) : false;
+  if (closed && removeDir) {
     const via = viaMcp ? `; closed lane; torn down over MCP; forced after a typed confirmation: ${checks.problems.join('; ')}` : '';
     const text = removedDir ? `clone removed${archivedTo ? `; plans archived to ${archivedTo}` : ''}${via}` : 'no clone left to remove';
     await updateLanes(ctx, deps, (state) => ({ state, result: null, activity: [{ ts: deps.now(), lane: name, text }] }));

@@ -84,7 +84,7 @@ function laneStateProblems(name, lane, config, deps) {
   const problems = [];
   if (lane.state === 'setup-failed') problems.push(`setup failed: fix the hook, then run \`laines refresh ${name}\``);
   if (spinUpState(lane, config, deps.now()) === 'interrupted') {
-    problems.push(`create was interrupted (spinning up since ${lane.updated}): if the clone is complete, run \`laines refresh ${name}\`; otherwise run \`laines teardown ${name} --remove-dir --force\` and create it again`);
+    problems.push(`create was interrupted (spinning up since ${lane.updated}): if the clone is complete, run \`laines refresh ${name}\`; otherwise run \`laines teardown ${name} --force\` and create it again`);
   }
   return problems;
 }
@@ -233,13 +233,13 @@ export async function runDoctor(opts, deps) {
       return note ? { detail: 'ok', note } : 'ok';
     });
   }
-  // A closed lane keeps its clone until `teardown --remove-dir`; work done there afterwards belongs to no open lane.
+  // A closed lane keeps its clone until `teardown`; work done there afterwards belongs to no open lane.
   const closedLanes = Object.entries(lanesState?.lanes ?? {}).filter(([, l]) => l.state === 'closed');
   for (const [name, lane] of closedLanes) {
     const dir = join(root, lane.repos[0].path);
     if (!existsSync(dir)) continue;
     check(`closed:${name}`, () => {
-      const remains = `closed, but its clone remains: delete it with \`laines teardown ${name} --remove-dir\`, or ignore`;
+      const remains = `closed, but its clone remains: delete it with \`laines teardown ${name}\`, or ignore`;
       if (!lane.closed) return { detail: 'ok', note: remains };
       const { refs, dirty } = changedSinceClose(deps, dir, lane.closed);
       if (!refs.length && !dirty.length) return { detail: 'ok', note: remains };

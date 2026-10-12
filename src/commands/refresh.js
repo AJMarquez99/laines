@@ -61,7 +61,7 @@ export async function runRefresh(opts, deps) {
   const laneDir = join(ctx.root, lane.repos[0].path);
   const real = assertLaneDir(ctx.root, laneDir, lane.repos[0].path);
   if (!real || !existsSync(join(real, '.git'))) {
-    throw new InvalidInputError(`${laneDir} is missing or not a git clone. Tear the lane down (\`laines teardown ${name} --remove-dir --force\`) and create it again.`);
+    throw new InvalidInputError(`${laneDir} is missing or not a git clone. Tear the lane down (\`laines teardown ${name} --force\`) and create it again.`);
   }
   // The board and LANE_BRANCH follow the branch the clone is on now; a detached HEAD keeps the old one.
   const head = deps.git(['branch', '--show-current'], { cwd: real });
