@@ -31,8 +31,8 @@ const KEEP_HINT = 'To close the lane and keep its clone instead, ask again with 
 
 export const notConfirmed = 'Not confirmed: nothing was torn down.';
 
-export const declinedMessage = (lane) =>
-  `Declined or no response — if you weren't prompted, run \`laines teardown ${lane}\` in your terminal.`;
+export const declinedMessage = (lane, keepDir = false) =>
+  `Declined or no response — if you weren't prompted, run \`laines teardown ${lane}${keepDir ? ' --keep-dir' : ''}\` in your terminal.`;
 
 // For a closed lane's leftover clone: what changed there after the lane closed (no board entry tracks it).
 function closedChanges(ctx, deps, plan, opts) {
@@ -101,13 +101,14 @@ export async function runTeardownMcp(opts, deps) {
   if (mode === 'off') {
     throw new BlockedError('Teardown over MCP is turned off for this container (teardown.mcp is "off"). A human can run `laines teardown <lane>` in a terminal.');
   }
+  const isClosed = () => getLane(readLanes(ctx), opts.lane)?.state === 'closed';
   const args = { lane: opts.lane, keepDir: opts.keepDir, removeDir: opts.removeDir, container: opts.container };
   if (opts.dryRun) return invoke('teardown', { ...args, dryRun: true }, deps);
   if (mode === 'auto') {
     try {
       return await invoke('teardown', args, deps);
     } catch (error) {
-      if (error instanceof BlockedError && !opts.keepDir && error.message.includes('Nothing has been archived or deleted')) {
+      if (error instanceof BlockedError && !opts.keepDir && !isClosed() && error.message.includes('Nothing has been archived or deleted')) {
         throw new BlockedError(`${error.message}\n${KEEP_HINT}`);
       }
       throw error;
@@ -121,7 +122,7 @@ export async function runTeardownMcp(opts, deps) {
   let plan = await planFor(opts.keepDir);
   if (plan.blocked && !forceable(plan)) {
     // never re-run the real teardown without an accept
-    throw new BlockedError(opts.keepDir ? plan.refusal : `${plan.refusal}\n${KEEP_HINT}`);
+    throw new BlockedError(opts.keepDir || isClosed() ? plan.refusal : `${plan.refusal}\n${KEEP_HINT}`);
   }
   const offerClone = !opts.keepDir && getLane(readLanes(ctx), opts.lane).state !== 'closed';
   const command = `laines teardown ${opts.lane}${opts.keepDir ? ' --keep-dir' : ''}`;
@@ -141,7 +142,7 @@ export async function runTeardownMcp(opts, deps) {
   } catch (error) {
     deps.warn?.(`teardown confirmation failed: ${error?.message ?? error}`); // a timeout or a client error is no answer
   }
-  if (answer?.action !== 'accept' || answer.content?.confirm !== true) throw new BlockedError(declinedMessage(opts.lane));
+  if (answer?.action !== 'accept' || answer.content?.confirm !== true) throw new BlockedError(declinedMessage(opts.lane, opts.keepDir));
   if (offerClone && answer.content.keep_dir) {
     // The human ticked "keep": re-plan without the clone's deletion (and so without its unpushed-work checks) before anything happens.
     opts = { ...opts, keepDir: true, removeDir: undefined };

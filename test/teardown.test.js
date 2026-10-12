@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runCreate } from '../src/commands/create.js';
 import { runKeep } from '../src/commands/lanes.js';
@@ -490,7 +490,7 @@ describe('closed lane: pre-teardown on clone removal (H1)', () => {
     expect(r.hooks.map((h) => [h.event, h.wouldRun])).toEqual([['pre-teardown', true]]);
   });
 
-  it('a failing pre-teardown aborts with the clone intact, and a blocked one leaves a retry that keeps --force', async () => {
+  it('a failing pre-teardown aborts with the clone intact, and a blocked one leaves a retry that never carries --force', async () => {
     const s = await lane();
     await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
     writeHook(s.container, 'pre-teardown', 'exit 1');
@@ -500,7 +500,7 @@ describe('closed lane: pre-teardown on clone removal (H1)', () => {
     writeHook(s.container, 'pre-teardown', 'exit 3');
     await expect(runTeardown({ lane: 'lane_1', container: s.container, force: true }, s.deps)).rejects.toBeInstanceOf(HookError);
     expect(existsSync(s.dir)).toBe(true);
-    expect(requests(s).find((q) => q.id === 'teardown-blocked:lane_1').command).toBe('laines teardown lane_1 --force');
+    expect(requests(s).find((q) => q.id === 'teardown-blocked:lane_1').command).toBe('laines teardown lane_1');
     writeHook(s.container, 'pre-teardown', 'true');
     await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
     expect(requests(s).map((q) => q.id)).not.toContain('teardown-blocked:lane_1');
@@ -525,5 +525,39 @@ describe('closed lane: pre-teardown on clone removal (H1)', () => {
     await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
     const entry = readFileSync(join(s.container, '.laines', 'audit.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((e) => e.action === 'teardown').pop();
     expect(entry.hooks.pre).toBe('ok');
+  });
+});
+
+describe('closed lane: final-wave fixes', () => {
+  const board = (s) => readFileSync(join(s.container, '.ai', 'context', 'LANES_BOARD.md'), 'utf8');
+  const audits = (s) => readFileSync(join(s.container, '.laines', 'audit.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((e) => e.action === 'teardown');
+
+  it('records cloneRemoved only after the clone is really gone (a failed removal leaves "clone remains")', async () => {
+    const s = await lane();
+    chmodSync(s.container, 0o555);
+    try {
+      await expect(runTeardown({ lane: 'lane_1', container: s.container }, s.deps)).rejects.toThrow();
+    } finally {
+      chmodSync(s.container, 0o755);
+    }
+    expect(existsSync(s.dir)).toBe(true);
+    expect(state(s).cloneRemoved).toBeUndefined();
+    expect(board(s)).not.toContain('clone removed');
+  });
+
+  it('the remove-clone hook sees the clone\'s current branch as LANE_BRANCH', async () => {
+    const s = await lane();
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
+    gitIn(s.dir, 'checkout', '-q', '-b', 'feature-x');
+    writeHook(s.container, 'pre-teardown', 'echo "$LANE_BRANCH" > "$CONTAINER_DIR/branch.log"');
+    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(readFileSync(join(s.container, 'branch.log'), 'utf8').trim()).toBe('feature-x');
+  });
+
+  it('every teardown audit entry carries its phase', async () => {
+    const s = await lane();
+    await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
+    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    expect(audits(s).map((e) => e.phase)).toEqual(['close', 'remove-clone']);
   });
 });

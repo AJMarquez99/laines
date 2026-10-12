@@ -110,7 +110,7 @@ export async function runTeardown(opts, deps) {
   // H1: a closed lane's clone may have been reused since the close, so its removal runs pre-teardown again.
   const runPre = Boolean(real) && (!closed || removeDir);
   const phase = closed ? 'remove-clone' : 'close';
-  const retryCmd = (approve, withForce = false) => `${approve ? 'laines hooks approve && ' : ''}laines teardown ${name}${opts.keepDir ? ' --keep-dir' : ''}${withForce && opts.force && opts.expect === undefined ? ' --force' : ''}`;
+  const retryCmd = (approve) => `${approve ? 'laines hooks approve && ' : ''}laines teardown ${name}${opts.keepDir ? ' --keep-dir' : ''}`;
   const runPost = !closed || cleanupPending;
   const viaMcp = risky && Boolean(opts.force) && opts.expect !== undefined;
 
@@ -129,7 +129,10 @@ export async function runTeardown(opts, deps) {
     // The under-lock re-check below still decides; the lock is never held while a hook runs.
     const fresh = getLane(readLanes(ctx), name);
     if (fresh?.kept) throw new BlockedError(keptMessage(name, fresh.kept));
-    pre = await runEvent(ctx, deps, { event: 'pre-teardown', name, lane, cwd: real, vars: { LAINES_TEARDOWN_PHASE: phase } });
+    // A reused clone may be on another branch than the one recorded at the close: the hook sees the current one.
+    const hookBranch = closed ? currentBranch(deps, real) : null;
+    const hookLane = hookBranch ? { ...lane, repos: [{ ...lane.repos[0], branch: hookBranch }, ...lane.repos.slice(1)] } : lane;
+    pre = await runEvent(ctx, deps, { event: 'pre-teardown', name, lane: hookLane, cwd: real, vars: { LAINES_TEARDOWN_PHASE: phase } });
     if (pre.outcome !== 'ok') {
       await recordHookRun(ctx, deps, pre, name, (state, ts) => ({
         state: pre.outcome === 'failed'
@@ -139,7 +142,7 @@ export async function runTeardown(opts, deps) {
             lane: name,
             kind: 'teardown-blocked',
             text: `teardown stopped — pre-teardown: ${runSummary(pre)}`,
-            command: retryCmd(pre.outcome === 'refused', true),
+            command: retryCmd(pre.outcome === 'refused'),
           }),
         text: `teardown aborted, nothing touched — pre-teardown: ${runSummary(pre)}`,
       }));
@@ -176,7 +179,6 @@ export async function runTeardown(opts, deps) {
       l.blocked = null;
       l.closed = now;
       l.updated = now;
-      if (removeDir && real) l.cloneRemoved = now;
       state.requests = state.requests.filter((q) => q.lane !== name);
       const note = archivedTo ? `plans archived to ${archivedTo}` : 'no plans to archive';
       const via = viaMcp ? `; torn down over MCP; forced after a typed confirmation: ${checks.problems.join('; ')}` : '';
@@ -201,18 +203,21 @@ export async function runTeardown(opts, deps) {
     }
   }
   const removedDir = removeDir ? removeLaneDir(ctx.root, laneDir, lane.repos[0].path) : false;
-  if (closed && removeDir && (removedDir || !cleanupPending)) {
+  if (removedDir) {
+    // Recorded only once the clone is really gone. A first teardown dates it to the close; a later one to now.
+    const ts = closed ? deps.now() : now;
     const via = viaMcp ? `; closed lane; torn down over MCP; forced after a typed confirmation: ${checks.problems.join('; ')}` : '';
-    const text = removedDir ? `clone removed${archivedTo ? `; plans archived to ${archivedTo}` : ''}${via}` : 'no clone left to remove';
-    const ts = deps.now();
+    const text = `clone removed${archivedTo ? `; plans archived to ${archivedTo}` : ''}${via}`;
     await updateLanes(ctx, deps, (state) => {
       const l = getLane(state, name);
-      if (removedDir && l) {
+      if (l?.state === 'closed') {
         l.cloneRemoved = ts;
-        l.updated = ts;
-        if (branchAtRemoval) l.branchAtRemoval = branchAtRemoval;
+        if (closed) {
+          l.updated = ts;
+          if (branchAtRemoval) l.branchAtRemoval = branchAtRemoval;
+        }
       }
-      return { state: dropRequests(state, (q) => q.id === requestId('teardown-blocked', name)), result: null, activity: [{ ts, lane: name, text }] };
+      return { state: closed ? dropRequests(state, (q) => q.id === requestId('teardown-blocked', name)) : state, result: null, activity: closed ? [{ ts, lane: name, text }] : [] };
     });
   }
 
@@ -236,7 +241,7 @@ export async function runTeardown(opts, deps) {
   const forced = risky && Boolean(opts.force);
   appendAudit(
     ctx.paths.audit,
-    { ts: now, action: 'teardown', container: ctx.id, lane: name, removedDir, forced, ...(viaMcp ? { ...(closed ? { closedLane: true } : {}), forcedVia: 'mcp-typed-confirmation', discarded: checks.problems } : {}), hooks: { pre: pre?.outcome ?? null, post: post?.outcome ?? null } },
+    { ts: now, action: 'teardown', container: ctx.id, lane: name, phase, removedDir, forced, ...(viaMcp ? { ...(closed ? { closedLane: true } : {}), forcedVia: 'mcp-typed-confirmation', discarded: checks.problems } : {}), hooks: { pre: pre?.outcome ?? null, post: post?.outcome ?? null } },
     { warn: deps.warn },
   );
   return { dryRun: false, lane: name, path: laneDir, archivedTo, contextDeleted, removedDir, forced, checks, warnings, hooks: [pre, post].filter(Boolean) };

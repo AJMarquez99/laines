@@ -56,6 +56,7 @@ describe('teardown over MCP: confirm', () => {
       const r = await m.call('laines_teardown', { lane: 'lane_1' });
       expect(r.isError).toBe(true);
       expect(r.structuredContent.error).toEqual({ exitCode: 3, message: declinedMessage('lane_1') });
+    expect(declinedMessage('lane_1', true)).toContain('laines teardown lane_1 --keep-dir`');
       await m.close();
     }
     expect(s.state().lanes.lane_1.state).toBe('active');
