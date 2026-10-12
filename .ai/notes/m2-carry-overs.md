@@ -57,3 +57,12 @@ that owns it, then delete this note.
 - Teardown dry runs return the internal `fingerprint` in every result (CLI JSON and MCP `dry_run`); omit it unless the MCP handler asks, or document it.
 - The MCP handler re-derives "is a repo" from `plan.path`; expose `isRepo` in the dry-run result instead.
 - The lanes lock narrows but does not seal the window between the last fingerprint check and `removeLaneDir` (git activity in the clone isn't serialized by it).
+
+## From 0.4.9 (closed lanes, stale MCP server)
+
+- Doctor's `mcp-server` check fails with a raw error when the server's own `package.json` can't be read (mid-upgrade); say "installed version unknown: <reason>" instead.
+- "Stale server" detection compares with the `package.json` beside the running code; under versioned-path installs (pnpm, volta) it may never differ — say so in the docs.
+- A closed lane whose leftover isn't a git repo gets a doctor note recommending `teardown --remove-dir`, which refuses without `--force`.
+- Post-close detection uses the peeled commit's date, so an annotated tag created after the close on an old commit isn't flagged; state it in the spec's heuristic sentence. Add tests for tag peeling and ignored files.
+- `create`: "All N lanes are in use" wording with leftovers; custom names can take a number whose leftover clone carries the same ports and compose name.
+- MCP teardown reads `lanes.json` three times per call; the first form prints a full ms timestamp for the close.
