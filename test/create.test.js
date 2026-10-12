@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { invoke } from '../src/commands/registry.js';
 import { runCreate } from '../src/commands/create.js';
 import { loadContainer } from '../src/lib/container.js';
 import { readLanes } from '../src/lib/lanes-store.js';
@@ -135,7 +136,8 @@ describe('create', () => {
     const state = JSON.parse(readFileSync(lanesFile, 'utf8'));
     state.lanes.lane_1.state = 'closed';
     writeFileSync(lanesFile, JSON.stringify(state));
-    await expect(runCreate({ container }, deps)).rejects.toThrow(/already exists/);
+    await expect(runCreate({ container }, deps)).rejects.toThrow(/lane_1 is a leftover/);
+    await expect(runCreate({ container, name: 'lane_1' }, deps)).rejects.toThrow(/already exists/);
     const r = await runCreate({ container, name: 'fresh' }, deps);
     expect(r).toMatchObject({ lane: 'fresh', number: 1, ports: [20000, 20009] });
   });
@@ -275,5 +277,42 @@ describe('create with hooks', () => {
     writeFileSync(own, 'Custom rules for {{lane}}\n');
     const r = await runCreate({ container }, deps);
     expect(readFileSync(join(r.path, 'CLAUDE.local.md'), 'utf8')).toBe('Custom rules for lane_1\n');
+  });
+
+  describe('leftover directories', () => {
+    async function closedSecond() {
+      const s = await setupContainer();
+      await invoke('create', { container: s.container }, s.deps);
+      await invoke('create', { container: s.container }, s.deps);
+      await invoke('teardown', { lane: 'lane_2', container: s.container }, s.deps);
+      expect(existsSync(join(s.container, 'lane_2'))).toBe(true);
+      return s;
+    }
+
+    it('skips a number whose closed lane left its clone behind', async () => {
+      const { deps, container } = await closedSecond();
+      const r = await runCreate({ container }, deps);
+      expect(r).toMatchObject({ lane: 'lane_3', number: 3 });
+    });
+
+    it('skips a stray non-lane directory at a lane path', async () => {
+      const { deps, container } = await setupContainer();
+      mkdirSync(join(container, 'lane_1'));
+      const r = await runCreate({ container, dryRun: true }, deps);
+      expect(r).toMatchObject({ lane: 'lane_2', number: 2 });
+    });
+
+    it('names the teardown command when an explicit name is a closed lane\'s clone', async () => {
+      const { deps, container } = await closedSecond();
+      await expect(runCreate({ container, name: 'lane_2' }, deps)).rejects.toThrow(/laines teardown lane_2 --remove-dir/);
+    });
+
+    it('counts only open lanes against maxLanes and names the leftovers when they fill the range', async () => {
+      const { deps, container } = await closedSecond();
+      setConfig(container, (c) => { c.maxLanes = 2; });
+      const err = await runCreate({ container }, deps).catch((e) => e);
+      expect(err).toBeInstanceOf(BlockedError);
+      expect(err.message).toMatch(/lane_2/);
+    });
   });
 });

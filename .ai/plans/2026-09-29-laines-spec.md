@@ -401,7 +401,10 @@ anything with filesystem access, and hooks themselves (they are the user's code)
 
 ### 10.2 `create`
 
-1. Check capability, `maxLanes`, name (next free `lane_N` if omitted), path containment.
+1. Check capability, `maxLanes`, name (if omitted, the lowest `lane_N` that is neither an open lane nor an existing path, so a closed
+   lane's leftover clone is skipped; `maxLanes` counts open lanes only and an exhausted range names the
+   leftovers; an explicit name at an existing path is refused, naming `teardown --remove-dir` when it
+   is a closed lane's clone), path containment.
 2. Allocate ports; verify they are free.
 3. `git clone` the remote into the lane path; check out `--branch` (tracking the remote branch
    if it exists, otherwise a new local branch), default `defaultBranch`. If the repository commits

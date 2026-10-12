@@ -38,10 +38,22 @@ function planLane(ctx, state, opts) {
     if (number < 1 || number > maxLanes) throw new InvalidInputError(`Lane ${opts.name}: lane numbers run from 1 to maxLanes (${maxLanes}).`);
     if (used.has(number)) throw new InvalidInputError(`Lane number ${number} is already in use. See \`laines list\`.`);
   } else {
+    // A number is free when no open lane holds it and nothing sits at its path: a closed lane's clone
+    // stays on disk until `teardown --remove-dir`, and a stray directory blocks the clone just the same.
+    const leftovers = [];
     number = 1;
-    while (used.has(number)) number += 1;
+    for (; number <= maxLanes; number += 1) {
+      if (used.has(number)) continue;
+      const dir = `${ctx.config.lanePrefix}${number}`;
+      // Only a default name claims the path; a custom name just needs a free port number.
+      if (opts.name !== undefined || !existsSync(join(ctx.root, dir))) break;
+      leftovers.push(dir);
+    }
     if (number > maxLanes) {
-      throw new BlockedError(`All ${maxLanes} lanes are in use. Tear one down, or raise maxLanes in .laines/config.json.`);
+      const left = leftovers.length
+        ? ` ${leftovers.join(', ')} ${leftovers.length === 1 ? 'is a leftover directory' : 'are leftover directories'} (a closed lane's clone: delete it with \`laines teardown <lane> --remove-dir\`, or remove it by hand).`
+        : '';
+      throw new BlockedError(`All ${maxLanes} lanes are in use.${left} Tear one down, or raise maxLanes in .laines/config.json.`);
     }
   }
   const name = opts.name ?? `${ctx.config.lanePrefix}${number}`;
@@ -49,7 +61,10 @@ function planLane(ctx, state, opts) {
   if (existing && existing.state !== 'closed') throw new InvalidInputError(`Lane ${name} already exists.`);
   const laneDir = join(ctx.root, name);
   assertLaneDir(ctx.root, laneDir, name);
-  if (existsSync(laneDir)) throw new InvalidInputError(`${laneDir} already exists. Remove it or pick another name.`);
+  if (existsSync(laneDir)) {
+    const hint = existing ? ` It is a closed lane's clone: delete it with \`laines teardown ${name} --remove-dir\`, or pick another name.` : ' Remove it or pick another name.';
+    throw new InvalidInputError(`${laneDir} already exists.${hint}`);
+  }
   return { name, number, laneDir, ports: lanePorts(ctx.portRange, number, ctx.config.ports.stride) };
 }
 
