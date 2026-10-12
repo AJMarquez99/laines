@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import { runInit } from '../src/commands/init.js';
 import { runDoctor } from '../src/commands/doctor.js';
 import { runCreate } from '../src/commands/create.js';
+import { changedSinceClose } from '../src/lib/lane-git.js';
+import { runTeardown } from '../src/commands/teardown.js';
 import { runRefresh } from '../src/commands/refresh.js';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execFileSync } from 'node:child_process';
 import { formatDoctor } from '../src/lib/format.js';
 import { runDotAi } from '../src/lib/dotai.js';
 import { claimContainer, loadIndex } from '../src/lib/machine-index.js';
@@ -313,5 +315,81 @@ describe('doctor notes', () => {
       await runRefresh({ container: s.container, lane: 'lane_1' }, s.deps);
       expect((await detail(s)).ok).toBe(true);
     });
+  });
+});
+
+describe('doctor: closed lanes whose clone remains', () => {
+  const CLOSED = '2026-01-01T00:00:00.000Z';
+  async function closedLane() {
+    const s = await setupContainer();
+    const lane = await runCreate({ container: s.container }, s.deps);
+    await runTeardown({ lane: 'lane_1', container: s.container }, s.deps);
+    // Pin the close time so the committer dates below are unambiguous.
+    await updateLanes(loadContainer({ container: s.container }, s.deps), s.deps, (state) => {
+      state.lanes.lane_1.closed = CLOSED;
+      return { state, result: null };
+    });
+    return { s, dir: lane.path };
+  }
+  const commitAt = (dir, date, ...args) =>
+    execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@e.com', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@e.com', GIT_COMMITTER_DATE: date, GIT_AUTHOR_DATE: date } });
+  const OLD = '2025-12-01T00:00:00Z';
+
+  it('notes a clean remaining clone as ok', async () => {
+    const { s, dir } = await closedLane();
+    // Make every tip older than the close.
+    commitAt(dir, OLD, 'commit', '--amend', '--no-edit', '--allow-empty');
+    for (const ref of gitIn(dir, 'for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/tags').split('\n').filter(Boolean)) {
+      commitAt(dir, OLD, 'update-ref', ref, gitIn(dir, 'rev-parse', 'HEAD').trim());
+    }
+    const r = await runDoctor({ container: s.container }, s.deps);
+    const c = byName(r)['closed:lane_1'];
+    expect(c.ok).toBe(true);
+    expect(c.note).toBe('closed, but its clone remains: delete it with `laines teardown lane_1 --remove-dir`, or ignore');
+    expect(formatDoctor(r)).toContain('  • closed, but its clone remains');
+  });
+
+  it('fails when a branch was committed after the close', async () => {
+    const { s, dir } = await closedLane();
+    gitIn(dir, 'checkout', '-q', '-b', 'late-work');
+    commitAt(dir, '2026-01-02T00:00:00Z', 'commit', '--allow-empty', '-q', '-m', 'late');
+    const r = await runDoctor({ container: s.container }, s.deps);
+    const c = byName(r)['closed:lane_1'];
+    expect(c.ok).toBe(false);
+    expect(r.ok).toBe(false);
+    expect(c.detail).toMatch(/closed on 2026-01-01.*refs\/heads\/late-work.*0 uncommitted file\(s\).*belongs to no open lane/);
+  });
+
+  it('fails on uncommitted changes', async () => {
+    const { s, dir } = await closedLane();
+    writeFileSync(join(dir, 'scratch.txt'), 'x\n');
+    const c = byName(await runDoctor({ container: s.container }, s.deps))['closed:lane_1'];
+    expect(c.ok).toBe(false);
+    expect(c.detail).toContain('1 uncommitted file(s)');
+  });
+
+  it('adds no check once the clone is gone', async () => {
+    const { s, dir } = await closedLane();
+    rmSync(dir, { recursive: true, force: true });
+    const r = await runDoctor({ container: s.container }, s.deps);
+    expect(byName(r)['closed:lane_1']).toBeUndefined();
+    expect(r.ok).toBe(true);
+  });
+
+  it('only notes a closed lane with no close timestamp', async () => {
+    const { s } = await closedLane();
+    await updateLanes(loadContainer({ container: s.container }, s.deps), s.deps, (state) => {
+      delete state.lanes.lane_1.closed;
+      return { state, result: null };
+    });
+    const c = byName(await runDoctor({ container: s.container }, s.deps))['closed:lane_1'];
+    expect(c.ok).toBe(true);
+    expect(c.note).toContain('clone remains');
+  });
+
+  it('changedSinceClose never throws for a missing or broken clone', async () => {
+    const s = await setupContainer();
+    expect(changedSinceClose(s.deps, join(s.root, 'nope'), CLOSED)).toEqual({ refs: [], dirty: [] });
+    expect(changedSinceClose(s.deps, s.root, 'not a date').refs).toEqual([]);
   });
 });

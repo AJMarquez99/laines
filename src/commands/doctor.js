@@ -15,6 +15,7 @@ import { hookStates, isExecutable } from '../lib/hooks.js';
 import { hasMcpEntry, mcpAddCommand } from '../lib/mcp-config.js';
 import { lockSuggested } from '../lib/hook-events.js';
 import { aiDrift, readAiBases, repoCommitsAi } from '../lib/ai-tree.js';
+import { changedSinceClose } from '../lib/lane-git.js';
 
 // Informational: a lane whose committed .ai/ differs from the container's shared one.
 function aiDriftNote(paths, laneDir, deps, name) {
@@ -220,6 +221,19 @@ export async function runDoctor(opts, deps) {
       if (problems.length) throw new Error(problems.join('; '));
       const note = aiDriftNote(p, join(root, lane.repos[0].path), deps, name);
       return note ? { detail: 'ok', note } : 'ok';
+    });
+  }
+  // A closed lane keeps its clone until `teardown --remove-dir`; work done there afterwards belongs to no open lane.
+  const closedLanes = Object.entries(lanesState?.lanes ?? {}).filter(([, l]) => l.state === 'closed');
+  for (const [name, lane] of closedLanes) {
+    const dir = join(root, lane.repos[0].path);
+    if (!existsSync(dir)) continue;
+    check(`closed:${name}`, () => {
+      const remains = `closed, but its clone remains: delete it with \`laines teardown ${name} --remove-dir\`, or ignore`;
+      if (!lane.closed) return { detail: 'ok', note: remains };
+      const { refs, dirty } = changedSinceClose(deps, dir, lane.closed);
+      if (!refs.length && !dirty.length) return { detail: 'ok', note: remains };
+      throw new Error(`closed on ${lane.closed.slice(0, 10)}, but its clone has ${refs.length} ref(s) changed since (${refs.map((r) => r.ref).join(' ') || 'none'}) and ${dirty.length} uncommitted file(s): this work belongs to no open lane: push it or move it to a lane, then delete the clone`);
     });
   }
   // Informational: Claude reads the container CLAUDE.md from every lane; Codex and Gemini stop at

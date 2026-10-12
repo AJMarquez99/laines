@@ -28,6 +28,30 @@ export function unpushedWork(deps, laneDir) {
   return { dirty, stashes, unpushed, refs, noUpstream, problems };
 }
 
+// Read-only and never throws, so it is safe on a broken or half-deleted clone: local branches and tags
+// whose tip's committer date is after closedIso, plus uncommitted files. Committer dates can be
+// rewritten, so this is a heuristic for "changed since the lane closed", not proof. An unparseable
+// closedIso yields no refs (nothing can be said to postdate it); dirty files are still reported.
+export function changedSinceClose(deps, laneDir, closedIso) {
+  const run = (args) => {
+    const r = deps.git(args, { cwd: laneDir });
+    return r.error || r.status !== 0 ? '' : r.stdout;
+  };
+  const since = Date.parse(closedIso) / 1000;
+  const refs = [];
+  if (Number.isFinite(since)) {
+    // %(*committerdate) is the peeled commit of an annotated tag, which has no committer date of its own.
+    const fmt = '%(refname)%09%(objectname)%09%(committerdate:unix)%09%(*objectname)%09%(*committerdate:unix)';
+    for (const line of run(['for-each-ref', `--format=${fmt}`, 'refs/heads', 'refs/tags']).split('\n').filter(Boolean)) {
+      const [ref, obj, date, peeled, peeledDate] = line.split('\t');
+      const unix = Number(peeledDate || date);
+      if (unix > since) refs.push({ ref, tip: peeled || obj, date: new Date(unix * 1000).toISOString() });
+    }
+  }
+  const dirty = run(['status', '--porcelain']).split('\n').filter(Boolean);
+  return { refs, dirty };
+}
+
 // Informational only: which other open lanes also hold each unpushed ref's tip, as a local branch or
 // tag. A reflog or remote-tracking ref is not "held". It never exempts a commit from the check.
 export function siblingHoldings(deps, ctx, laneName, refs) {

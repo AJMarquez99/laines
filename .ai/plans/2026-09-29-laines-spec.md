@@ -134,7 +134,7 @@ would happen, exit 0. MCP tool names are `laines_<command>` with snake_case argu
 | `config get [key]` | ✅ | ✅ | Read settings. |
 | `config set <key> <value>` | ✅ | — | Change settings. Human-only. |
 | `watch [file]` | ✅ | — | Follow the board (or any file) and print new lines. |
-| `doctor [--prune]` | ✅ | ✅ (no `--prune`) | Diagnose container, lanes, machine index, agent reach. |
+| `doctor [--prune]` | ✅ | ✅ (no `--prune`) | Diagnose container, lanes, machine index, agent reach. A closed lane whose clone remains gets a `closed:<lane>` check: a note when nothing changed since the close, a failure when a branch or tag tip has a committer date after `closed` or the clone has uncommitted files (work that belongs to no open lane). Committer dates can be rewritten, so this is a heuristic. |
 
 **Exit codes:** `0` ok (incl. dry-run) · `1` unexpected or external failure · `2` user-fixable
 input or config · `3` blocked by a safety boundary or needs a human · `4` capability denied.
