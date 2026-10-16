@@ -201,18 +201,18 @@ contract.
 ## Trust model
 
 - **Hooks run as you**, outside your agent's permission prompts. Under `notify` (the default), a
-  hook that anyone writes to `.laines/hooks/` (you, an agent, a script) runs on the next `create`
-  or `refresh`. The board note and `laines doctor` are how you notice. Use
+  hook that anyone writes to `.laines/hooks/` (you, an agent, a script) runs at its next event
+  (`create`, `refresh` or teardown). The board note and `laines doctor` are how you notice. Use
   `laines hooks policy approve` when agents or untrusted content could write hooks: a new or
   changed hook then waits for you to run `laines hooks approve`.
 - **The Claude deny rules** steer agents onto the MCP tools, where `teardown.mcp` and
   `teardown.mcpForce` decide when you confirm. They are prefix rules, so a determined agent can get
   around them (for example with `sh -c`). They are a guardrail, not a sandbox.
-- **Hooks can't run human-only commands.** laines sets `LAINES_HOOK` for every hook and refuses
-  `config set`, `hooks approve`, `hooks policy` and `adopt` from one. `teardown` and `release` are
-  refused too unless you run `laines config set hooks.manage true`. Refusals go to the audit log.
-  This only stops accidents: a hook is your code, and it can unset the variable or edit
-  `.laines/config.json` directly. The hook policy is the boundary.
+- **Hooks are refused human-only commands, as a guardrail.** laines sets `LAINES_HOOK` for every
+  hook and refuses `config set`, `hooks approve`, `hooks policy` and `adopt` from one. `teardown`
+  and `release` are refused too unless you run `laines config set hooks.manage true`. Refusals go
+  to the container's audit log. This only stops accidents: a hook is your code, and it can unset
+  the variable or edit `.laines/config.json` directly. The hook policy is the boundary.
 - **Repositories.** laines never executes anything a repository commits. A lane refuses symlinks
   committed at `.ai`, `.ai/context`, `.ai/plans`, `.claude`, or at any file laines writes.
 
