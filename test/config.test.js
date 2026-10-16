@@ -15,7 +15,7 @@ describe('config', () => {
       lanePrefix: 'lane_',
       maxLanes: 20,
       ports: { stride: 10 },
-      hooks: { policy: 'notify', timeoutSec: 300, stableAfter: 3 },
+      hooks: { policy: 'notify', timeoutSec: 300, stableAfter: 3, manage: false },
       teardown: { mcp: 'confirm', mcpForce: 'confirm' },
       capabilities: { create: true, report: true, keep: true, teardown: true, aiSync: true },
       agents: ['claude'],

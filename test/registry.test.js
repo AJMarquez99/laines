@@ -24,6 +24,9 @@ describe('command registry', () => {
   it('marks exactly the commands that carry agent deny rules as human-only', () => {
     const humanOnly = Object.entries(COMMANDS).filter(([, e]) => e.humanOnly).map(([n]) => n).sort();
     expect(humanOnly).toEqual([...HUMAN_ONLY_COMMANDS].sort());
+    const gates = Object.entries(COMMANDS).filter(([, e]) => e.gate).map(([n]) => n).sort();
+    expect(gates).toEqual(['adopt', 'config set', 'hooks approve', 'hooks policy']);
+    expect(gates.every((n) => COMMANDS[n].humanOnly)).toBe(true);
   });
 
   it('refuses a command whose capability is off with exit 4, from the CLI too', async () => {

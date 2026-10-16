@@ -26,6 +26,8 @@ export const ConfigSchema = z.strictObject({
       policy: z.enum(['approve', 'notify', 'open']).default('notify'),
       timeoutSec: z.number().int().min(1).max(3600).default(300),
       stableAfter: z.number().int().min(1).max(100).default(3),
+      // Lets hooks run teardown and release; see the guard in commands/registry.js.
+      manage: z.boolean().default(false),
     })
     .prefault({}),
   teardown: z
