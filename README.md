@@ -211,8 +211,9 @@ contract.
 - **Hooks are refused human-only commands, as a guardrail.** laines sets `LAINES_HOOK` for every
   hook and refuses `config set`, `hooks approve`, `hooks policy` and `adopt` from one. `teardown`
   and `release` are refused too unless you run `laines config set hooks.manage true`. Refusals go
-  to the container's audit log. This only stops accidents: a hook is your code, and it can unset
-  the variable or edit `.laines/config.json` directly. The hook policy is the boundary.
+  to the container's audit log when one is known. This only stops accidents: a hook is your
+  code, and it can unset the variable or edit `.laines/config.json` directly. The hook policy is
+  the boundary.
 - **Repositories.** laines never executes anything a repository commits. A lane refuses symlinks
   committed at `.ai`, `.ai/context`, `.ai/plans`, `.claude`, or at any file laines writes.
 
@@ -329,6 +330,7 @@ hooks run `teardown` and `release`; see [Trust model](#trust-model).
 | **0.4.8: Forced teardown over MCP** | typed second confirmation (`teardown.mcpForce`), sibling-lane holdings in teardown prompts and refusals | ✅ Done |
 | **0.4.9: Closed-lane gaps** | doctor and `create` handle closed lanes with a leftover clone, teardown over MCP can delete it (typed force when work is unpushed), stale `laines-mcp` shown | ✅ Done |
 | **0.4.10: Security pass** | create, refresh, adopt and teardown refuse to write, archive or delete through a symlink committed in the lane | ✅ Done |
+| **0.4.11: Hook trust** | trust model documented, hooks refused human-only commands unless `hooks.manage` is on, doctor warns about unapproved hooks under `notify`/`open` | ✅ Done |
 | **M5: Release** | CI on macOS and Linux, security documentation, npm package | Planned |
 
 Out of scope for v1: Windows and several repositories in one lane.

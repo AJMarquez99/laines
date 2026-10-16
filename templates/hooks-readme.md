@@ -63,4 +63,5 @@ hooks are stable, a human locks them with `laines hooks approve --lock`.
 
 A hook must not run laines' human-only commands. `config set`, `hooks approve`, `hooks policy` and
 `adopt` are always refused from a hook; `teardown` and `release` are refused unless a human sets
-`hooks.manage` (`laines config set hooks.manage true`).
+`hooks.manage` (`laines config set hooks.manage true`). Anything a hook leaves running (a dev
+server, a terminal, an agent session) inherits `LAINES_HOOK` and is treated as a hook too.
