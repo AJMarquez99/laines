@@ -64,7 +64,8 @@ no remote, and reports which refs hold them. Save unpushed work instead of forci
     git -C <lane> bundle create ~/lane-backup.bundle --all --not --remotes
 
 Over MCP, teardown asks the human to confirm by default. Teardown, release, hook approval, hook
-policy and config changes are human actions.
+policy and config changes are human actions. The deny rules steer agents to the MCP tools; they are
+a guardrail, not a sandbox.
 
 ## Hooks
 
@@ -77,7 +78,10 @@ See `.laines/hooks/README.md`.
 - `laines hooks status` lists each hook as approved, changed or new, with a diff.
 - New containers run changed hooks and flag them on the board (policy `notify`). Once the hooks
   are stable, a human locks them with `laines hooks approve --lock`; from then on a changed hook
-  is refused until a human approves it.
+  is refused until a human approves it. `laines doctor` warns while a new or changed hook would run
+  unapproved.
+- Hooks may not run human-only commands: `teardown` and `release` only with `hooks.manage` set by
+  a human, the rest never.
 
 ## MCP tools
 

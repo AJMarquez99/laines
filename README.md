@@ -102,8 +102,9 @@ laines init ~/work/other-lanes --remote git@github.com:your-org/other.git --dry-
   templates.
 - **`.laines/`**: `container.json` (marker), `config.json` (settings), `lanes.json` (lane index),
   `hooks/` (your setup scripts) and `audit.jsonl`.
-- **Claude permission deny rules** in `.claude/settings.json`, so agents can't run human-only
-  commands (teardown, release, hook approval, hook policy, config changes) from a shell.
+- **Claude permission deny rules** in `.claude/settings.json`, so agents are steered to the MCP
+  tools instead of running human-only commands (teardown, release, hook approval, hook policy,
+  config changes) from a shell. This is a guardrail; see [Trust model](#trust-model).
 - **A machine-unique container ID and a port block**, recorded in the machine index
   (`~/.config/laines/containers.json`) so several containers on one machine never collide.
 
@@ -122,7 +123,7 @@ human-readable output.
 | `laines adopt <dir> [--id] [--agents] [--dry-run]` | Turn an existing git checkout into a container (human-only). The folder becomes the container and its contents become `lane_1` unchanged (uncommitted work, stashes and ignored files included); the project's `.ai/` becomes the shared layer. Needs a reachable `origin`. The checkout moves, so recreate anything that stored its old absolute path afterwards (examples: a language virtualenv, a build cache). `lane_1` keeps the project's Docker Compose project name, so existing volumes and containers stay attached; other lanes get their own (`<id>-l<n>`). Containers made before M4.5 get its deny rule from `laines refresh <lane>`. |
 | `laines config get [key]` | Print the container's settings, or one dotted key such as `hooks.policy`. |
 | `laines config set <key> <value> [--dry-run]` | Change one setting (human-only). The value is JSON when it parses (`true`, `20`, `["claude"]`), else a string. Only that key changes in the file; the whole config is validated first. |
-| `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board, locks, the `.ai/` sync base (`ai-sync`), every open lane (noting when a committed `.ai/` differs from the container's: reported as an informational `note` on the check, shown as a `•` line in the table, never a failure), and how each agent reaches the lanes. For each closed lane whose clone remains it adds a `closed:<lane>` check: a `•` note (delete with `laines teardown <lane>`, or ignore) when nothing changed since the close, and a failure when a branch or tag tip was committed after the close or the clone has uncommitted files, since that work belongs to no open lane (committer dates are a heuristic: they can be rewritten). It flags a pre-M4.6 container whose laines files still need moving to `_` names (`laines refresh` does it). `--prune` removes machine-index entries for containers that no longer exist. |
+| `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board, locks, the `.ai/` sync base (`ai-sync`), every open lane (noting when a committed `.ai/` differs from the container's: reported as an informational `note` on the check, shown as a `•` line in the table, never a failure), and how each agent reaches the lanes. It warns (`!`, never a failure) when a new or changed hook will run unapproved under policy `notify` or `open`. For each closed lane whose clone remains it adds a `closed:<lane>` check: a `•` note (delete with `laines teardown <lane>`, or ignore) when nothing changed since the close, and a failure when a branch or tag tip was committed after the close or the clone has uncommitted files, since that work belongs to no open lane (committer dates are a heuristic: they can be rewritten). It flags a pre-M4.6 container whose laines files still need moving to `_` names (`laines refresh` does it). `--prune` removes machine-index entries for containers that no longer exist. |
 | `laines create [name] [--branch <b>] [--dry-run]` | Create a lane: clone the repository, allocate ports, write the lane's env file, identity and deny rules, run the `post-create` hook, and print its brief. If the hook fails the lane is kept, marked `setup-failed`, and `refresh` retries it. With no name it takes the lowest number that is neither an open lane nor already a directory, so a closed lane's leftover clone (or any stray `lane_N` folder) is skipped rather than failing with "already exists"; delete a leftover with `laines teardown <lane>`. |
 | `laines refresh [lane] [--dry-run]` | Rewrite a lane's local files and `.laines.env` from scratch, then run `post-create` again. Recovers a `setup-failed` lane. Also finishes laines' own container migrations: moves a pre-M4.6 container's laines files to their `_` names, rewrites laines' old `runbooks/lane-management.md` / `templates/lane-*.md` paths inside those files, and re-renders the lanes block in the container's `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` (text outside the block is untouched). `--dry-run` lists every write: migrations, `.laines.env` key changes, exclude-block entries, agent-file blocks, and the lane files it would write or skip. |
 | `laines list [--all]` | List open lanes (`--all` includes closed ones). |
@@ -196,6 +197,24 @@ Anything a hook leaves running must redirect its output, for example
 
 Make both executable (`chmod +x`). A container's `.laines/hooks/README.md` documents the full
 contract.
+
+## Trust model
+
+- **Hooks run as you**, outside your agent's permission prompts. Under `notify` (the default), a
+  hook that anyone writes to `.laines/hooks/` (you, an agent, a script) runs on the next `create`
+  or `refresh`. The board note and `laines doctor` are how you notice. Use
+  `laines hooks policy approve` when agents or untrusted content could write hooks: a new or
+  changed hook then waits for you to run `laines hooks approve`.
+- **The Claude deny rules** steer agents onto the MCP tools, where `teardown.mcp` and
+  `teardown.mcpForce` decide when you confirm. They are prefix rules, so a determined agent can get
+  around them (for example with `sh -c`). They are a guardrail, not a sandbox.
+- **Hooks can't run human-only commands.** laines sets `LAINES_HOOK` for every hook and refuses
+  `config set`, `hooks approve`, `hooks policy` and `adopt` from one. `teardown` and `release` are
+  refused too unless you run `laines config set hooks.manage true`. Refusals go to the audit log.
+  This only stops accidents: a hook is your code, and it can unset the variable or edit
+  `.laines/config.json` directly. The hook policy is the boundary.
+- **Repositories.** laines never executes anything a repository commits. A lane refuses symlinks
+  committed at `.ai`, `.ai/context`, `.ai/plans`, `.claude`, or at any file laines writes.
 
 ## Toolchains and version managers
 
@@ -294,7 +313,8 @@ lane.
 `capabilities` in `.laines/config.json` switches off `create` (also `refresh`), `report`, `keep`,
 `teardown` or `aiSync` for the CLI and MCP alike (exit `4`). `"locked": true` refuses `config set`,
 `hooks approve`, `hooks policy`, `release` and `teardown --force`, even from your own terminal
-(exit `3`); unlocking requires editing the file by hand.
+(exit `3`); unlocking requires editing the file by hand. `hooks.manage` (default `false`) lets
+hooks run `teardown` and `release`; see [Trust model](#trust-model).
 
 ## Roadmap
 

@@ -29,7 +29,8 @@ working in.
    `laines_report` MCP tool. Prefer the `laines_*` MCP tools when your session has them.
 5. Do not edit `.laines/` (except hook scripts in `.laines/hooks/`, which run only as the hook
    policy allows) or another lane's files. Teardown, release, hook approval, hook policy and config
-   changes are for a human.
+   changes are for a human. Hooks must not call these commands: laines refuses them from a hook
+   unless a human enables `hooks.manage`.
 6. Source the lane's `.laines.env` before starting services, and use only the lane's ports.
    `PORT` is set for lanes laines cloned; an adopted checkout does not get it and keeps the
    project's own ports (laines' block is still in `LANE_PORT_BASE`/`LANE_PORT_COUNT`).

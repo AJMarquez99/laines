@@ -153,7 +153,7 @@ Writes to `lanes.json`, the board, and `containers.json` happen under their mkdi
   "lanePrefix": "lane_",
   "maxLanes": 20,
   "ports": { "stride": 10 },
-  "hooks": { "policy": "notify", "timeoutSec": 300, "stableAfter": 3 },
+  "hooks": { "policy": "notify", "timeoutSec": 300, "stableAfter": 3, "manage": false },
   "teardown": { "mcp": "confirm", "mcpForce": "confirm" },
   "capabilities": { "create": true, "report": true, "keep": true, "teardown": true, "aiSync": true },
   "agents": ["claude"],
@@ -323,6 +323,13 @@ Checksums of approved hooks live in `hooks.lock.json`.
 - When the hook set has been unchanged across the last `stableAfter` (default 3) successful
   creates, `create`, `doctor`, and the board suggest `laines hooks approve --lock`. L.AI.nes
   never changes the policy by itself.
+- Under `notify` and `open`, `doctor` warns (never fails) while a new or changed hook would run
+  unapproved (0.4.11).
+- Hooks run with `LAINES_HOOK` set. `invoke` refuses human-only commands from a hook:
+  `config set`, `hooks approve`, `hooks policy` and `adopt` always; `teardown` and `release` unless
+  `hooks.manage` is `true` (default `false`). Each refusal is audited (`hook-refused`). This is a
+  guardrail against accidents: a hook is the user's code and can unset the variable; the policy is
+  the boundary (0.4.11).
 
 ## 9. Safety
 
@@ -345,7 +352,8 @@ for `laines teardown`, `laines release`, `laines adopt`, `laines hooks approve`,
 `laines config set` into the container's `.claude/settings.json` (covers the container session
 and its subagents); `create` and `refresh` merge the same rules into each lane's
 `.claude/settings.local.json` (verified: container settings do not apply in a lane). Agents go
-through MCP, where §9.3 applies; humans run these commands in their own terminal.
+through MCP, where §9.3 applies; humans run these commands in their own terminal. The rules
+match command prefixes, so they steer an agent rather than contain it (`sh -c` gets around them).
 
 ### 9.3 Teardown over MCP
 

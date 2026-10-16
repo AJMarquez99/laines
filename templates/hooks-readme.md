@@ -60,3 +60,7 @@ Hook policy (`laines config get hooks.policy`): `notify` runs changed hooks and 
 board; `approve` refuses new or changed hooks until a human runs `laines hooks approve`; `open` runs
 hooks without checks. `laines hooks status` shows each hook's state and what changed. Once the
 hooks are stable, a human locks them with `laines hooks approve --lock`.
+
+A hook must not run laines' human-only commands. `config set`, `hooks approve`, `hooks policy` and
+`adopt` are always refused from a hook; `teardown` and `release` are refused unless a human sets
+`hooks.manage` (`laines config set hooks.manage true`).
