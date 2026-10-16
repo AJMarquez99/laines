@@ -105,9 +105,9 @@ export async function runDoctor(opts, deps) {
   const check = (name, fn) => {
     try {
       const out = fn();
-      // A check may return { detail, note }: the note is informational, never a failure.
-      const { detail, note } = out && typeof out === 'object' ? out : { detail: out };
-      result.checks.push({ name, ok: true, detail: note ? `${detail}; ${note}` : detail ?? '', ...(note ? { note } : {}) });
+      // A check may return { detail, note, warn }: the note is informational, never a failure.
+      const { detail, note, warn } = out && typeof out === 'object' ? out : { detail: out };
+      result.checks.push({ name, ok: true, ...(warn ? { warn } : {}), detail: note ? `${detail}; ${note}` : detail ?? '', ...(note ? { note } : {}) });
     } catch (err) {
       result.ok = false;
       result.checks.push({ name, ok: false, detail: err.message.split('\n')[0] });
@@ -193,9 +193,9 @@ export async function runDoctor(opts, deps) {
     const problems = [];
     const stuck = hooks.filter((h) => !isExecutable(h.path)).map((h) => h.rel);
     if (stuck.length) problems.push(`not executable: ${stuck.join(', ')} (chmod +x)`);
-    const unapproved = hooks.filter((h) => h.state !== 'approved').map((h) => h.rel);
+    const unapproved = hooks.filter((h) => h.state !== 'approved');
     if (policy === 'approve' && unapproved.length) {
-      problems.push(`policy approve will refuse ${unapproved.join(', ')} until a human runs \`laines hooks approve\``);
+      problems.push(`policy approve will refuse ${unapproved.map((h) => h.rel).join(', ')} until a human runs \`laines hooks approve\``);
     }
     if (problems.length) throw new Error(problems.join('; '));
     const counts = ['approved', 'changed', 'new']
@@ -208,7 +208,14 @@ export async function runDoctor(opts, deps) {
     if (config && lanesState && lockSuggested(lanesState, config, current)) {
       parts.push(`unchanged across the last ${config.hooks.stableAfter} creates: a human can lock them with \`laines hooks approve --lock\``);
     }
-    return parts.join('; ');
+    // Under notify (the default) and open, anyone who can write .laines/hooks/ runs code as the user.
+    if (!unapproved.length || !policy || policy === 'approve') return parts.join('; ');
+    const list = unapproved.map((h) => `${h.rel} (${h.state})`).join(', ');
+    const one = unapproved.length === 1;
+    const note = policy === 'open'
+      ? `${list} ${one ? 'runs' : 'run'} without approval by policy open: review with \`laines hooks status\``
+      : `${list} will run unapproved at ${one ? 'its' : 'their'} next event: review with \`laines hooks status\`, then \`laines hooks approve\``;
+    return { detail: parts.join('; '), note, warn: true };
   });
   // Only inside laines-mcp: a long-running server keeps the code it loaded, however often laines is upgraded.
   if (deps.mcpServer) {

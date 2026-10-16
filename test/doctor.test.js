@@ -13,6 +13,7 @@ import { runDotAi } from '../src/lib/dotai.js';
 import { claimContainer, loadIndex } from '../src/lib/machine-index.js';
 import { NotAContainerError } from '../src/lib/errors.js';
 import { loadContainer } from '../src/lib/container.js';
+import { invoke } from '../src/commands/registry.js';
 import { updateLanes } from '../src/lib/lanes-store.js';
 import { tmp, cleanupTmp, testDeps, setupContainer, writeHook, setConfig, gitIn } from './helpers.js';
 
@@ -171,7 +172,7 @@ describe('doctor lane checks', () => {
     const s = await setupContainer();
     expect(byName(await runDoctor({ container: s.container }, s.deps)).hooks).toMatchObject({ ok: true, detail: 'policy notify; no hooks' });
     writeHook(s.container, 'post-create', 'true');
-    expect(byName(await runDoctor({ container: s.container }, s.deps)).hooks).toMatchObject({ ok: true, detail: 'policy notify; 1 hook(s): 1 new' });
+    expect(byName(await runDoctor({ container: s.container }, s.deps)).hooks).toMatchObject({ ok: true, warn: true, detail: expect.stringMatching(/^policy notify; 1 hook\(s\): 1 new; /) });
     writeHook(s.container, 'pre-teardown', 'true', { mode: 0o644 });
     const bad = byName(await runDoctor({ container: s.container }, s.deps)).hooks;
     expect(bad.ok).toBe(false);
@@ -179,6 +180,29 @@ describe('doctor lane checks', () => {
     writeHook(s.container, 'pre-teardown', 'true');
     setConfig(s.container, (c) => { c.hooks.policy = 'approve'; });
     expect(byName(await runDoctor({ container: s.container }, s.deps)).hooks.detail).toContain('policy approve will refuse post-create, pre-teardown');
+  });
+
+  it('warns, without failing, that new or changed hooks will run unapproved under notify or open', async () => {
+    const s = await setupContainer();
+    writeHook(s.container, 'post-create', 'true');
+    writeHook(s.container, 'pre-teardown', 'true');
+    await invoke('hooks approve', { container: s.container }, s.deps);
+    writeHook(s.container, 'pre-teardown', 'echo changed');
+    writeHook(s.container, 'post-teardown', 'true');
+    const r = await runDoctor({ container: s.container }, s.deps);
+    const hooks = byName(r).hooks;
+    expect(r.ok).toBe(true);
+    expect(hooks).toMatchObject({ ok: true, warn: true });
+    expect(hooks.note).toBe('pre-teardown (changed), post-teardown (new) will run unapproved at their next event: review with `laines hooks status`, then `laines hooks approve`');
+    expect(formatDoctor(r).split('\n').some((l) => l.startsWith('! hooks'))).toBe(true);
+    setConfig(s.container, (c) => { c.hooks.policy = 'open'; });
+    expect(byName(await runDoctor({ container: s.container }, s.deps)).hooks).toMatchObject({
+      ok: true,
+      warn: true,
+      note: 'pre-teardown (changed), post-teardown (new) run without approval by policy open: review with `laines hooks status`',
+    });
+    await invoke('hooks approve', { container: s.container }, s.deps);
+    expect(byName(await runDoctor({ container: s.container }, s.deps)).hooks).not.toHaveProperty('warn');
   });
 
   it('suggests a lock once the hook set is stable', async () => {
