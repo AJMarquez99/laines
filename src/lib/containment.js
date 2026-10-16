@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, realpathSync, rmSync } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { BlockedError } from './errors.js';
 
 // Spec §9.1: before anything under a lane is touched destructively, the path must be
@@ -16,6 +16,17 @@ export function assertLaneDir(root, laneDir, name) {
   const real = realpathSync(lexical);
   if (dirname(real) !== root || basename(real) !== name) refuse(`it resolves to ${real}, outside the container`);
   return real;
+}
+
+// A clone checks out whatever the repository commits: a symlinked .ai/, .ai/context, .ai/plans or
+// .claude would send lane-file writes and teardown's archive/delete outside the lane.
+export function assertNoLaneLinks(laneDir) {
+  for (const rel of ['.ai', '.ai/context', '.ai/plans', '.claude']) {
+    const path = join(laneDir, rel);
+    if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) {
+      throw new BlockedError(`${path} is a symbolic link (committed by the repository?): refusing to write, archive or delete through it. Remove the link from the lane, then retry.`);
+    }
+  }
 }
 
 export function removeLaneDir(root, laneDir, name) {

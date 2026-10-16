@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, isAbsolute, join } from 'node:path';
 import { gitOut } from './git.js';
 import { GitError } from './errors.js';
+import { assertNoLaneLinks } from './containment.js';
 import { readJson, writeJson } from './jsonfile.js';
 import { readTemplate, renderTemplate } from './templates.js';
 import { denyRules, mergeDenyRules } from './agent-files.js';
@@ -177,6 +178,7 @@ export function untrackedEntries(deps, repoDir, relDir) {
 // `dryRun` runs the same decisions without writing anything and returns what it would write or skip.
 export function writeLaneFiles(ctx, deps, lane, { dryRun = false } = {}) {
   const { name, number, laneDir, branch, ports } = lane;
+  assertNoLaneLinks(laneDir);
   const vars = {
     lane: name,
     laneId: laneId(ctx.id, name),

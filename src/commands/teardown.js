@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { loadContainer } from '../lib/container.js';
 import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
 import { dropRequests, putRequest, requestId } from '../lib/lanes-state.js';
-import { assertLaneDir, removeLaneDir } from '../lib/containment.js';
+import { assertLaneDir, assertNoLaneLinks, removeLaneDir } from '../lib/containment.js';
 import { untrackedEntries } from '../lib/lane-files.js';
 import { forceFingerprint, holdingLines, siblingHoldings, unpushedWork } from '../lib/lane-git.js';
 import { hookStates, listHooks } from '../lib/hooks.js';
@@ -14,6 +14,8 @@ import { writeAiBase } from '../lib/ai-tree.js';
 import { BlockedError, InvalidInputError } from '../lib/errors.js';
 
 function archivePlans(ctx, deps, laneDir, name) {
+  // Re-checked here: the pre-teardown hook runs between the first check and the archive.
+  assertNoLaneLinks(laneDir);
   const entries = untrackedEntries(deps, laneDir, '.ai/plans');
   if (!entries.length) return null;
   const base = `${deps.now().slice(0, 10)}_${name}`;
@@ -91,6 +93,7 @@ export async function runTeardown(opts, deps) {
   const laneDir = join(ctx.root, lane.repos[0].path);
   const real = assertLaneDir(ctx.root, laneDir, lane.repos[0].path);
   if (closed && !real && !cleanupPending) throw new InvalidInputError(`Lane ${name} is already closed and its clone is gone: nothing left to tear down.`);
+  if (real) assertNoLaneLinks(real);
   const isRepo = Boolean(real) && existsSync(join(real, '.git'));
   // A directory that is not a repository cannot be proven safe to delete: refuse unless --force.
   const unverifiable = { dirty: [], stashes: 0, unpushed: 0, refs: [], noUpstream: null, problems: ['not a git repository: unpushed work cannot be verified'] };
