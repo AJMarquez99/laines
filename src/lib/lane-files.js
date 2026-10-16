@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { gitOut } from './git.js';
-import { GitError } from './errors.js';
+import { BlockedError, GitError } from './errors.js';
 import { assertNoLaneLinks } from './containment.js';
 import { readJson, writeJson } from './jsonfile.js';
 import { readTemplate, renderTemplate } from './templates.js';
@@ -203,8 +203,13 @@ export function writeLaneFiles(ctx, deps, lane, { dryRun = false } = {}) {
   };
   const put = (rel, content) => {
     if (tracked(rel)) return;
+    // A link left here (or committed under another case on a case-insensitive disk, which ls-files
+    // reports as untracked) would send the write to its target.
+    const file = join(laneDir, rel);
+    if (lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink()) {
+      throw new BlockedError(`${file} is a symbolic link: refusing to write through it. Remove the link from the lane, then retry.`);
+    }
     if (!dryRun) {
-      const file = join(laneDir, rel);
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, content);
     }

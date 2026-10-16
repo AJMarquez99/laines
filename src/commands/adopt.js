@@ -3,6 +3,7 @@ import { basename, dirname, join, parse, resolve } from 'node:path';
 import { buildConfig } from '../config.js';
 import { BlockedError, InvalidInputError, LainesError } from '../lib/errors.js';
 import { configDir, containerPaths, shellQuote } from '../lib/paths.js';
+import { assertNoLaneLinks } from '../lib/containment.js';
 import { repoSlugFromRemote, uniqueId, validateId } from '../lib/ids.js';
 import { allocateBlock, lanePorts } from '../lib/ports.js';
 import { claimContainer, loadIndex, releaseContainer } from '../lib/machine-index.js';
@@ -117,6 +118,8 @@ function inspect(opts, deps) {
       `${dir}/.ai is a symbolic link: laines would write lane files through it. Replace it with a real folder (or remove it), then run laines adopt again.`,
     );
   }
+  // .ai/context, .ai/plans or .claude as a link would only be caught after the project has moved.
+  assertNoLaneLinks(dir);
   return { dir, name: basename(dir), parent: dirname(dir), remote };
 }
 

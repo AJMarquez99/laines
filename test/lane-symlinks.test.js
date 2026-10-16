@@ -6,7 +6,6 @@ import { runRefresh } from '../src/commands/refresh.js';
 import { runTeardown } from '../src/commands/teardown.js';
 import { loadContainer } from '../src/lib/container.js';
 import { readLanes } from '../src/lib/lanes-store.js';
-import { BlockedError } from '../src/lib/errors.js';
 import { tmp, cleanupTmp, setupContainer, gitIn } from './helpers.js';
 
 afterEach(cleanupTmp);
@@ -47,14 +46,14 @@ describe('lane files refuse committed symlinks', () => {
     const s = await setupContainer();
     const outside = outsideDir();
     pushLinks(s, { '.ai/context': outside });
-    await expect(runCreate({ container: s.container }, s.deps)).rejects.toBeInstanceOf(BlockedError);
+    await expect(runCreate({ container: s.container }, s.deps)).rejects.toThrow(/symbolic link/);
     expect(readdirSync(outside)).toEqual(['precious.txt']);
   });
 
   it('refresh refuses a lane whose .ai/context became a symlink out of the lane', async () => {
     const outside = outsideDir();
     const s = await linkedLane({ '.ai/context': outside });
-    await expect(runRefresh({ lane: 'lane_1', container: s.container }, s.deps)).rejects.toBeInstanceOf(BlockedError);
+    await expect(runRefresh({ lane: 'lane_1', container: s.container }, s.deps)).rejects.toThrow(/symbolic link/);
     expect(readdirSync(outside)).toEqual(['precious.txt']);
   });
 
@@ -62,7 +61,7 @@ describe('lane files refuse committed symlinks', () => {
     const s = await setupContainer();
     const readme = readFileSync(join(s.container, '.ai', 'README.md'), 'utf8');
     pushLinks(s, { '.ai': '../.ai' });
-    await expect(runCreate({ container: s.container }, s.deps)).rejects.toBeInstanceOf(BlockedError);
+    await expect(runCreate({ container: s.container }, s.deps)).rejects.toThrow(/symbolic link/);
     expect(readFileSync(join(s.container, '.ai', 'README.md'), 'utf8')).toBe(readme);
     expect(existsSync(join(s.container, '.ai', '.lane.json'))).toBe(false);
   });
@@ -74,7 +73,7 @@ describe('teardown refuses committed symlinks', () => {
     const plansDir = outsideDir();
     const s = await linkedLane({ '.ai/context': ctxDir, '.ai/plans': plansDir });
     expect(gitIn(s.dir, 'status', '--porcelain')).toBe('');
-    await expect(runTeardown({ lane: 'lane_1', container: s.container }, s.deps)).rejects.toBeInstanceOf(BlockedError);
+    await expect(runTeardown({ lane: 'lane_1', container: s.container }, s.deps)).rejects.toThrow(/symbolic link/);
     expect(readdirSync(ctxDir)).toEqual(['precious.txt']);
     expect(readdirSync(plansDir)).toEqual(['precious.txt']);
     expect(existsSync(join(s.container, '.ai', 'archive', '2026-09-29_lane_1'))).toBe(false);
@@ -86,7 +85,7 @@ describe('teardown refuses committed symlinks', () => {
     const s = await linkedLane({ '.ai': '../.ai' });
     writeFileSync(join(s.container, '.ai', 'context', 'shared.md'), 'ctx\n');
     writeFileSync(join(s.container, '.ai', 'plans', 'shared.md'), 'plan\n');
-    await expect(runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps)).rejects.toBeInstanceOf(BlockedError);
+    await expect(runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps)).rejects.toThrow(/symbolic link/);
     expect(readFileSync(join(s.container, '.ai', 'context', 'shared.md'), 'utf8')).toBe('ctx\n');
     expect(readFileSync(join(s.container, '.ai', 'plans', 'shared.md'), 'utf8')).toBe('plan\n');
     expect(laneState(s).state).toBe('active');
@@ -94,6 +93,30 @@ describe('teardown refuses committed symlinks', () => {
 
   it('refuses a dry run too, so the MCP confirmation never reads through the link', async () => {
     const s = await linkedLane({ '.ai/plans': outsideDir() });
-    await expect(runTeardown({ lane: 'lane_1', dryRun: true, container: s.container }, s.deps)).rejects.toBeInstanceOf(BlockedError);
+    await expect(runTeardown({ lane: 'lane_1', dryRun: true, container: s.container }, s.deps)).rejects.toThrow(/symbolic link/);
+  });
+});
+
+describe('lane files refuse to write through a file symlink', () => {
+  it('refresh refuses a lane whose .laines.env is a symlink out of the lane', async () => {
+    const s = await setupContainer();
+    const l = await runCreate({ container: s.container }, s.deps);
+    const outside = outsideDir();
+    rmSync(join(l.path, '.laines.env'));
+    symlinkSync(join(outside, 'precious.txt'), join(l.path, '.laines.env'));
+    await expect(runRefresh({ lane: 'lane_1', container: s.container }, s.deps)).rejects.toThrow(/symbolic link/);
+    expect(readFileSync(join(outside, 'precious.txt'), 'utf8')).toBe('keep\n');
+  });
+
+  // ls-files matches case-sensitively, so on a case-insensitive disk Claude.local.md reads as untracked.
+  const probe = tmp('laines-case-');
+  writeFileSync(join(probe, 'a'), '');
+  const caseInsensitive = existsSync(join(probe, 'A'));
+  it.runIf(caseInsensitive)('create refuses a repository that commits CLAUDE.local.md under another case as a symlink', async () => {
+    const s = await setupContainer();
+    const outside = outsideDir();
+    pushLinks(s, { 'Claude.local.md': join(outside, 'precious.txt') });
+    await expect(runCreate({ container: s.container }, s.deps)).rejects.toThrow(/symbolic link/);
+    expect(readFileSync(join(outside, 'precious.txt'), 'utf8')).toBe('keep\n');
   });
 });
