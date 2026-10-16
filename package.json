@@ -1,6 +1,6 @@
 {
   "name": "@ajmarquez99/laines",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "type": "module",
   "description": "L.AI.nes: isolated parallel work lanes for coding agents. One shared .ai/ knowledge base, many independent clones, each with its own local environment.",
   "bin": {

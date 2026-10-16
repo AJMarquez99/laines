@@ -308,6 +308,7 @@ lane.
 | **M4.6: Adopt fixes** | Fixes from the first real adoption: Compose identity for adopted `lane_1`, `_` laines files, exclude block that lists only untracked files, doctor notes, `ai sync` reasons | ✅ Done |
 | **0.4.8: Forced teardown over MCP** | typed second confirmation (`teardown.mcpForce`), sibling-lane holdings in teardown prompts and refusals | ✅ Done |
 | **0.4.9: Closed-lane gaps** | doctor and `create` handle closed lanes with a leftover clone, teardown over MCP can delete it (typed force when work is unpushed), stale `laines-mcp` shown | ✅ Done |
+| **0.4.10: Security pass** | create, refresh, adopt and teardown refuse to write, archive or delete through a symlink committed in the lane | ✅ Done |
 | **M5: Release** | CI on macOS and Linux, security documentation, npm package | Planned |
 
 Out of scope for v1: Windows and several repositories in one lane.
