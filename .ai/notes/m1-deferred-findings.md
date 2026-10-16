@@ -16,5 +16,3 @@ carried into M2 have been implemented.
 - Users whose home directory is a git repository cannot `init` under it (by design); document it
   in the README (M5).
 - `npm test` runs vitest in watch mode; `prepublishOnly` skips lint (M5 CI covers lint).
-- M5: tracked `reference/` and a personal path in the archived design log need removing before
-  the repository goes public.
