@@ -43,7 +43,9 @@ describe('laneEnv', () => {
     expect(env).toContain('LANE_ID="my-app/lane_2"');
     expect(env).toContain('LANE_ENV_FILE="/tmp/my lanes/lane_2/.laines.env"');
     expect(env).toContain('LANE_BRANCH="feat/\\$x"');
-    const out = execFileSync('sh', ['-c', `set -a; . /dev/stdin; printf '%s|%s' "$LANE_DIR" "$LANE_BRANCH"`], { input: env, encoding: 'utf8' });
+    const file = join(tmp(), '.laines.env');
+    writeFileSync(file, env);
+    const out = execFileSync('sh', ['-c', `set -a; . "$1"; printf '%s|%s' "$LANE_DIR" "$LANE_BRANCH"`, 'sh', file], { encoding: 'utf8' });
     expect(out).toBe('/tmp/my lanes/lane_2|feat/$x');
   });
 
