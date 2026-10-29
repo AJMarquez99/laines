@@ -162,7 +162,7 @@ export async function runCreate(opts, deps) {
   }
 
   let files;
-  let baseWarning = null;
+  let baseWarning;
   try {
     await gitOutAsync(deps, ['clone', '--origin', 'origin', '--', repo.remote, plan.laneDir], ctx.root);
     const current = gitOut(deps, ['branch', '--show-current'], plan.laneDir).trim();
