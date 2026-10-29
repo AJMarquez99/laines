@@ -1,6 +1,6 @@
 {
   "name": "@ajmarquez99/laines",
-  "version": "0.4.11",
+  "version": "0.4.12",
   "type": "module",
   "description": "L.AI.nes: isolated parallel work lanes for coding agents. One shared .ai/ knowledge base, many independent clones, each with its own local environment.",
   "bin": {
@@ -50,7 +50,7 @@
     "@ajmarquez99/dot-ai": "^1.1.1",
     "@modelcontextprotocol/sdk": "^1.32.0",
     "commander": "^12.1.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.16.0",

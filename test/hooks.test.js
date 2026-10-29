@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { approveHooks, checksum, currentChecksums, hookDiff, hookStates, isExecutable, listHooks, readHooksLock } from '../src/lib/hooks.js';
+import { approveHooks, checksum, currentChecksums, hookDiff, hookStates, isExecutable, lacksShebang, listHooks, readHooksLock } from '../src/lib/hooks.js';
 import { containerPaths } from '../src/lib/paths.js';
 import { MalformedConfigError } from '../src/lib/errors.js';
 import { tmp, cleanupTmp, testDeps, writeHook } from './helpers.js';
@@ -40,6 +40,19 @@ describe('checksum and executable bit', () => {
     expect(isExecutable(writeHook(root, 'post-create', 'true'))).toBe(true);
     expect(isExecutable(writeHook(root, 'pre-teardown', 'true', { mode: 0o644 }))).toBe(false);
     expect(isExecutable(join(root, 'missing'))).toBe(false);
+  });
+
+  it('flags a text file with no #! line, not a script or a compiled binary', () => {
+    const { root } = setup();
+    expect(lacksShebang(writeHook(root, 'post-create', 'true'))).toBe(false);
+    const bare = join(root, 'bare');
+    writeFileSync(bare, 'echo no shebang\n');
+    expect(lacksShebang(bare)).toBe(true);
+    writeFileSync(bare, '');
+    expect(lacksShebang(bare)).toBe(true);
+    writeFileSync(bare, Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00]));
+    expect(lacksShebang(bare)).toBe(false);
+    expect(lacksShebang(join(root, 'missing'))).toBe(false);
   });
 });
 

@@ -1,4 +1,4 @@
-import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, closeSync, constants, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
@@ -39,6 +39,23 @@ export function isExecutable(path) {
     return isFile(path);
   } catch {
     return false;
+  }
+}
+
+// A text file with no #! line. The kernel refuses to start one (ENOEXEC), but glibc's execvp then
+// runs it with /bin/sh, so laines checks before spawning to refuse it the same way everywhere.
+// A NUL in the first bytes marks a compiled binary, which the kernel starts itself.
+export function lacksShebang(path) {
+  const buf = Buffer.alloc(512);
+  let fd;
+  try {
+    fd = openSync(path, 'r');
+    const head = buf.subarray(0, readSync(fd, buf, 0, buf.length, 0));
+    return !(head[0] === 0x23 && head[1] === 0x21) && !head.includes(0);
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
   }
 }
 
