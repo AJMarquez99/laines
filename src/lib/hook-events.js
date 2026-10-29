@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { appendAudit } from './audit.js';
-import { hookDiff, hookStates, isExecutable } from './hooks.js';
+import { hookDiff, hookStates, isExecutable, lacksShebang } from './hooks.js';
 import { laneVars } from './lane-files.js';
 import { EXIT_CODES, HookError } from './errors.js';
 
@@ -58,6 +58,10 @@ export async function runEvent(ctx, deps, { event, name, lane, cwd, vars: extraV
   for (const h of hooks) {
     if (!isExecutable(h.path)) {
       run.results.push({ hook: h.rel, status: null, signal: null, timedOut: false, durationMs: 0, untrusted: false, output: `${h.path} is not executable: run chmod +x on it.` });
+      return { ...run, outcome: 'failed' };
+    }
+    if (lacksShebang(h.path)) {
+      run.results.push({ hook: h.rel, status: null, signal: null, timedOut: false, durationMs: 0, untrusted: false, output: `${h.path} could not start: ${START_ERRORS.ENOEXEC}.` });
       return { ...run, outcome: 'failed' };
     }
     const r = await deps.runHook({ file: h.path, cwd, vars, timeoutMs: timeoutSec * 1000 });
