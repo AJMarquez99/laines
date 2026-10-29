@@ -60,7 +60,7 @@ After a security PR merges into `main`, bring `staging` level with it:
 
 ```bash
 git checkout main && git pull
-git push origin main:staging    # fast-forward, through the admin bypass on staging-protection
+git push origin main:staging    # fast-forward (through the admin bypass once staging-protection exists)
 ```
 
 - This must be a fast-forward. If the push is rejected as non-fast-forward, `staging` has commits

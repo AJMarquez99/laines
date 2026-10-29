@@ -46,7 +46,7 @@ them rather than the real environment.
 
 ## The audit gate
 
-CI runs `npm audit`. A new advisory, often a transitive one from `@modelcontextprotocol/sdk`, can
+CI runs `npm audit --audit-level=moderate`. A new advisory, often a transitive one from `@modelcontextprotocol/sdk`, can
 turn the `quality` check red on a PR that didn't touch dependencies. The fix is a separate
 `npm audit fix` or Dependabot PR. Never lower `--audit-level` to get a PR through.
 

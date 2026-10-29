@@ -29,9 +29,10 @@ The README's [Trust model](README.md#trust-model) section is the full descriptio
   refuses symlinks at `.ai`, `.ai/context`, `.ai/plans`, `.claude`, and at any file laines writes.
 - **Teardown over MCP needs a human by default.** `teardown.mcp` and `teardown.mcpForce` default to
   `confirm`, and forcing past unpushed work takes a typed confirmation. A client that can't ask the
-  human is refused outright and the request goes on the board (`runTeardownMcp` in
+  human is refused; if the lane is otherwise clear to remove, the request is left on the board for
+  a human to finish with `laines teardown <lane>` (`runTeardownMcp` in
   [`src/mcp/teardown.js`](src/mcp/teardown.js)). With `teardown.mcp: auto`, the CLI's checks apply
-  with no human prompt.
+  with no human prompt; with `teardown.mcp: off`, teardown over MCP is refused.
 - **Locked mode and capabilities** limit what `laines-mcp` may do. Both are enforced in `invoke`,
   the single entry point the CLI and the MCP server share
   ([`src/commands/registry.js`](src/commands/registry.js)).
@@ -41,9 +42,10 @@ The README's [Trust model](README.md#trust-model) section is the full descriptio
 Please report any way to make laines:
 
 - delete or write outside a lane or container;
-- tear down a clone with unpushed, uncommitted or stashed work, or a kept lane, without `--force`
-  or the typed MCP confirmation (see `unpushedWork`, `forceFingerprint` and the `expect` re-check
-  in [`src/commands/teardown.js`](src/commands/teardown.js));
+- tear down a kept lane by any means other than releasing it first;
+- delete a clone with unpushed, uncommitted or stashed work without `--force` or the typed MCP
+  confirmation (see `unpushedWork`, `forceFingerprint` and the `expect` re-check in
+  [`src/commands/teardown.js`](src/commands/teardown.js));
 - let an agent get past a confirmation gate without running a hook;
 - let `laines-mcp` perform a locked-refused or capability-denied action without
   `.laines/config.json` being edited;
