@@ -512,7 +512,7 @@ describe('closed lane: pre-teardown on clone removal (H1)', () => {
     await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
     gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'work');
     const dry = await runTeardown({ lane: 'lane_1', dryRun: true, force: true, container: s.container }, s.deps);
-    writeHook(s.container, 'pre-teardown', 'git commit -q --allow-empty -m "from hook"');
+    writeHook(s.container, 'pre-teardown', 'git -c user.name=a -c user.email=a@b commit -q --allow-empty -m "from hook"');
     await expect(runTeardown({ lane: 'lane_1', force: true, expect: dry.fingerprint, container: s.container }, s.deps)).rejects.toBeInstanceOf(BlockedError);
     expect(existsSync(s.dir)).toBe(true);
     expect(state(s).cloneRemoved).toBeUndefined();

@@ -549,7 +549,7 @@ describe('teardown over MCP: a closed lane\'s leftover clone', () => {
 
   it('runs pre-teardown on the closed lane\'s clone; a hook that commits gets the removal refused, clone intact', async () => {
     const s = await closedWithWork();
-    writeHook(s.container, 'pre-teardown', 'git commit -q --allow-empty -m "from hook"');
+    writeHook(s.container, 'pre-teardown', 'git -c user.name=a -c user.email=a@b commit -q --allow-empty -m "from hook"');
     const m = await connectMcp(s.deps, { container: s.container, elicit: responder([], yes, () => typed('lane_1')) });
     const r = await m.call('laines_teardown', { lane: 'lane_1' });
     expect(r.structuredContent.error.exitCode).toBe(3);
