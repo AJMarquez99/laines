@@ -12,7 +12,7 @@ cd laines
 npm install
 ```
 
-laines targets **Node.js >= 20**.
+laines targets **Node.js >= 20**. Running the linter needs Node 20.19 or later (ESLint 10's floor).
 
 ## Running the tests and linter
 

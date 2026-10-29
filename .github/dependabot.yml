@@ -5,6 +5,9 @@ updates:
     schedule:
       interval: weekly
     target-branch: staging
+    groups:
+      eslint:
+        patterns: ["eslint", "@eslint/*", "globals"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
