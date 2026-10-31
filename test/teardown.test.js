@@ -125,6 +125,7 @@ describe('teardown clone-removal safety (the default)', () => {
     expect(err.message).toContain(`Copy anything you need out of ${s.dir} first.`);
     expect(err.message).not.toContain('bundle');
     expect(existsSync(s.dir)).toBe(true);
+    expect(await runTeardown({ lane: 'lane_1', dryRun: true, container: s.container }, s.deps)).toMatchObject({ isRepo: false, blocked: true });
     const r = await runTeardown({ lane: 'lane_1', force: true, container: s.container }, s.deps);
     expect(r).toMatchObject({ removedDir: true, forced: true });
     expect(existsSync(s.dir)).toBe(false);
@@ -172,8 +173,9 @@ describe('teardown clone-removal safety (the default)', () => {
     const s = await lane();
     unsafe['uncommitted changes'](s.dir);
     const r = await runTeardown({ lane: 'lane_1', dryRun: true, container: s.container }, s.deps);
-    expect(r).toMatchObject({ dryRun: true, blocked: true, removedDir: true });
+    expect(r).toMatchObject({ dryRun: true, isRepo: true, blocked: true, removedDir: true });
     expect(r).not.toHaveProperty('removeDir');
+    expect(r).not.toHaveProperty('fingerprint');
     expect(r.checks.problems[0]).toContain('uncommitted');
     expect(existsSync(s.dir)).toBe(true);
     expect(state(s).state).toBe('active');
@@ -226,6 +228,16 @@ describe('teardown deletes the clone by default (0.4.9 Task 7)', () => {
     expect(r.stderr).toContain('--force');
     expect(existsSync(s.dir)).toBe(true);
     expect(state(s).state).toBe('active');
+  });
+
+  it('a dry run prints isRepo in its JSON, and never the internal fingerprint', async () => {
+    const s = await lane();
+    writeFileSync(join(s.dir, 'new.txt'), 'x\n');
+    const r = await runCli(['teardown', 'lane_1', '--dry-run', '--container', s.container], s.deps);
+    expect(r.code).toBe(0);
+    const out = JSON.parse(r.stdout);
+    expect(Object.keys(out)).toEqual(['dryRun', 'lane', 'path', 'isRepo', 'blocked', 'removedDir', 'forced', 'checks', 'warnings', 'hooks', 'refusal']);
+    expect(out).toMatchObject({ dryRun: true, isRepo: true, blocked: true });
   });
 
   it('--keep-dir keeps the clone and skips the unpushed-work checks', async () => {
@@ -511,7 +523,7 @@ describe('closed lane: pre-teardown on clone removal (H1)', () => {
     const s = await lane();
     await runTeardown({ lane: 'lane_1', keepDir: true, container: s.container }, s.deps);
     gitIn(s.dir, 'commit', '-q', '--allow-empty', '-m', 'work');
-    const dry = await runTeardown({ lane: 'lane_1', dryRun: true, force: true, container: s.container }, s.deps);
+    const dry = await runTeardown({ lane: 'lane_1', dryRun: true, force: true, fingerprint: true, container: s.container }, s.deps);
     writeHook(s.container, 'pre-teardown', 'git -c user.name=a -c user.email=a@b commit -q --allow-empty -m "from hook"');
     await expect(runTeardown({ lane: 'lane_1', force: true, expect: dry.fingerprint, container: s.container }, s.deps)).rejects.toBeInstanceOf(BlockedError);
     expect(existsSync(s.dir)).toBe(true);

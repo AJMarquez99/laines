@@ -115,7 +115,10 @@ your home directory itself.
 ## Commands
 
 All commands print JSON by default, except `watch`, which streams new board lines. Add `--format table` (after the command name) for
-human-readable output.
+human-readable output. A `teardown --dry-run` result (CLI JSON and the `laines_teardown` MCP tool alike) has `dryRun`, `lane`,
+`path`, `isRepo` (whether the clone is a git repository), `blocked`, `removedDir`, `forced`, `checks` (the unpushed-work
+findings, or `null` when nothing is checked), `warnings`, `hooks` and `refusal`. The fingerprint that the MCP typed
+confirmation passes back is internal and appears in neither.
 
 | Command | What it does |
 |---|---|
