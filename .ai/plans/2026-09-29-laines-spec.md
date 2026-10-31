@@ -252,8 +252,8 @@ Agents in a lane must not run `dot-ai init` or `dot-ai sync` (they would scaffol
 - **Codex / Gemini**: both stop instruction discovery at the git root, so the container file
   does not reach a lane. Lanes get an excluded `AGENTS.md` / `GEMINI.md` only when the repo
   does not commit one (never an `AGENTS.override.md`, which would hide the repo's own). `doctor`
-  reports, per configured agent, how many lanes have the lane-local file and which rely on
-  `.ai/README.md`. *Recorded (1.0.0):* it does not print a per-user setting
+  reports, per configured agent, a count: how many open lanes have the lane-local file, the rest
+  relying on `.ai/README.md`. *Recorded (1.0.0):* it does not print a per-user setting
   (`project_root_markers`, `context.includeDirectories`); that hint waits until Codex's handling of
   a marker above a nested `.git` is confirmed (§15). L.AI.nes never edits user-level agent config.
 - The lane `.ai/README.md` carries the same rules for any agent.
@@ -341,11 +341,12 @@ Checksums of approved hooks live in `hooks.lock.json`.
   owned by a human and cannot be moved by an agent.
 - No bypass argument is reachable over MCP. Tool input schemas never declare one, and argument
   mapping drops any injected one.
-- Before deleting anything, the lane path must resolve — lexically and through `realpath` —
-  inside the container and match the lane naming pattern. A container path that resolves to `/` or
-  the home directory is refused. *Recorded deviation (1.0.0):* that pattern is the lane-name rule
-  (`[a-z0-9][a-z0-9_-]{0,31}`), not `lanePrefix`: a custom name given to `create` (§10.2) need not
-  start with the prefix. A name of the form `<lanePrefix><N>` claims lane number N.
+- Before deleting anything, the lane path must resolve — lexically and through `realpath` — to
+  `<container>/<lane dir>` for the directory recorded in `lanes.json`, and must not be a symlink. A
+  container path that resolves to `/` or the home directory is refused. *Recorded deviation
+  (1.0.0):* lane names are validated when `create` accepts them against the lane-name rule
+  (`[a-z0-9][a-z0-9_-]{0,31}`), not against `lanePrefix`: a custom name (§10.2) need not start with
+  the prefix. A name of the form `<lanePrefix><N>` claims lane number N.
 - `audit.jsonl` records metadata for create, refresh, teardown, keep, release, hook approval,
   and policy changes. An audit write failure warns and never fails the action.
 
@@ -424,7 +425,7 @@ runs `laines release`. Agents may `keep` (the safe direction) but never `release
 User-level agent config, Claude `Elicitation`/`ElicitationResult` hooks (which can alter a
 confirmation; `doctor` warns when one is visible to a lane), direct edits to `.laines/` files by
 anything with filesystem access, and hooks themselves (they are the user's code). From 1.0.0,
-`SECURITY.md` → "Known limitations and residual risks" is the full list, with what to do about each.
+`SECURITY.md` → "Known limitations and residual risks" lists them, with what to do about each.
 
 ## 10. Flows
 
@@ -478,8 +479,8 @@ A failed clone removes the partial directory and releases the ports.
 
 Deleting the clone is the default (0.4.9): tearing a lane down closes it and removes its directory after
 the checks in step 2. `--keep-dir` (MCP `keep_dir`) is the opt-out: steps 2 and 6 are skipped and the clone
-is left in place, but step 5 still runs, so the lane's `.ai/context/` is deleted (its `.ai/plans/` are
-archived). `--remove-dir` (MCP `remove_dir`) is a deprecated
+is left in place, but step 5 still runs, so the lane-local (untracked) files under `.ai/context/` are
+deleted and those under `.ai/plans/` are archived. `--remove-dir` (MCP `remove_dir`) is a deprecated
 no-op alias; `--keep-dir` together with `--remove-dir` is an input error (exit 2). Tearing down a lane
 that is already closed deletes its leftover clone (same checks); `--keep-dir` there is an input error,
 as is tearing down a closed lane whose clone is already gone. The dry run reports `removedDir: true`
@@ -541,9 +542,10 @@ block so `dot-ai sync` keeps it.
   `src/deps.js`.
 - `src/mcp/tools.js` is a table of `{ name, description, inputSchema, command, mapArgs }`.
   Errors become `isError` results; the server never crashes.
-- Only `git clone` runs asynchronously, so a long-lived MCP server keeps answering while it runs.
-  Other git calls are short local operations and stay synchronous, briefly blocking the server
-  (recorded, 1.0.0).
+- Git calls that reach the network run asynchronously, so a long-lived MCP server keeps answering
+  while they run: the clone in `create`, `ls-remote` in `adopt`, and the `.ai` seed's clone and
+  checkout. Other git calls are short local operations and stay synchronous, briefly blocking the
+  server (recorded, 1.0.0).
 - Templates ship undotted and are renamed on copy (npm rewrites a shipped `.gitignore`).
   `files` allowlist includes every template; `.gitattributes` pins LF on executables.
 - Public repository and package: no personal paths, accounts, or private references in

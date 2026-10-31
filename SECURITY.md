@@ -79,9 +79,14 @@ boundary they sit against.
 - **What the unpushed-work check doesn't see.** Files your `.gitignore` ignores (`.env`, local
   databases), commits inside submodules, and linked worktrees are outside it, and teardown deletes
   the clone. Save anything you need from them in a `pre-teardown` hook.
-- **`--keep-dir` still deletes the lane's `.ai/context/`.** It keeps the clone, but teardown always
-  archives the lane's `.ai/plans/` and deletes its `.ai/context/`. Move context you want to keep
-  into the container's `.ai/` first.
+- **`--keep-dir` still deletes the lane's local context.** It keeps the clone, but teardown always
+  archives the lane-local (untracked) files under `.ai/plans/` and deletes the lane-local files
+  under `.ai/context/`. Move context you want to keep into the container's `.ai/` first.
+- **`ai sync`'s symlink checks are check-then-act.** Node has no directory-handle file I/O, so a
+  process that can already write both `.ai/` trees and swaps a directory for a symlink at exactly
+  the right moment could still redirect one write or delete. `ai sync` refuses every swap that is
+  present when it checks each file. Don't run `ai sync` while untrusted processes are modifying a
+  lane's `.ai/`.
 - **Hooks don't run under the container lock.** A `keep` that lands while `pre-teardown` is running
   aborts the teardown, but only after the hook's side effects. Holding the lock across your hooks
   would deadlock any hook that calls laines. Keep steps that a late `keep` should prevent out of

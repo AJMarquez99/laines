@@ -21,10 +21,10 @@ doesn't. There are no new commands. Releases before 1.0.0 were tags only; the
 - A written [compatibility policy](CONTRIBUTING.md#compatibility-semver), and this changelog.
 
 ### Changed (breaking)
-- **Node.js 22.12 or later is required.** Node 20 reached end of life on 2026-04-30. Both bins exit
-  with a clear message on an older Node.
-- **Excess arguments are an error** (commander 15). `laines doctor extra` or `laines list foo` used
-  to be accepted silently; they now exit `2`.
+- **Node.js 22.12 or later is required.** Node 20 reached end of life on 2026-04-30. On an older
+  Node, both bins print the version they need and exit `1`.
+- **Excess arguments are a usage error** (commander 15). `laines doctor extra` or
+  `laines list foo` used to be accepted silently; they now exit `2`.
 - **Deep imports fail.** `package.json` declares `exports`, so `import '@ajmarquez99/laines'` and
   imports of its `src/` files throw `ERR_PACKAGE_PATH_NOT_EXPORTED`. laines ships two commands and
   no JS API; the bins are unaffected.
@@ -41,8 +41,8 @@ doesn't. There are no new commands. Releases before 1.0.0 were tags only; the
 - A hand-edited `"adopted": false` in `.laines/lanes.json` no longer makes the file malformed.
 - On a case-insensitive disk, a lane-local `AGENTS.md` is no longer written over a tracked
   `Agents.md` (or any other case variant).
-- Teardown dry runs report `isRepo`, and the `--format json` shape is settled for 1.0 (see the
-  README's JSON note).
+- Teardown dry runs report `isRepo` and no longer include the internal `fingerprint` (a removed
+  JSON field), and the `--format json` shape is settled for 1.0 (see the README's JSON note).
 - Guidance strings that promised too much: `create`'s "sync base not recorded" warning now says to
   run `laines doctor`, then `laines ai sync <lane>`, and the hint for a leftover clone that isn't a
   git repository names `--force` and why it's needed.
