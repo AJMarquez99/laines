@@ -1,5 +1,5 @@
-import { copyFileSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
-import { basename, dirname, join, sep } from 'node:path';
+import { closeSync, constants, copyFileSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { basename, dirname, join, relative } from 'node:path';
 import { z } from 'zod';
 import { BlockedError } from './errors.js';
 import { checksum } from './hooks.js';
@@ -88,14 +88,15 @@ export const onDisk = (names, rel) => (Object.hasOwn(names, rel) ? names[rel] : 
 export const realAi = (aiDir) => join(realpathSync(dirname(aiDir)), basename(aiDir));
 
 // The plan comes from a walk that never follows a link, but a directory under .ai/ can be swapped
-// for one before the write. Refuse unless what exists of path's directory resolves inside side.root.
+// for one before the write. Refuse unless what exists of path's directory resolves to exactly where it
+// sits under side.root: a link to another place inside .ai/ (context/, plans/, _private/) is refused too.
 function assertInside(side, path) {
   let dir = dirname(path);
   while (dir !== side.dir && dirname(dir) !== dir && !lstatSync(dir, { throwIfNoEntry: false })) dir = dirname(dir);
   if (!lstatSync(dir, { throwIfNoEntry: false })) return;
   const real = gone(() => realpathSync(dir));
-  if (real === side.root || real?.startsWith(side.root + sep)) return;
-  throw new BlockedError(`${dir} resolves to ${real ?? 'nothing (a dangling link)'}, outside ${side.dir} (swapped for a symbolic link?): refusing to write or delete through it.`);
+  if (real === join(side.root, relative(side.dir, dir))) return;
+  throw new BlockedError(`${dir} resolves to ${real ?? 'nothing (a dangling link)'}, not where it sits in ${side.dir} (swapped for a symbolic link?): refusing to write or delete through it.`);
 }
 
 // Copies rel from one side to the other, or deletes it from `to` when `from` no longer has it.
@@ -110,8 +111,21 @@ export function copyOrDelete(from, to, rel) {
     return;
   }
   assertInside(from, src);
-  if (st.isSymbolicLink()) throw new BlockedError(`${src} is a symbolic link: refusing to sync through it.`);
-  const data = readFileSync(src);
+  const link = () => new BlockedError(`${src} is a symbolic link: refusing to sync through it.`);
+  if (st.isSymbolicLink()) throw link();
+  // O_NOFOLLOW (POSIX) also covers a swap between the lstat above and the read; without it, lstat stands alone.
+  let fd;
+  try {
+    fd = openSync(src, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  } catch (err) {
+    throw err.code === 'ELOOP' ? link() : err;
+  }
+  let data;
+  try {
+    data = readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
   mkdirSync(dirname(dest), { recursive: true });
   assertInside(to, dest);
   writeFileAtomic(dest, data);

@@ -99,12 +99,12 @@ describe('walk, syncedState and copyTree', () => {
 });
 
 describe('Unicode normalisation: one file, one key', () => {
-  const NFC = 'knowledge/café.md';
-  const NFD = 'knowledge/café.md';
+  const NFC = 'knowledge/caf\u00e9.md';
+  const NFD = 'knowledge/cafe\u0301.md';
   // macOS file systems treat the two forms as one name; Linux ones keep both.
   const probe = tmp('laines-nfc-');
-  writeFileSync(join(probe, 'café'), '');
-  const formInsensitive = existsSync(join(probe, 'café'));
+  writeFileSync(join(probe, 'caf\u00e9'), '');
+  const formInsensitive = existsSync(join(probe, 'cafe\u0301'));
 
   it('syncedState keys an NFD name by its NFC form and remembers the name on disk', () => {
     const ai = join(tmp(), '.ai');
@@ -178,10 +178,20 @@ describe('copyOrDelete after a symlink swap between planning and writing', () =>
     symlinkSync(join(s.root, 'outside', 'knowledge'), join(s.l.dir, 'knowledge'));
     for (const rel of s.plan.toLane) {
       expect(() => copyOrDelete(s.c, s.l, rel), rel).toThrow(BlockedError);
-      expect(() => copyOrDelete(s.c, s.l, rel), rel).toThrow(/outside .* refusing to write or delete through it/);
+      expect(() => copyOrDelete(s.c, s.l, rel), rel).toThrow(/not where it sits in .* refusing to write or delete through it/);
     }
     expect(s.outside('knowledge/a.md')).toBe('outside\n');
     expect(s.outside('knowledge/gone.md')).toBe('outside\n');
+  });
+
+  it('refuses a lane .ai/<dir> swapped for a symlink to an excluded folder inside .ai/', () => {
+    const s = planned();
+    put(s.l.dir, 'context/a.md', 'context\n');
+    renameSync(join(s.l.dir, 'knowledge'), join(s.root, 'moved'));
+    symlinkSync(join(s.l.dir, 'context'), join(s.l.dir, 'knowledge'));
+    expect(() => copyOrDelete(s.c, s.l, 'knowledge/a.md')).toThrow(BlockedError);
+    expect(walk(join(s.l.dir, 'context')).files).toEqual(['a.md']);
+    expect(readFileSync(join(s.l.dir, 'context', 'a.md'), 'utf8')).toBe('context\n');
   });
 
   it('refuses to create a directory under a swapped one', () => {

@@ -145,15 +145,15 @@ describe('ai sync', () => {
 
   it('treats an NFD lane name and its NFC container twin as one file', async () => {
     const s = await synced();
-    const NFC = 'knowledge/café.md';
+    const NFC = 'knowledge/caf\u00e9.md';
     put(s.cAi, NFC, 'X\n');
-    put(s.lAi, 'knowledge/café.md', 'X\n');
+    put(s.lAi, 'knowledge/cafe\u0301.md', 'X\n');
     expect(await s.sync()).toMatchObject({ toLane: [], toContainer: [], conflicts: [] });
-    put(s.lAi, 'knowledge/café.md', 'Y\n');
+    put(s.lAi, 'knowledge/cafe\u0301.md', 'Y\n');
     const r = await s.sync();
     expect(r).toMatchObject({ toLane: [], toContainer: [NFC], conflicts: [] });
     expect(r.why).toEqual({ [NFC]: 'changed' });
-    const names = readdirSync(join(s.cAi, 'knowledge')).filter((n) => n.normalize('NFC') === 'café.md');
+    const names = readdirSync(join(s.cAi, 'knowledge')).filter((n) => n.normalize('NFC') === 'caf\u00e9.md');
     expect(names).toHaveLength(1);
     expect(read(join(s.cAi, 'knowledge', names[0]))).toBe('Y\n');
     expect(await s.sync()).toMatchObject({ toLane: [], toContainer: [], conflicts: [] });
