@@ -2,9 +2,38 @@
 
 How to cut a new release of `@ajmarquez99/laines` (two bins: `laines` and `laines-mcp`).
 
-**laines is not on npm yet.** A release is a version bump on `main` plus an annotated `vX.Y.Z`
-tag; people install from source at that tag. There is no publish workflow, token or Trusted
-Publisher to manage. When the npm publish lands (M5), this runbook gains those steps.
+A release is a version bump on `main` plus an annotated `vX.Y.Z` tag. Pushing the tag runs
+`.github/workflows/release.yml`. That workflow checks the tagged tree and then, once a human
+approves the `npm` environment, publishes to npm with provenance. Nobody runs `npm publish` by
+hand, except in the manual fallback below.
+
+## How the trust is wired
+
+- **Trusted Publisher** on npmjs.com for `@ajmarquez99/laines`: GitHub Actions, repository
+  `AJMarquez99/laines`, workflow `release.yml`, environment `npm`, `--allow-publish`. It is keyed
+  to the workflow **filename** and the **environment name**. Renaming either breaks publishing
+  until the npm side is updated to match. Check it with `npm trust list @ajmarquez99/laines`.
+- **GitHub environment `npm`:** the user is the required reviewer, and deployments are limited to
+  `v*` tags. A pushed tag alone can't publish: someone must approve the deployment.
+- **`release.yml`** has two jobs:
+  - `checks`: the tag equals `v` + the `package.json` version; the tagged commit is on `main`; an
+    exact pinned npm (≥ 11.5.1, which OIDC needs); then `npm ci`, lint,
+    `npm audit --omit=dev --audit-level=moderate`, the test suite and `npm run test:pack`.
+  - `publish` (needs `checks`; environment `npm`; `id-token: write`):
+    `npm publish --provenance --access public`. No npm cache anywhere in the workflow.
+- **No long-lived token.** The package's publishing access is "Require two-factor authentication
+  and disallow tokens", so only the OIDC path (and an interactive 2FA login, for the manual
+  fallback) can publish.
+- **1.0.0 bootstrap (Path A).** The package didn't exist before 1.0.0, so no Trusted Publisher
+  could be configured for it. For 1.0.0 only, the publish step also reads `NODE_AUTH_TOKEN` from
+  the `npm` environment secret `NPM_TOKEN` (a 1-day granular token).
+  - Its log first tries OIDC, then falls back to the token. That noise is expected.
+  - Straight after 1.0.0 publishes: revoke the token, delete the secret, and disallow tokens on
+    the package.
+  - 1.0.1 removes the `NODE_AUTH_TOKEN` line. Configure the Trusted Publisher only when 1.0.1 is
+    ready to tag, then tag it within 48 hours: an unused configuration expires after 2 days.
+  - The full sequence is in the M5 plan (`.ai/plans/2026-10-29-laines-1.0.0-m5-release-plan.md`,
+    §1.4).
 
 ## Branch model
 
@@ -32,24 +61,78 @@ Publisher to manage. When the npm publish lands (M5), this runbook gains those s
    ```bash
    npm ci && npm run lint && npm run test:run
    npm audit --audit-level=moderate
+   npm run test:pack           # packs, installs into a temp prefix, drives both bins
    npm pack --dry-run          # lists the tarball; publishes nothing
    ```
 4. Open the PR to `staging`, wait for `quality` and `ci` to go green, then **squash-merge**.
 5. Open the PR `staging` → `main`, wait for green, then **merge with a merge commit**.
-6. Tag the merge on `main` with an annotated tag and push the tag:
+6. Run the pre-tag checks on `main` (see "Pre-release checks" below). Run the release job's audit
+   last, right before tagging:
+   ```bash
+   npm audit --omit=dev --audit-level=moderate
+   ```
+   An advisory that lands after the tag can't be fixed on that tag, so keep the window short.
+7. Tag the merge on `main` with an annotated tag and push the tag. **Pushing the tag publishes**
+   (after the approval in step 8), and the tag is final:
    ```bash
    git checkout main && git pull
    git tag -a vX.Y.Z -m "laines X.Y.Z"
    git push origin vX.Y.Z
    ```
-7. Verify: `git describe --tags` on `main` prints `vX.Y.Z`, and a fresh source install at the tag
-   reports the new version (`laines --version`).
+8. Wait for the `checks` job to go green, then **approve the `npm` environment deployment** (on the
+   run page: Review deployments). Watch the run to the end:
+   ```bash
+   gh run list --workflow release.yml --limit 1
+   gh run watch <run-id>
+   ```
+   The publish log shows "Signed provenance statement" and "Published".
+9. Verify the registry copy:
+   ```bash
+   npm view @ajmarquez99/laines version dist-tags dist.attestations
+   npm run test:pack -- --from @ajmarquez99/laines@X.Y.Z    # clean prefix, registry copy
+   npx @ajmarquez99/laines@X.Y.Z --version
+   ```
+   - `version` and `dist-tags.latest` are `X.Y.Z`, and `dist.attestations` is present.
+   - The npm page shows the provenance badge ("Built and signed on GitHub Actions").
+   - In a temp project, `npm i @ajmarquez99/laines@X.Y.Z && npm audit signatures` reports a
+     verified attestation.
+10. Add a GitHub release for `vX.Y.Z`, with notes from the CHANGELOG.
 
 ## What ships
 
 Only the `files` allowlist in `package.json`: `bin/`, `src/`, `templates/`, `README.md`,
 `LICENSE`. Tests, `.github/` and `.ai/` are not packed. `npm pack --dry-run` shows the exact list;
 compare its file count with the previous release and explain any change before tagging.
+
+`npm run test:pack` (`test/pack-roundtrip.mjs`) proves that the tarball works, not just what it
+lists:
+- it packs the tree and checks the file list: both bins and every `templates/` file, and nothing
+  from `test/`, `.ai/` or `.github/`;
+- it installs the tarball into a throwaway global prefix;
+- it drives the installed bins only: `--version`, `init` against a local bare remote, `doctor`
+  (every check ok), `create` twice (distinct ports and env files), an MCP handshake
+  (`initialize`, `tools/list` without the human-only commands, exit on stdin close), and
+  `teardown`.
+
+`HOME`, the laines config dir, git config and the npm userconfig all point into the sandbox, so the
+real machine index is never touched. `--from <spec>` installs from the registry instead of packing;
+`--keep` keeps the sandbox for inspection. It runs in CI (the `pack` job, part of the required `ci`
+check) and in `release.yml`.
+
+## Manual fallback
+
+Use it only when GitHub Actions is down. It gives **no provenance**, so say so in the release notes.
+
+```bash
+git clone https://github.com/AJMarquez99/laines.git && cd laines
+git checkout vX.Y.Z
+npm ci
+npm login                         # interactive, with 2FA
+npm publish --access public       # prepublishOnly runs the test suite
+```
+
+If the tag's `release.yml` run is still waiting, reject its `npm` environment deployment, or it
+fails on "version already exists".
 
 ## Dependabot security PRs (catch-up)
 
@@ -70,8 +153,9 @@ git push origin main:staging    # fast-forward (through the admin bypass once st
 
 ## Audit gate
 
-The `quality` job runs `npm audit --audit-level=moderate`. A new advisory, often a transitive one
-from `@modelcontextprotocol/sdk`, can turn `quality` red on an unrelated PR.
+The `quality` job runs `npm audit --audit-level=moderate`, and `release.yml` runs
+`npm audit --omit=dev --audit-level=moderate`. A new advisory, often a transitive one from
+`@modelcontextprotocol/sdk`, can turn `quality` red on an unrelated PR.
 
 - Fix it with `npm audit fix` (no `--force`) in its own PR, or merge the Dependabot PR.
 - If the fix touches a production dependency, raise its range floor in `package.json` too:
@@ -79,10 +163,15 @@ from `@modelcontextprotocol/sdk`, can turn `quality` red on an unrelated PR.
   vulnerable version.
 - **Never lower `--audit-level`**, and never add an ignore to get green.
 
-## Pre-release and pre-public checks
+## Pre-release checks
 
-Run these on the final `main` before going public, and before any release that rewrote history or
-touched docs, fixtures or examples.
+Run these on the final `main` before every tag. They matter most before a release that rewrote
+history or touched docs, fixtures or examples.
+
+**Production audit.** `npm audit --omit=dev --audit-level=moderate`, the release job's own audit.
+Run it last, right before tagging (standard release, step 6).
+
+**Tarball.** `npm pack --dry-run` lists the expected file count, and `npm run test:pack` passes.
 
 **Personal references.** The terms removed in the 0.4.10 scrub are kept in the local pattern file
 `.ai/runbooks/_personal-refs.txt` (one extended regex per line). It is gitignored by the `_*` rule
@@ -107,12 +196,29 @@ It must report no leaks.
 
 ## If it looks wrong, stop
 
-- `quality` or any `ci` matrix cell is red → fix it in the code or the test (for example, widen a
-  timing budget with a stated reason). Never skip a test, and never lower the audit level.
+- `quality` or any `ci` cell (the `test` matrix or `pack`) is red → fix it in the code or the
+  test (for example, widen a timing budget with a stated reason). Never skip a test, and never
+  lower the audit level.
 - The `staging` → `main` PR shows commits you don't expect, or `main` has commits `staging` lacks
   (other than a Dependabot security fix still waiting for the catch-up) → stop and reconcile first.
 - `npm pack --dry-run` lists a different number of files than the last release, with no change
   that explains it → stop and check the `files` allowlist.
-- A personal-reference grep or gitleaks reports a hit → don't tag or go public. Remove it; if it is
-  in history, plan a history rewrite as its own change.
+- A personal-reference grep or gitleaks reports a hit → don't tag. Remove it; if it is in history,
+  plan a history rewrite as its own change.
 - The tag already exists on the remote → never move or re-push a pushed tag. Bump to a new version.
+- `release.yml` `checks` fails the tag-matches-version or on-`main` guard → the tag is wrong.
+  Approve nothing. Release the right commit as a new version; the bad tag stays, unpublished.
+- `release.yml` `checks` fails on `npm audit` → an advisory landed after tagging. The tag can't
+  move: fix it in a patch release (`npm audit fix` through `staging` → `main`), and note in the
+  CHANGELOG that the earlier version was tagged but never published.
+- The publish step returns **403 or 404** → a Trusted Publisher or environment mismatch (wrong
+  repository, filename or environment name, or an expired configuration). Fix the npm side, then
+  **re-run the failed job** on the same tag. Don't retry blindly.
+- The publish step says **"version already exists"** → that version is on npm already (a manual
+  fallback, or an earlier run). Bump to a new version.
+- `npm trust list @ajmarquez99/laines` shows an **expired** configuration (no publish within 2 days
+  of creating it) → revoke it (`npm trust revoke --id <id>`) and recreate it, then publish within
+  48 hours.
+- `v1.0.0` is pushed but never publishes, and the fix needs a code change → the CHANGELOG marks
+  1.0.0 "tagged, never published", `v1.0.0` gets no GitHub release, and 1.0.1 becomes the first
+  npm version (the compatibility promise starts there).

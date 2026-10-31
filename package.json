@@ -46,6 +46,7 @@
   "scripts": {
     "test": "vitest",
     "test:run": "vitest run",
+    "test:pack": "node test/pack-roundtrip.mjs",
     "lint": "eslint .",
     "prepublishOnly": "npm run test:run"
   },
