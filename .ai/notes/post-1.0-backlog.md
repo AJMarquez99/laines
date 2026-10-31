@@ -20,6 +20,12 @@ here.
 |---|---|
 | `hooks approve --expect <checksum>` (m2) | Binds an approval to the version the human reviewed. A new flag, so a minor. The gap is documented in `SECURITY.md`. |
 
+## Dependencies
+
+| Item (source) | Notes |
+|---|---|
+| Drop the `minimatch` 11.0.3 override in `package.json` once ESLint depends on minimatch 11 (GHSA-g3hv-75wg-m249; added 2026-10-30) | Dev-only; the override keeps `npm audit` green until then |
+
 ## Test gaps
 
 | Item (source) | Notes |
