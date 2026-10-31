@@ -257,5 +257,7 @@ describe('laneHookVars', () => {
     expect('PORT' in vars).toBe(false);
     expect(vars.LANE_PORT_BASE).toBe(String(LANE.ports[0]));
     expect(laneHookVars(ctx, 'lane_1', LANE).PORT).toBe(String(LANE.ports[0]));
+    // A hand-edited `adopted: false` is the same as no flag.
+    expect(laneHookVars(ctx, 'lane_1', { ...LANE, adopted: false }).PORT).toBe(String(LANE.ports[0]));
   });
 });
