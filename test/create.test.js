@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { invoke } from '../src/commands/registry.js';
 import { runCreate } from '../src/commands/create.js';
@@ -44,6 +44,13 @@ describe('create', () => {
     expect(r).toMatchObject({ dryRun: true, lane: 'lane_1', ports: [20000, 20009] });
     expect(existsSync(join(container, 'lane_1'))).toBe(false);
     expect(readLanes(loadContainer({ container }, deps)).lanes).toEqual({});
+  });
+
+  it('a .ai/ sync base it cannot record is a warning that points at doctor, then ai sync', async () => {
+    const s = await setupContainer();
+    writeFileSync(join(s.container, '.laines', 'ai-sync.json'), '{ nope');
+    const r = await runCreate({ container: s.container }, s.deps);
+    expect(r.warnings).toEqual([expect.stringMatching(/^\.ai\/ sync base not recorded \(.*\): run `laines doctor`, then `laines ai sync lane_1`\.$/)]);
   });
 
   it('refuses bad names and branches before touching anything', async () => {
@@ -304,7 +311,17 @@ describe('create with hooks', () => {
 
     it('names the teardown command when an explicit name is a closed lane\'s clone', async () => {
       const { deps, container } = await closedSecond();
-      await expect(runCreate({ container, name: 'lane_2' }, deps)).rejects.toThrow(/laines teardown lane_2/);
+      await expect(runCreate({ container, name: 'lane_2' }, deps)).rejects.toThrow(/laines teardown lane_2`/);
+    });
+
+    it('adds --force and the reason when the leftover is not a git repository', async () => {
+      const { deps, container } = await closedSecond();
+      rmSync(join(container, 'lane_2', '.git'), { recursive: true, force: true });
+      const err = await runCreate({ container, name: 'lane_2' }, deps).catch((e) => e);
+      expect(err.message).toContain("`laines teardown lane_2 --force` (not a git repository: unpushed work can't be verified)");
+      setConfig(container, (c) => { c.maxLanes = 2; });
+      const full = await runCreate({ container }, deps).catch((e) => e);
+      expect(full.message).toContain("delete it with `laines teardown lane_2 --force` (not a git repository: unpushed work can't be verified), or remove it by hand");
     });
 
     it('counts only open lanes against maxLanes and names the leftovers when they fill the range', async () => {
@@ -312,7 +329,7 @@ describe('create with hooks', () => {
       setConfig(container, (c) => { c.maxLanes = 2; });
       const err = await runCreate({ container }, deps).catch((e) => e);
       expect(err).toBeInstanceOf(BlockedError);
-      expect(err.message).toMatch(/lane_2/);
+      expect(err.message).toContain('delete it with `laines teardown lane_2`, or remove it by hand');
     });
   });
 });

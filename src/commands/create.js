@@ -13,6 +13,7 @@ import { appendAudit } from '../lib/audit.js';
 import { withLock } from '../lib/lock.js';
 import { repoCommitsAi, syncedState, writeAiBase } from '../lib/ai-tree.js';
 import { BlockedError, InvalidInputError } from '../lib/errors.js';
+import { teardownHint } from '../lib/lane-git.js';
 import { dropRequests, putRequest, requestId } from '../lib/lanes-state.js';
 import { currentChecksums, hookStates } from '../lib/hooks.js';
 import {
@@ -51,7 +52,7 @@ function planLane(ctx, state, opts) {
     }
     if (number > maxLanes) {
       const left = leftovers.length
-        ? ` ${leftovers.join(', ')} ${leftovers.length === 1 ? 'is a leftover directory' : 'are leftover directories'} (a closed lane's clone: delete it with \`laines teardown <lane>\`, or remove it by hand).`
+        ? ` ${leftovers.join(', ')} ${leftovers.length === 1 ? 'is a leftover directory' : 'are leftover directories'} (a closed lane's clone: delete it with ${leftovers.map((d) => teardownHint(join(ctx.root, d), d)).join(', ')}, or remove it by hand).`
         : '';
       throw new BlockedError(`All ${maxLanes} lanes are in use.${left} Tear one down, or raise maxLanes in .laines/config.json.`);
     }
@@ -62,7 +63,7 @@ function planLane(ctx, state, opts) {
   const laneDir = join(ctx.root, name);
   assertLaneDir(ctx.root, laneDir, name);
   if (existsSync(laneDir)) {
-    const hint = existing ? ` It is a closed lane's clone: delete it with \`laines teardown ${name}\`, or pick another name.` : ' Remove it or pick another name.';
+    const hint = existing ? ` It is a closed lane's clone: delete it with ${teardownHint(laneDir, name)}, or pick another name.` : ' Remove it or pick another name.';
     throw new InvalidInputError(`${laneDir} already exists.${hint}`);
   }
   return { name, number, laneDir, ports: lanePorts(ctx.portRange, number, ctx.config.ports.stride) };
@@ -87,7 +88,7 @@ async function recordAiBase(ctx, deps, plan) {
     await withLock(ctx.paths.lock, () => writeAiBase(ctx.paths, plan.name, base));
     return null;
   } catch (err) {
-    return `.ai/ sync base not recorded (${String(err.message).split('\n')[0]}): the first \`laines ai sync ${plan.name}\` merges both sides.`;
+    return `.ai/ sync base not recorded (${String(err.message).split('\n')[0]}): run \`laines doctor\`, then \`laines ai sync ${plan.name}\`.`;
   }
 }
 

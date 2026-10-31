@@ -3,6 +3,13 @@ import { isAbsolute, join } from 'node:path';
 import { gitOut } from './git.js';
 import { readLanes } from './lanes-store.js';
 
+// How to delete a closed lane's leftover clone. teardown refuses a directory that is not a git
+// repository unless --force, so the hint says so and why.
+export const teardownHint = (dir, name) =>
+  existsSync(join(dir, '.git'))
+    ? `\`laines teardown ${name}\``
+    : `\`laines teardown ${name} --force\` (not a git repository: unpushed work can't be verified)`;
+
 // The loss condition is commit-level, not branch-level: any commit reachable from a local ref but
 // on no remote dies with the clone. Comparing against upstream misses branches with no upstream,
 // and walking refs/heads misses backup refs and tags. Stashes are counted on their own.
