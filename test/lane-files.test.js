@@ -160,6 +160,26 @@ describe('writeLaneFiles', () => {
     expect(untrackedEntries(deps, lane.laneDir, '.ai/plans')).toEqual([]);
   });
 
+  it('isTracked with icase matches a tracked file under another case', () => {
+    const { deps, lane } = setup({ files: { 'README.md': 'x\n', 'Agents.md': 'a\n' } });
+    expect(isTracked(deps, lane.laneDir, 'AGENTS.md')).toBe(false);
+    expect(isTracked(deps, lane.laneDir, 'AGENTS.md', { icase: true })).toBe(true);
+    expect(isTracked(deps, lane.laneDir, 'GEMINI.md', { icase: true })).toBe(false);
+  });
+
+  // On a case-insensitive disk AGENTS.md and a tracked Agents.md are one file: writing it would modify a tracked file.
+  const probe = tmp('laines-case-');
+  writeFileSync(join(probe, 'a'), '');
+  const caseInsensitive = existsSync(join(probe, 'A'));
+  it.runIf(caseInsensitive)('never writes AGENTS.md over a tracked Agents.md on a case-insensitive disk', () => {
+    const { ctx, deps, lane } = setup({ files: { 'README.md': 'x\n', 'Agents.md': 'project agents\n' } });
+    const r = writeLaneFiles(ctx, deps, lane);
+    expect(r.skipped).toContainEqual({ file: 'AGENTS.md', reason: 'tracked by the repository' });
+    expect(r.written).not.toContain('AGENTS.md');
+    expect(readFileSync(join(lane.laneDir, 'Agents.md'), 'utf8')).toBe('project agents\n');
+    expect(gitIn(lane.laneDir, 'status', '--porcelain')).toBe('');
+  });
+
   it('isTracked throws GitError outside a git repository instead of reading as untracked', () => {
     const dir = tmp();
     expect(() => isTracked(testDeps(dir), dir, 'x')).toThrow(GitError);
