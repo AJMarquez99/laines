@@ -147,7 +147,7 @@ Run commands from the container directory, or pass `--container <dir>`. A bare `
 |---|---|
 | `0` | Success (including `--dry-run`) |
 | `1` | Unexpected or external failure |
-| `2` | Fixable input or config problem (bad option, not a container, malformed file) |
+| `2` | Fixable input or config problem (bad option, not a container, malformed file, too-old Node) |
 | `3` | Blocked by a safety boundary, or a human needs to act |
 | `4` | Capability denied: a `capabilities.*` switch in `.laines/config.json` is off |
 

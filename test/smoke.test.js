@@ -53,7 +53,7 @@ describe('Node-version guard', () => {
     it(`${name} refuses Node older than the engines floor`, () => {
       for (const version of ['18.20.0', '20.20.0', '22.11.9']) {
         const r = as(version, file);
-        expect(r.status).toBe(1);
+        expect(r.status).toBe(2);
         expect(r.stdout).toBe('');
         expect(r.stderr).toBe(`${name} needs Node.js 22.12.0 or later (this is ${version}).\n`);
       }
