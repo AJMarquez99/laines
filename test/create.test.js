@@ -318,10 +318,10 @@ describe('create with hooks', () => {
       const { deps, container } = await closedSecond();
       rmSync(join(container, 'lane_2', '.git'), { recursive: true, force: true });
       const err = await runCreate({ container, name: 'lane_2' }, deps).catch((e) => e);
-      expect(err.message).toContain("`laines teardown lane_2 --force` (not a git repository: unpushed work can't be verified)");
+      expect(err.message).toContain('`laines teardown lane_2 --force` (not a git repository: unpushed work cannot be verified)');
       setConfig(container, (c) => { c.maxLanes = 2; });
       const full = await runCreate({ container }, deps).catch((e) => e);
-      expect(full.message).toContain("delete it with `laines teardown lane_2 --force` (not a git repository: unpushed work can't be verified), or remove it by hand");
+      expect(full.message).toContain("lane_2 is a closed lane's clone: delete it with `laines teardown lane_2 --force` (not a git repository: unpushed work cannot be verified))");
     });
 
     it('counts only open lanes against maxLanes and names the leftovers when they fill the range', async () => {
@@ -329,7 +329,17 @@ describe('create with hooks', () => {
       setConfig(container, (c) => { c.maxLanes = 2; });
       const err = await runCreate({ container }, deps).catch((e) => e);
       expect(err).toBeInstanceOf(BlockedError);
-      expect(err.message).toContain('delete it with `laines teardown lane_2`, or remove it by hand');
+      expect(err.message).toContain("lane_2 is a closed lane's clone: delete it with `laines teardown lane_2`)");
+    });
+
+    it('says to remove a stray lane_N directory by hand, never to tear it down, when they fill the range', async () => {
+      const { deps, container } = await setupContainer();
+      mkdirSync(join(container, 'lane_1'));
+      setConfig(container, (c) => { c.maxLanes = 1; });
+      const err = await runCreate({ container }, deps).catch((e) => e);
+      expect(err).toBeInstanceOf(BlockedError);
+      expect(err.message).toContain('lane_1 is not a recorded lane: remove it by hand');
+      expect(err.message).not.toContain('laines teardown');
     });
   });
 });

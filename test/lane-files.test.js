@@ -167,6 +167,13 @@ describe('writeLaneFiles', () => {
     expect(isTracked(deps, lane.laneDir, 'GEMINI.md', { icase: true })).toBe(false);
   });
 
+  it('isTracked takes the path literally: a glob character never matches other files', () => {
+    const { deps, lane } = setup({ files: { 'README.md': 'x\n' } });
+    expect(isTracked(deps, lane.laneDir, 'README.md')).toBe(true);
+    expect(isTracked(deps, lane.laneDir, '*.md')).toBe(false);
+    expect(isTracked(deps, lane.laneDir, '*.md', { icase: true })).toBe(false);
+  });
+
   // On a case-insensitive disk AGENTS.md and a tracked Agents.md are one file: writing it would modify a tracked file.
   const probe = tmp('laines-case-');
   writeFileSync(join(probe, 'a'), '');

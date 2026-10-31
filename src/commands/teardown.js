@@ -248,5 +248,5 @@ export async function runTeardown(opts, deps) {
     { ts: now, action: 'teardown', container: ctx.id, lane: name, phase, removedDir, forced, ...(viaMcp ? { ...(closed ? { closedLane: true } : {}), forcedVia: 'mcp-typed-confirmation', discarded: checks.problems } : {}), hooks: { pre: pre?.outcome ?? null, post: post?.outcome ?? null } },
     { warn: deps.warn },
   );
-  return { dryRun: false, lane: name, path: laneDir, archivedTo, contextDeleted, removedDir, forced, checks, warnings, hooks: [pre, post].filter(Boolean) };
+  return { dryRun: false, lane: name, path: laneDir, isRepo, archivedTo, contextDeleted, removedDir, forced, checks, warnings, hooks: [pre, post].filter(Boolean) };
 }

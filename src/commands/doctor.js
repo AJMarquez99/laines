@@ -258,7 +258,7 @@ export async function runDoctor(opts, deps) {
   const localFile = (d, file) => {
     if (!existsSync(join(d, file))) return false;
     try {
-      return !isTracked(deps, d, file);
+      return !isTracked(deps, d, file, { icase: true }); // as create decides, on a case-insensitive disk
     } catch {
       return false;
     }

@@ -86,9 +86,10 @@ export function envChanges(file, args) {
 }
 
 // Exit 0 = tracked, 1 = not tracked; anything else (fatal, spawn error) must not read as "not tracked".
-// `icase` matches any case: on a case-insensitive disk, a tracked Agents.md is the file AGENTS.md names.
+// `rel` is a literal path, never a glob. `icase` matches any case: on a case-insensitive disk, a
+// tracked Agents.md is the file AGENTS.md names.
 export function isTracked(deps, repoDir, rel, { icase = false } = {}) {
-  const args = ['ls-files', '--error-unmatch', '--', icase ? `:(icase)${rel}` : rel];
+  const args = ['ls-files', '--error-unmatch', '--', `:(${icase ? 'icase,' : ''}literal)${rel}`];
   const r = deps.git(args, { cwd: repoDir });
   if (r.error || (r.status !== 0 && r.status !== 1)) throw new GitError(args, r);
   return r.status === 0;
