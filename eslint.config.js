@@ -15,4 +15,6 @@ export default [
       'no-unused-vars': ['error', { argsIgnorePattern: '^_', args: 'after-used', caughtErrors: 'none' }],
     },
   },
+  // The bins' Node-version guard must run on Node 18 and later, so the bins themselves stay ES2022.
+  { files: ['bin/**'], languageOptions: { ecmaVersion: 2022 } },
 ];
