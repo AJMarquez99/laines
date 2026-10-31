@@ -86,8 +86,10 @@ export function envChanges(file, args) {
 }
 
 // Exit 0 = tracked, 1 = not tracked; anything else (fatal, spawn error) must not read as "not tracked".
-export function isTracked(deps, repoDir, rel) {
-  const args = ['ls-files', '--error-unmatch', '--', rel];
+// `rel` is a literal path, never a glob. `icase` matches any case: on a case-insensitive disk, a
+// tracked Agents.md is the file AGENTS.md names.
+export function isTracked(deps, repoDir, rel, { icase = false } = {}) {
+  const args = ['ls-files', '--error-unmatch', '--', `:(${icase ? 'icase,' : ''}literal)${rel}`];
   const r = deps.git(args, { cwd: repoDir });
   if (r.error || (r.status !== 0 && r.status !== 1)) throw new GitError(args, r);
   return r.status === 0;
@@ -196,15 +198,16 @@ export function writeLaneFiles(ctx, deps, lane, { dryRun = false } = {}) {
     mkdirSync(join(laneDir, '.ai', 'plans'), { recursive: true });
   }
 
+  // Case-insensitive, so a lane file never lands on a tracked file of another case (a case-insensitive
+  // disk would make them one file). On a case-sensitive disk this only skips more: harmless.
   const tracked = (rel) => {
-    if (!isTracked(deps, laneDir, rel)) return false;
+    if (!isTracked(deps, laneDir, rel, { icase: true })) return false;
     skipped.push({ file: rel, reason: 'tracked by the repository' });
     return true;
   };
   const put = (rel, content) => {
     if (tracked(rel)) return;
-    // A link left here (or committed under another case on a case-insensitive disk, which ls-files
-    // reports as untracked) would send the write to its target.
+    // A link left here would send the write to its target.
     const file = join(laneDir, rel);
     if (lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink()) {
       throw new BlockedError(`${file} is a symbolic link: refusing to write through it. Remove the link from the lane, then retry.`);

@@ -117,6 +117,17 @@ describe('lanes store', () => {
     expect(existsSync(ctx.paths.lock)).toBe(false);
   });
 
+  it('accepts a hand-edited adopted: false (read as absent)', async () => {
+    const root = tmp();
+    const ctx = ctxFor(root);
+    const deps = testDeps(root);
+    await updateLanes(ctx, deps, (s) => {
+      s.lanes.lane_1 = lane(1, { adopted: false });
+      return { state: s, result: null };
+    });
+    expect(readLanes(ctx).lanes.lane_1.adopted).toBe(false);
+  });
+
   it('archives overflow oldest first when the log is already full', async () => {
     const root = tmp();
     const ctx = ctxFor(root, 10);

@@ -194,7 +194,8 @@ describe('teardown over MCP: auto and off', () => {
     const s = await withLane();
     const m = await connectMcp(s.deps, { container: s.container, elicit: neverPrompted });
     const r = await m.call('laines_teardown', { lane: 'lane_1', dry_run: true });
-    expect(r.structuredContent).toMatchObject({ dryRun: true, lane: 'lane_1' });
+    expect(r.structuredContent).toMatchObject({ dryRun: true, lane: 'lane_1', isRepo: true });
+    expect(r.structuredContent).not.toHaveProperty('fingerprint');
     await m.close();
   });
 });

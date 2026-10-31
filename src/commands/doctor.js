@@ -16,7 +16,7 @@ import { hasMcpEntry, mcpAddCommand } from '../lib/mcp-config.js';
 import { lockSuggested } from '../lib/hook-events.js';
 import { aiDrift, readAiBases, repoCommitsAi } from '../lib/ai-tree.js';
 import { staleMessage } from '../version.js';
-import { changedSinceClose } from '../lib/lane-git.js';
+import { changedSinceClose, teardownHint } from '../lib/lane-git.js';
 
 // Informational: a lane whose committed .ai/ differs from the container's shared one.
 function aiDriftNote(paths, laneDir, deps, name) {
@@ -246,7 +246,7 @@ export async function runDoctor(opts, deps) {
     const dir = join(root, lane.repos[0].path);
     if (!existsSync(dir)) continue;
     check(`closed:${name}`, () => {
-      const remains = `closed, but its clone remains: delete it with \`laines teardown ${name}\`, or ignore`;
+      const remains = `closed, but its clone remains: delete it with ${teardownHint(dir, name)}, or ignore`;
       if (!lane.closed) return { detail: 'ok', note: remains };
       const { refs, dirty } = changedSinceClose(deps, dir, lane.closed);
       if (!refs.length && !dirty.length) return { detail: 'ok', note: remains };
@@ -258,7 +258,7 @@ export async function runDoctor(opts, deps) {
   const localFile = (d, file) => {
     if (!existsSync(join(d, file))) return false;
     try {
-      return !isTracked(deps, d, file);
+      return !isTracked(deps, d, file, { icase: true }); // as create decides, on a case-insensitive disk
     } catch {
       return false;
     }

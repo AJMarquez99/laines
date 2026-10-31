@@ -108,15 +108,16 @@ describe('lane files refuse to write through a file symlink', () => {
     expect(readFileSync(join(outside, 'precious.txt'), 'utf8')).toBe('keep\n');
   });
 
-  // ls-files matches case-sensitively, so on a case-insensitive disk Claude.local.md reads as untracked.
+  // On a case-insensitive disk Claude.local.md is the file CLAUDE.local.md names: it counts as tracked.
   const probe = tmp('laines-case-');
   writeFileSync(join(probe, 'a'), '');
   const caseInsensitive = existsSync(join(probe, 'A'));
-  it.runIf(caseInsensitive)('create refuses a repository that commits CLAUDE.local.md under another case as a symlink', async () => {
+  it.runIf(caseInsensitive)('create skips CLAUDE.local.md when the repository commits it under another case as a symlink', async () => {
     const s = await setupContainer();
     const outside = outsideDir();
     pushLinks(s, { 'Claude.local.md': join(outside, 'precious.txt') });
-    await expect(runCreate({ container: s.container }, s.deps)).rejects.toThrow(/symbolic link/);
+    const l = await runCreate({ container: s.container }, s.deps);
+    expect(l.warnings).toContain('CLAUDE.local.md not written: tracked by the repository');
     expect(readFileSync(join(outside, 'precious.txt'), 'utf8')).toBe('keep\n');
   });
 });
