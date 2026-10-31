@@ -9,6 +9,8 @@ hand, except in the manual fallback below.
 
 ## How the trust is wired
 
+This is the steady state from 1.0.1 on. 1.0.0 was bootstrapped differently (last bullet).
+
 - **Trusted Publisher** on npmjs.com for `@ajmarquez99/laines`: GitHub Actions, repository
   `AJMarquez99/laines`, workflow `release.yml`, environment `npm`, `--allow-publish`. It is keyed
   to the workflow **filename** and the **environment name**. Renaming either breaks publishing
@@ -21,17 +23,24 @@ hand, except in the manual fallback below.
     `npm audit --omit=dev --audit-level=moderate`, the test suite and `npm run test:pack`.
   - `publish` (needs `checks`; environment `npm`; `id-token: write`):
     `npm publish --provenance --access public`. No npm cache anywhere in the workflow.
-- **No long-lived token.** The package's publishing access is "Require two-factor authentication
-  and disallow tokens", so only the OIDC path (and an interactive 2FA login, for the manual
-  fallback) can publish.
+- **No long-lived token.** Right after 1.0.0 publishes (plan step A8), the package's publishing
+  access is set to "Require two-factor authentication and disallow tokens". From then on only the
+  OIDC path (and an interactive 2FA login, for the manual fallback) can publish.
 - **1.0.0 bootstrap (Path A).** The package didn't exist before 1.0.0, so no Trusted Publisher
   could be configured for it. For 1.0.0 only, the publish step also reads `NODE_AUTH_TOKEN` from
-  the `npm` environment secret `NPM_TOKEN` (a 1-day granular token).
-  - Its log first tries OIDC, then falls back to the token. That noise is expected.
+  the `npm` environment secret `NPM_TOKEN`:
+  - The token is a **granular** token with **read and write** on **All packages** (a package that
+    doesn't exist yet can't be selected) and a **1-day** expiry.
+  - Turn **"Bypass 2FA"** on if the account requires 2FA for writes. Without it, the publish
+    fails with `EOTP` after the approval. That is recoverable: fix the secret, then re-run the
+    failed job on the same tag.
+  - npm tries OIDC first and silently falls back to the token (nothing shows at the default log
+    level).
   - Straight after 1.0.0 publishes: revoke the token, delete the secret, and disallow tokens on
     the package.
   - 1.0.1 removes the `NODE_AUTH_TOKEN` line. Configure the Trusted Publisher only when 1.0.1 is
-    ready to tag, then tag it within 48 hours: an unused configuration expires after 2 days.
+    ready to tag, then tag it within 48 hours. Per npm's docs, treat an unused configuration as
+    expiring after 2 days.
   - The full sequence is in the M5 plan (`.ai/plans/2026-10-29-laines-1.0.0-m5-release-plan.md`,
     §1.4).
 
@@ -85,7 +94,8 @@ hand, except in the manual fallback below.
    gh run list --workflow release.yml --limit 1
    gh run watch <run-id>
    ```
-   The publish log shows "Signed provenance statement" and "Published".
+   The publish step's log shows `npm notice publish Signed provenance statement ...` and ends
+   with `+ @ajmarquez99/laines@X.Y.Z`.
 9. Verify the registry copy:
    ```bash
    npm view @ajmarquez99/laines version dist-tags dist.attestations
@@ -216,9 +226,9 @@ It must report no leaks.
   **re-run the failed job** on the same tag. Don't retry blindly.
 - The publish step says **"version already exists"** → that version is on npm already (a manual
   fallback, or an earlier run). Bump to a new version.
-- `npm trust list @ajmarquez99/laines` shows an **expired** configuration (no publish within 2 days
-  of creating it) → revoke it (`npm trust revoke --id <id>`) and recreate it, then publish within
-  48 hours.
+- `npm trust list @ajmarquez99/laines` shows an **expired** configuration (per npm's docs, one with
+  no publish within 2 days of creating it) → revoke it (`npm trust revoke --id <id>`) and
+  recreate it, then publish within 48 hours.
 - `v1.0.0` is pushed but never publishes, and the fix needs a code change → the CHANGELOG marks
   1.0.0 "tagged, never published", `v1.0.0` gets no GitHub release, and 1.0.1 becomes the first
   npm version (the compatibility promise starts there).

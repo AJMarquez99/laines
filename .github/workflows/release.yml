@@ -39,6 +39,8 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }} # the commit these checks verified; publish must match it
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # No `cache:` in this workflow, so a release never restores a cache another workflow wrote.
@@ -62,6 +64,10 @@ jobs:
             echo "::error::$GITHUB_REF_NAME points at $(git rev-parse HEAD), which is not on main"
             exit 1
           fi
+
+      - name: Record the verified commit
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Pinned npm
         run: |
@@ -92,6 +98,17 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+
+      # The checkout re-resolves the tag by name: prove it is still the commit `checks` verified.
+      - name: Same commit as checks
+        env:
+          VERIFIED_SHA: ${{ needs.checks.outputs.sha }}
+        run: |
+          head="$(git rev-parse HEAD)"
+          if [ -z "$VERIFIED_SHA" ] || [ "$head" != "$VERIFIED_SHA" ]; then
+            echo "::error::publish checked out $head, but checks verified '$VERIFIED_SHA'"
+            exit 1
+          fi
 
       - name: Pinned npm
         run: |
