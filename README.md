@@ -38,7 +38,7 @@ to.
 
 ## Install
 
-Requires Node.js 20 or later, and git.
+Requires Node.js 22.12 or later, and git.
 
 ```bash
 git clone https://github.com/AJMarquez99/laines.git

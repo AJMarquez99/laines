@@ -525,7 +525,7 @@ block so `dot-ai sync` keeps it.
 
 ## 12. Implementation constraints
 
-- ESM, Node ≥ 20. Dependencies: `@ajmarquez99/dot-ai` (^1.1, invoked through its CLI only),
+- ESM, Node ≥ 22.12. Dependencies: `@ajmarquez99/dot-ai` (^1.1, invoked through its CLI only),
   `commander`, `zod`, `@modelcontextprotocol/sdk`.
 - `bin/laines.js` and `bin/laines-mcp.js` → `src/cli.js` (single `handle()` wrapper) and
   `src/mcp/server.js`; commands in `src/commands/*` are `runXxx(opts, deps)` returning data;
@@ -554,7 +554,7 @@ block so `dot-ai sync` keeps it.
 | Packaging | `npm pack` → install → `init` + `create` from the tarball | `test:pack` in CI |
 | Agent behaviour (pre-release, manual) | right instructions in a lane and not in a plain checkout; deny rules apply; elicitation prompts a human, including from a subagent, in headless mode, and in VS Code | scripted `claude -p` checks + manual |
 
-CI: lint and `npm audit`; tests on Node 20, 22, 24 on macOS and Linux.
+CI: lint and `npm audit`; tests on Node 22, 24, 26 on macOS and Linux.
 
 ## 14. Success criteria
 

@@ -1,10 +1,13 @@
 #!/usr/bin/env node
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { defaultDeps } from '../src/deps.js';
-import { createServer, parseServerArgs } from '../src/mcp/server.js';
+// Node-version guard. It runs before any import, so this file must parse on old Node: keep it ES2022.
+var v = process.versions.node.split('.').map(Number); if (v[0] < 22 || (v[0] === 22 && v[1] < 12)) { process.stderr.write('laines-mcp needs Node.js 22.12.0 or later (this is ' + process.versions.node + ').\n'); process.exit(1); }
 
 // stdout carries the MCP protocol: anything else that prints goes to stderr.
 for (const k of ['log', 'info', 'debug', 'table', 'dir']) console[k] = console.error;
+
+const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
+const { defaultDeps } = await import('../src/deps.js');
+const { createServer, parseServerArgs } = await import('../src/mcp/server.js');
 
 try {
   const { container } = parseServerArgs(process.argv);
