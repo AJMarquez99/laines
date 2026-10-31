@@ -211,7 +211,8 @@ marker.
 - **Port range:** default 20000–29999 (clear of common dev ports and of OS ephemeral ranges),
   split into per-container blocks of `maxLanes × stride` (default 200). Lane N (1 ≤ N ≤
   `maxLanes`) gets `block.start + (N − 1) × stride` through `+ stride − 1`. `create` verifies the ports are free and
-  fails with exit 2 naming the process if not.
+  fails with exit 2 if not. *Recorded deviation (1.0.0):* the error names the busy ports and suggests
+  `lsof -i :<port>`; it does not name the owning process.
 - **Scoped names:** `LANE_SUFFIX=_<id>_l<N>` with hyphens in the ID replaced by underscores
   (`my-app` → `_my_app_l2`) so it is a valid unquoted database identifier, Compose project
   `<id>-l<N>`, `LANE_ID=<id>/<lane>`. Unique across every container on the machine.
@@ -251,9 +252,10 @@ Agents in a lane must not run `dot-ai init` or `dot-ai sync` (they would scaffol
 - **Codex / Gemini**: both stop instruction discovery at the git root, so the container file
   does not reach a lane. Lanes get an excluded `AGENTS.md` / `GEMINI.md` only when the repo
   does not commit one (never an `AGENTS.override.md`, which would hide the repo's own). `doctor`
-  reports whether container instructions reach each configured agent and prints the per-user
-  setting that fixes it (`project_root_markers`, `context.includeDirectories`). L.AI.nes never
-  edits user-level agent config.
+  reports, per configured agent, a count: how many open lanes have the lane-local file, the rest
+  relying on `.ai/README.md`. *Recorded (1.0.0):* it does not print a per-user setting
+  (`project_root_markers`, `context.includeDirectories`); that hint waits until Codex's handling of
+  a marker above a nested `.git` is confirmed (§15). L.AI.nes never edits user-level agent config.
 - The lane `.ai/README.md` carries the same rules for any agent.
 - **MCP:** `init` writes the container's `.mcp.json`, and `create`/`refresh` write an excluded one in each lane, registering `laines-mcp --container <container>` as server `laines`, when Claude is a configured agent. A repo-tracked `.mcp.json` is never overwritten.
 
@@ -339,9 +341,12 @@ Checksums of approved hooks live in `hooks.lock.json`.
   owned by a human and cannot be moved by an agent.
 - No bypass argument is reachable over MCP. Tool input schemas never declare one, and argument
   mapping drops any injected one.
-- Before deleting anything, the lane path must resolve — lexically and through `realpath` —
-  inside the container and match the lane prefix. A container path that resolves to `/` or the
-  home directory is refused.
+- Before deleting anything, the lane path must resolve — lexically and through `realpath` — to
+  `<container>/<lane dir>` for the directory recorded in `lanes.json`, and must not be a symlink. A
+  container path that resolves to `/` or the home directory is refused. *Recorded deviation
+  (1.0.0):* lane names are validated when `create` accepts them against the lane-name rule
+  (`[a-z0-9][a-z0-9_-]{0,31}`), not against `lanePrefix`: a custom name (§10.2) need not start with
+  the prefix. A name of the form `<lanePrefix><N>` claims lane number N.
 - `audit.jsonl` records metadata for create, refresh, teardown, keep, release, hook approval,
   and policy changes. An audit write failure warns and never fails the action.
 
@@ -396,7 +401,9 @@ only makes things safer, so an agent may pass it; `remove_dir` is accepted and i
 **Closed lanes (0.4.9, lifting the 0.4.8 exclusion).** A closed lane's leftover clone is unowned: no
 board entry tracks it, so work done there after the close is the easiest to lose. The typed form is
 therefore offered for it too (clone exists, is a git repo), with every ref whose tip is newer than
-`closed` labelled "changed after the lane closed" in both forms. The closed path runs no
+`closed` labelled "changed after the lane closed" in both forms. "Newer" compares committer dates, a
+heuristic: for an annotated tag it is the date of the commit the tag points to, so a tag created after
+the close on an older commit is not flagged (recorded, 1.0.0). The closed path runs no
 `pre-teardown`, so `runTeardown` re-checks the `expect` fingerprint immediately before archiving or
 deleting anything and refuses with nothing touched on a mismatch. The audit entry adds
 `closedLane: true`.
@@ -417,7 +424,8 @@ runs `laines release`. Agents may `keep` (the safe direction) but never `release
 
 User-level agent config, Claude `Elicitation`/`ElicitationResult` hooks (which can alter a
 confirmation; `doctor` warns when one is visible to a lane), direct edits to `.laines/` files by
-anything with filesystem access, and hooks themselves (they are the user's code).
+anything with filesystem access, and hooks themselves (they are the user's code). From 1.0.0,
+`SECURITY.md` → "Known limitations and residual risks" lists them, with what to do about each.
 
 ## 10. Flows
 
@@ -470,8 +478,9 @@ A failed clone removes the partial directory and releases the ports.
 7. Run `post-teardown`; audit; release the lane's ports.
 
 Deleting the clone is the default (0.4.9): tearing a lane down closes it and removes its directory after
-the checks in step 2. `--keep-dir` (MCP `keep_dir`) is the opt-out: steps 2 and 6 are skipped, the clone
-is left in place and nothing irreversible happens to it. `--remove-dir` (MCP `remove_dir`) is a deprecated
+the checks in step 2. `--keep-dir` (MCP `keep_dir`) is the opt-out: steps 2 and 6 are skipped and the clone
+is left in place, but step 5 still runs, so the lane-local (untracked) files under `.ai/context/` are
+deleted and those under `.ai/plans/` are archived. `--remove-dir` (MCP `remove_dir`) is a deprecated
 no-op alias; `--keep-dir` together with `--remove-dir` is an input error (exit 2). Tearing down a lane
 that is already closed deletes its leftover clone (same checks); `--keep-dir` there is an input error,
 as is tearing down a closed lane whose clone is already gone. The dry run reports `removedDir: true`
@@ -533,6 +542,10 @@ block so `dot-ai sync` keeps it.
   `src/deps.js`.
 - `src/mcp/tools.js` is a table of `{ name, description, inputSchema, command, mapArgs }`.
   Errors become `isError` results; the server never crashes.
+- Git calls that reach the network run asynchronously, so a long-lived MCP server keeps answering
+  while they run: the clone in `create`, `ls-remote` in `adopt`, and the `.ai` seed's clone and
+  checkout. Other git calls are short local operations and stay synchronous, briefly blocking the
+  server (recorded, 1.0.0).
 - Templates ship undotted and are renamed on copy (npm rewrites a shipped `.gitignore`).
   `files` allowlist includes every template; `.gitattributes` pins LF on executables.
 - Public repository and package: no personal paths, accounts, or private references in
@@ -577,6 +590,6 @@ CI: lint and `npm audit`; tests on Node 22, 24, 26 on macOS and Linux.
 - Confirm elicitation behaviour in headless `claude -p` and VS Code with a real server; adjust
   only the fallback message if it differs.
 - Confirm Codex `project_root_markers` with a marker above a nested `.git` behaves as
-  documented before `doctor` recommends it.
+  documented before `doctor` recommends it. Deferred past 1.0 (`.ai/notes/post-1.0-backlog.md`).
 - Branch flow for this repository (main with protected PRs is the default) and branch
   protection before going public.

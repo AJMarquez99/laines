@@ -43,6 +43,39 @@ them rather than the real environment.
 - Update the [README](README.md) and the
   [specification](.ai/plans/2026-09-29-laines-spec.md) when you add or change a command, flag or
   config key.
+- Add a line under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) for any change a user would
+  notice, and check it against the compatibility policy below.
+
+## Compatibility (semver)
+
+From 1.0.0, laines follows [semantic versioning](https://semver.org/). This is what each kind of
+release may change.
+
+- **Major:**
+  - removing or renaming a command, flag, config key, MCP tool or tool parameter;
+  - changing a default in the *less safe* direction;
+  - changing what an exit code means;
+  - removing or renaming a field in `--format json` output or in an MCP structured result;
+  - an on-disk format change that older laines can't read **and** that laines doesn't migrate
+    automatically;
+  - raising the Node floor above a Node line that is still supported upstream.
+- **Minor:**
+  - new commands, flags, config keys, tools, optional parameters or output fields;
+  - an on-disk change that laines migrates forward on its own (as `refresh` does with layouts);
+  - a new or tighter safety check;
+  - raising the Node floor to drop only Node lines that have reached end of life.
+- **Patch:** fixes, wording and docs.
+- **Not covered:** `--format table` text, board prose, error message text, the file layout under
+  `src/`, and anything reached by a deep `import` (laines has no JS API).
+- **Formats and environment covered:**
+  - `.laines/config.json`, `.laines/lanes.json` and the machine index;
+  - the hook directory contract: hook names, `.d/` order, and exit 3;
+  - `.laines.env` variable names and the board markers;
+  - the environment variables `LAINES_CONFIG_DIR` (and its `XDG_CONFIG_HOME` fallback) and
+    `LAINES_HOOK`, and the hook environment (`LANE_PORT_BASE`, `LANE_PORT_COUNT`, `PORT`, and the
+    rest of the documented hook variables).
+- **Downgrades are unsupported.** A newer laines may migrate a container forward in a way an older
+  one can't read.
 
 ## The audit gate
 

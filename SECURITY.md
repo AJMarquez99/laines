@@ -2,8 +2,8 @@
 
 ## Supported versions
 
-Only the latest release is supported. Until laines is published to npm, that is the latest `v*`
-tag. Please upgrade to it before reporting an issue.
+Only the latest 1.x release on npm (`@ajmarquez99/laines`) is supported. Please upgrade to it
+before reporting an issue.
 
 ## Reporting a vulnerability
 
@@ -63,6 +63,52 @@ These follow from the documented trust model:
 - code you run yourself;
 - other local users reading the board or the audit log. These are plain files created under your
   umask, and laines makes no file-mode guarantee.
+
+## Known limitations and residual risks
+
+These are known gaps in what laines checks. Each item says what happens and what to do about it;
+none of them is a guarantee. The README's [Trust model](README.md#trust-model) describes the
+boundary they sit against.
+
+- **SSH prompts.** laines sets `GIT_TERMINAL_PROMPT=0`, which doesn't cover SSH passphrase or
+  host-key prompts. From a terminal you can answer them. Over MCP an agent can't, so use an SSH
+  agent (or a key without a passphrase), and accept the host key once from a terminal.
+- **The unpushed-work check is local.** Teardown doesn't fetch. A remote-tracking ref that has gone
+  stale (for example, after the branch was deleted on the server) still counts as "on a remote".
+  Run `git -C <lane> fetch --prune` before tearing down an old lane.
+- **What the unpushed-work check doesn't see.** Files your `.gitignore` ignores (`.env`, local
+  databases), commits inside submodules, and linked worktrees are outside it, and teardown deletes
+  the clone. Save anything you need from them in a `pre-teardown` hook.
+- **`--keep-dir` still deletes the lane's local context.** It keeps the clone, but teardown always
+  archives the lane-local (untracked) files under `.ai/plans/` and deletes the lane-local files
+  under `.ai/context/`. Move context you want to keep into the container's `.ai/` first.
+- **`ai sync`'s symlink checks are check-then-act.** Node has no directory-handle file I/O, so a
+  process that can already write both `.ai/` trees and swaps a directory for a symlink at exactly
+  the right moment could still redirect one write or delete. `ai sync` refuses every swap that is
+  present when it checks each file. Don't run `ai sync` while untrusted processes are modifying a
+  lane's `.ai/`.
+- **Hooks don't run under the container lock.** A `keep` that lands while `pre-teardown` is running
+  aborts the teardown, but only after the hook's side effects. Holding the lock across your hooks
+  would deadlock any hook that calls laines. Keep steps that a late `keep` should prevent out of
+  `pre-teardown`.
+- **`hooks approve` approves what is on disk when it runs.** A hook edited between `hooks status`
+  and `hooks approve` is approved without you having seen that version. `approve` prints the diffs
+  it approved: read them.
+- **Teardown has a short race with activity in the clone.** The lanes lock doesn't serialize git
+  activity inside the lane, so a write between the last fingerprint check and the deletion can be
+  lost. The window is milliseconds, and it needs something writing in the lane being torn down.
+  Stop the lane's agent first.
+- **A Claude `Elicitation` or `ElicitationResult` hook can answer a teardown confirmation.** Such
+  hooks run as you, so this is the same trust boundary as any hook. `laines doctor` warns when one
+  is visible to a lane.
+- **The deny rules don't cover every invocation.** They are prefix rules for `laines`,
+  `npx laines` and `npx @ajmarquez99/laines`. Forms such as `npx -y @ajmarquez99/laines …` and
+  `npx @ajmarquez99/laines@1.0.0 …` are not denied, and neither is `sh -c`. The rules steer agents
+  onto the MCP tools; they don't contain an agent that has a shell.
+- **A running `laines-mcp` keeps its old code after an upgrade.** laines flags a stale server when
+  the installed version differs from the one it loaded. Under installs that put each version at its
+  own path (for example pnpm or volta), that check may never fire. Restart your MCP client, or
+  reconnect the server (`/mcp` in Claude Code), after every upgrade.
 
 ## Good hygiene for users
 
