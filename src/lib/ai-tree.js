@@ -1,9 +1,9 @@
-import { copyFileSync, lstatSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { copyFileSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { basename, dirname, join, sep } from 'node:path';
 import { z } from 'zod';
 import { BlockedError } from './errors.js';
 import { checksum } from './hooks.js';
-import { readJson, writeJson } from './jsonfile.js';
+import { readJson, writeFileAtomic, writeJson } from './jsonfile.js';
 import { parseWith } from './schema.js';
 import { gitOut } from './git.js';
 
@@ -60,12 +60,61 @@ export function walk(dir) {
   return { files: files.sort(), symlinks: symlinks.sort() };
 }
 
+const nfc = (s) => s.normalize('NFC');
+const nfcKeys = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [nfc(k), v]));
+
+// Keys are NFC: macOS can list a name decomposed (NFD) that git and the other side hold precomposed,
+// and one file must not look like two. `names` maps each key to the name on disk (still NFD on Linux).
 export function syncedState(aiDir) {
   const { files, symlinks } = walk(aiDir);
+  const names = new Map();
+  for (const rel of files.filter(isSynced)) {
+    const key = nfc(rel);
+    if (names.has(key)) throw new BlockedError(`${join(aiDir, names.get(key))} and ${join(aiDir, rel)} are one name in two Unicode forms: rename or remove one, then retry.`);
+    names.set(key, rel);
+  }
   return {
-    files: Object.fromEntries(files.filter(isSynced).map((rel) => [rel, checksum(readFileSync(join(aiDir, rel)))])),
-    symlinks: symlinks.filter(isSynced),
+    files: Object.fromEntries([...names].map(([key, rel]) => [key, checksum(readFileSync(join(aiDir, rel)))])),
+    names: Object.fromEntries(names),
+    symlinks: [...new Set(symlinks.filter(isSynced).map(nfc))].sort(),
   };
+}
+
+// The name on disk for a syncedState key (the key itself when that side does not have it).
+export const onDisk = (names, rel) => (Object.hasOwn(names, rel) ? names[rel] : rel);
+
+// Where aiDir really is, whether or not it exists yet. Taken before any write, so a later swap of
+// aiDir itself for a symlink cannot move it.
+export const realAi = (aiDir) => join(realpathSync(dirname(aiDir)), basename(aiDir));
+
+// The plan comes from a walk that never follows a link, but a directory under .ai/ can be swapped
+// for one before the write. Refuse unless what exists of path's directory resolves inside side.root.
+function assertInside(side, path) {
+  let dir = dirname(path);
+  while (dir !== side.dir && dirname(dir) !== dir && !lstatSync(dir, { throwIfNoEntry: false })) dir = dirname(dir);
+  if (!lstatSync(dir, { throwIfNoEntry: false })) return;
+  const real = gone(() => realpathSync(dir));
+  if (real === side.root || real?.startsWith(side.root + sep)) return;
+  throw new BlockedError(`${dir} resolves to ${real ?? 'nothing (a dangling link)'}, outside ${side.dir} (swapped for a symbolic link?): refusing to write or delete through it.`);
+}
+
+// Copies rel from one side to the other, or deletes it from `to` when `from` no longer has it.
+// A side is { dir, root: realAi(dir), names } with names from syncedState.
+export function copyOrDelete(from, to, rel) {
+  const src = join(from.dir, onDisk(from.names, rel));
+  const dest = join(to.dir, Object.hasOwn(to.names, rel) ? to.names[rel] : onDisk(from.names, rel));
+  assertInside(to, dest);
+  const st = Object.hasOwn(from.names, rel) ? lstatSync(src, { throwIfNoEntry: false }) : null;
+  if (!st) {
+    rmSync(dest, { force: true });
+    return;
+  }
+  assertInside(from, src);
+  if (st.isSymbolicLink()) throw new BlockedError(`${src} is a symbolic link: refusing to sync through it.`);
+  const data = readFileSync(src);
+  mkdirSync(dirname(dest), { recursive: true });
+  assertInside(to, dest);
+  writeFileAtomic(dest, data);
 }
 
 // Copies every regular file of src into dest; symlinks are skipped and reported.
@@ -91,7 +140,10 @@ const isRefused = (rel, refused) => refused.some((r) => rel === r || rel.startsW
 
 // Design §4.3, per file: c = container, l = lane, b = base (undefined = absent).
 // refused: rels of symlinked directories; files under them are never synced.
-export function planSync({ container, lane, base, refused = [] }) {
+// Keys are normalised to NFC (a base written before keys were NFC may hold NFD ones).
+export function planSync({ container: c0, lane: l0, base: b0, refused: r0 = [] }) {
+  const [container, lane, base] = [c0, l0, b0].map(nfcKeys);
+  const refused = r0.map(nfc);
   const paths = [...new Set([...Object.keys(container), ...Object.keys(lane), ...Object.keys(base)])].sort();
   const toLane = [];
   const toContainer = [];

@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
-  aiDrift, copyTree, isSynced, planSync, readAiBase, readAiBases, repoCommitsAi, syncedState, walk, writeAiBase,
+  aiDrift, copyOrDelete, copyTree, isSynced, planSync, readAiBase, readAiBases, realAi, repoCommitsAi, syncedState, walk, writeAiBase,
 } from '../src/lib/ai-tree.js';
 import { operationInProgress } from '../src/lib/lane-git.js';
 import { containerPaths } from '../src/lib/paths.js';
@@ -40,7 +40,7 @@ describe('walk, syncedState and copyTree', () => {
     symlinkSync(join(root, 'outside', 'secret.md'), join(ai, 'guidelines.md'));
     expect(walk(ai)).toEqual({ files: ['context/h.md', 'knowledge/a.md'], symlinks: ['guidelines.md', 'knowledge/linked'] });
     expect(walk(join(root, 'missing'))).toEqual({ files: [], symlinks: [] });
-    expect(syncedState(ai)).toEqual({ files: { 'knowledge/a.md': checksum('A\n') }, symlinks: ['guidelines.md', 'knowledge/linked'] });
+    expect(syncedState(ai)).toEqual({ files: { 'knowledge/a.md': checksum('A\n') }, names: { 'knowledge/a.md': 'knowledge/a.md' }, symlinks: ['guidelines.md', 'knowledge/linked'] });
   });
 
   it('copies every regular file and skips symlinks', () => {
@@ -95,6 +95,120 @@ describe('walk, syncedState and copyTree', () => {
     expect(() => copyTree(src, dest)).toThrow(/destination has symlinks: refusing to write through them/);
     // Ensure no files were copied
     expect(readFileSync(join(dest, 'knowledge', 'x.md'), 'utf8')).toBe('old\n');
+  });
+});
+
+describe('Unicode normalisation: one file, one key', () => {
+  const NFC = 'knowledge/café.md';
+  const NFD = 'knowledge/café.md';
+  // macOS file systems treat the two forms as one name; Linux ones keep both.
+  const probe = tmp('laines-nfc-');
+  writeFileSync(join(probe, 'café'), '');
+  const formInsensitive = existsSync(join(probe, 'café'));
+
+  it('syncedState keys an NFD name by its NFC form and remembers the name on disk', () => {
+    const ai = join(tmp(), '.ai');
+    put(ai, NFD, 'A\n');
+    const s = syncedState(ai);
+    expect(s.files).toEqual({ [NFC]: checksum('A\n') });
+    expect(s.names[NFC].normalize('NFC')).toBe(NFC);
+    expect(existsSync(join(ai, s.names[NFC]))).toBe(true);
+  });
+
+  it('planSync sees an NFD lane name and its NFC container twin as one file, and reads an NFD base key', () => {
+    const root = tmp();
+    put(root, `c/${NFC}`, 'A\n');
+    put(root, `l/${NFD}`, 'A\n');
+    const c = syncedState(join(root, 'c'));
+    const l = syncedState(join(root, 'l'));
+    expect(planSync({ container: c.files, lane: l.files, base: {} })).toMatchObject({ toLane: [], toContainer: [], conflicts: [], nextBase: { [NFC]: checksum('A\n') } });
+    const plan = planSync({ container: { [NFC]: 'sha256:a' }, lane: { [NFD]: 'sha256:b' }, base: { [NFD]: 'sha256:a' } });
+    expect(plan).toMatchObject({ toLane: [], toContainer: [NFC], conflicts: [] });
+  });
+
+  it('copyOrDelete writes and deletes through the name on disk, never adding a twin', () => {
+    const root = tmp();
+    put(root, `c/${NFC}`, 'new\n');
+    put(root, `l/${NFD}`, 'old\n');
+    const side = (d) => ({ dir: join(root, d), root: realAi(join(root, d)), names: syncedState(join(root, d)).names });
+    copyOrDelete(side('c'), side('l'), NFC);
+    expect(walk(join(root, 'l')).files).toHaveLength(1);
+    expect(readFileSync(join(root, 'l', side('l').names[NFC]), 'utf8')).toBe('new\n');
+    copyOrDelete({ dir: join(root, 'x'), root: join(root, 'x'), names: {} }, side('l'), NFC);
+    expect(walk(join(root, 'l')).files).toEqual([]);
+  });
+
+  it.runIf(!formInsensitive)('syncedState refuses two names that differ only in Unicode form', () => {
+    const ai = join(tmp(), '.ai');
+    put(ai, NFC, 'A\n');
+    put(ai, NFD, 'B\n');
+    expect(() => syncedState(ai)).toThrow(BlockedError);
+    expect(() => syncedState(ai)).toThrow(/one name in two Unicode forms/);
+  });
+});
+
+describe('copyOrDelete after a symlink swap between planning and writing', () => {
+  // The container's knowledge/a.md changed; the lane's is the base, so the plan copies it to the lane.
+  function planned() {
+    const root = tmp();
+    put(root, 'c/.ai/knowledge/a.md', 'new\n');
+    put(root, 'l/.ai/knowledge/a.md', 'old\n');
+    put(root, 'l/.ai/knowledge/gone.md', 'G\n');
+    put(root, 'outside/knowledge/a.md', 'outside\n');
+    put(root, 'outside/knowledge/gone.md', 'outside\n');
+    const side = (d) => ({ dir: join(root, d, '.ai'), root: realAi(join(root, d, '.ai')), names: syncedState(join(root, d, '.ai')).names });
+    const c = side('c');
+    const l = side('l');
+    const plan = planSync({ container: syncedState(c.dir).files, lane: syncedState(l.dir).files, base: syncedState(l.dir).files });
+    expect(plan.toLane).toEqual(['knowledge/a.md', 'knowledge/gone.md']);
+    const outside = (rel) => readFileSync(join(root, 'outside', rel), 'utf8');
+    return { root, c, l, plan, outside };
+  }
+
+  it('writes normally when nothing was swapped', () => {
+    const s = planned();
+    for (const rel of s.plan.toLane) copyOrDelete(s.c, s.l, rel);
+    expect(readFileSync(join(s.l.dir, 'knowledge', 'a.md'), 'utf8')).toBe('new\n');
+    expect(existsSync(join(s.l.dir, 'knowledge', 'gone.md'))).toBe(false);
+  });
+
+  it('refuses to write or delete through a lane .ai/<dir> swapped for a symlink', () => {
+    const s = planned();
+    renameSync(join(s.l.dir, 'knowledge'), join(s.root, 'moved'));
+    symlinkSync(join(s.root, 'outside', 'knowledge'), join(s.l.dir, 'knowledge'));
+    for (const rel of s.plan.toLane) {
+      expect(() => copyOrDelete(s.c, s.l, rel), rel).toThrow(BlockedError);
+      expect(() => copyOrDelete(s.c, s.l, rel), rel).toThrow(/outside .* refusing to write or delete through it/);
+    }
+    expect(s.outside('knowledge/a.md')).toBe('outside\n');
+    expect(s.outside('knowledge/gone.md')).toBe('outside\n');
+  });
+
+  it('refuses to create a directory under a swapped one', () => {
+    const s = planned();
+    put(s.c.dir, 'knowledge/sub/new.md', 'N\n');
+    const c = { ...s.c, names: syncedState(s.c.dir).names };
+    renameSync(join(s.l.dir, 'knowledge'), join(s.root, 'moved'));
+    symlinkSync(join(s.root, 'outside', 'knowledge'), join(s.l.dir, 'knowledge'));
+    expect(() => copyOrDelete(c, s.l, 'knowledge/sub/new.md')).toThrow(BlockedError);
+    expect(existsSync(join(s.root, 'outside', 'knowledge', 'sub'))).toBe(false);
+  });
+
+  it('refuses when the lane .ai/ itself is swapped for a symlink', () => {
+    const s = planned();
+    renameSync(s.l.dir, join(s.root, 'moved'));
+    symlinkSync(join(s.root, 'outside'), s.l.dir);
+    expect(() => copyOrDelete(s.c, s.l, 'knowledge/a.md')).toThrow(BlockedError);
+    expect(s.outside('knowledge/a.md')).toBe('outside\n');
+  });
+
+  it('refuses to read through a lane file swapped for a symlink', () => {
+    const s = planned();
+    put(s.root, 'outside/secret.md', 'S\n');
+    renameSync(join(s.l.dir, 'knowledge', 'a.md'), join(s.root, 'moved.md'));
+    symlinkSync(join(s.root, 'outside', 'secret.md'), join(s.l.dir, 'knowledge', 'a.md'));
+    expect(() => copyOrDelete(s.l, s.c, 'knowledge/a.md')).toThrow(/is a symbolic link: refusing to sync through it/);
+    expect(readFileSync(join(s.c.dir, 'knowledge', 'a.md'), 'utf8')).toBe('new\n');
   });
 });
 

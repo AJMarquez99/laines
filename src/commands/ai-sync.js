@@ -1,23 +1,13 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, lstatSync } from 'node:fs';
+import { join } from 'node:path';
 import { laneFrom, loadContainer } from '../lib/container.js';
 import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
 import { assertLaneDir } from '../lib/containment.js';
-import { planSync, readAiBase, repoCommitsAi, syncedState, writeAiBase } from '../lib/ai-tree.js';
+import { copyOrDelete, onDisk, planSync, readAiBase, realAi, repoCommitsAi, syncedState, writeAiBase } from '../lib/ai-tree.js';
 import { operationInProgress } from '../lib/lane-git.js';
-import { writeFileAtomic } from '../lib/jsonfile.js';
 import { appendAudit } from '../lib/audit.js';
 import { withLock } from '../lib/lock.js';
 import { BlockedError, InvalidInputError } from '../lib/errors.js';
-
-function copyOrDelete(from, to) {
-  if (existsSync(from)) {
-    mkdirSync(dirname(to), { recursive: true });
-    writeFileAtomic(to, readFileSync(from));
-  } else {
-    rmSync(to, { force: true });
-  }
-}
 
 // Design §4.3: an explicit three-way sync between the container's live .ai/ and a lane's committed .ai/.
 export async function runAiSync(opts, deps) {
@@ -64,8 +54,10 @@ export async function runAiSync(opts, deps) {
   for (const rel of plan.toContainer) result.why[rel] = reason(rel, l.files, c.files);
   if (opts.dryRun) return result;
 
-  for (const rel of plan.toLane) copyOrDelete(join(ctx.paths.ai, rel), join(laneAi, rel));
-  for (const rel of plan.toContainer) copyOrDelete(join(laneAi, rel), join(ctx.paths.ai, rel));
+  const cSide = { dir: ctx.paths.ai, root: realAi(ctx.paths.ai), names: c.names };
+  const lSide = { dir: laneAi, root: realAi(laneAi), names: l.names };
+  for (const rel of plan.toLane) copyOrDelete(cSide, lSide, rel);
+  for (const rel of plan.toContainer) copyOrDelete(lSide, cSide, rel);
   await withLock(ctx.paths.lock, () => writeAiBase(ctx.paths, name, nextBase));
   const moved = plan.toLane.length + plan.toContainer.length;
   if (moved || plan.conflicts.length) {
@@ -77,7 +69,7 @@ export async function runAiSync(opts, deps) {
   if (plan.conflicts.length) {
     throw new BlockedError([
       `.ai/ sync of ${name} stopped on ${plan.conflicts.length} conflict(s): changed in both the container and the lane.`,
-      ...plan.conflicts.flatMap((rel) => [`  ${rel}`, `    container: ${join(ctx.paths.ai, rel)}`, `    lane:      ${join(laneAi, rel)}`]),
+      ...plan.conflicts.flatMap((rel) => [`  ${rel}`, `    container: ${join(ctx.paths.ai, onDisk(c.names, rel))}`, `    lane:      ${join(laneAi, onDisk(l.names, rel))}`]),
       'Everything else was synced. Make the two copies identical (edit the container copy to what you want, copy it over the lane copy), then run',
       `\`laines ai sync ${name}\` again.`,
     ].join('\n'));
