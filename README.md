@@ -1,11 +1,10 @@
 # L.AI.nes
 
+[![npm](https://img.shields.io/npm/v/@ajmarquez99/laines.svg)](https://www.npmjs.com/package/@ajmarquez99/laines)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Isolated parallel work lanes for coding agents.** One shared knowledge base, many independent
 clones of your project, each with its own local environment.
-
-> **Status: pre-release.** Containers, lanes, hooks and the MCP server work today. See [Roadmap](#roadmap). The package is not on npm yet; install from source.
 
 ## Why
 
@@ -41,10 +40,14 @@ to.
 Requires Node.js 22.12 or later, and git.
 
 ```bash
-git clone https://github.com/AJMarquez99/laines.git
-cd laines && npm install && npm install -g .
+npm i -g @ajmarquez99/laines
 laines --version
 ```
+
+This installs both commands, `laines` and `laines-mcp`. For a one-off command without installing,
+use `npx @ajmarquez99/laines <command>`. The MCP server needs the global install, because your MCP
+client starts `laines-mcp` from your `PATH`. To work on laines itself, see
+[Development](#development).
 
 ## Quick start
 
@@ -110,7 +113,8 @@ laines init ~/work/other-lanes --remote git@github.com:your-org/other.git --dry-
 
 `init` only creates fresh containers. It refuses a directory that already has `.ai/` or
 `.laines/`, one inside another container or inside a git repository, the filesystem root, and
-your home directory itself.
+your home directory itself. So if your home directory is itself a git repository, no container can
+live under it; this is by design, so that lanes never end up inside another repository.
 
 ## Commands
 
@@ -144,6 +148,13 @@ confirmation passes back is internal and appears in neither. A real teardown ret
 | `laines watch [file] [--interval <s>]` | Follow the board (or any file) and print new lines as they land. |
 
 Run commands from the container directory, or pass `--container <dir>`. A bare `--` argument is rejected (exit 2), so options can't be used to slip past the agent deny rules for human-only commands.
+
+**`ai sync` edge cases.** A lane with no recorded sync base (made before M4.5, or after a warning
+from `create`) merges on its first sync, so a file the container has since deleted comes back from
+the lane. Deleting the last committed `.ai/` file makes laines treat the repository as one that
+doesn't commit `.ai/`, so `ai sync` stops rather than passing that deletion on. A lock timeout at
+the end of a sync leaves the base unrecorded; the next run records it. In each case the files can
+be recovered from git or from the container.
 
 ### Exit codes
 
@@ -250,9 +261,10 @@ the preferred agent and gets the deepest integration:
   from parent directories. A plain clone of the same repo outside the container never sees it.
 - Each lane gets a git-ignored `CLAUDE.local.md` with its identity, and its own deny rules.
 
-Codex and Gemini stop reading instruction files at the git root, so they get the rules from the
-lane's `.ai/README.md`. `laines doctor` will tell you the one-line user setting that makes them
-read the container's instructions too.
+Codex and Gemini read the lane-local `AGENTS.md` / `GEMINI.md`; the container's instructions don't
+reach them, because both stop reading instruction files at the git root. When the repository
+commits its own `AGENTS.md` or `GEMINI.md`, laines leaves it alone, and they get the lane rules
+from the lane's `.ai/README.md`.
 
 ## MCP server
 
@@ -308,6 +320,9 @@ makes teardown safer; `remove_dir` is accepted and ignored (deprecated).
 version differs from the one the server loaded, `laines_status` and `laines_doctor` show
 `server: { running, installed, stale: true }`, doctor fails an `mcp-server` check, and every refusal gets a
 line telling you to reconnect laines in your MCP client (for example `/mcp` in Claude Code).
+**Restart your MCP client (or reconnect laines) after every upgrade.** Under installs that put
+each version at its own path (for example pnpm or volta), the installed version the server reads
+may never change, so it may never be flagged as stale.
 
 `laines doctor` checks the registration. Containers made before the MCP server existed don't have
 one: run the `claude mcp add` command above in the container, and `laines refresh <lane>` for each
@@ -341,13 +356,27 @@ hooks run `teardown` and `release`; see [Trust model](#trust-model).
 
 Out of scope for v1: Windows and several repositories in one lane.
 
+## Compatibility
+
+laines follows semantic versioning from 1.0.0. The commands, flags, config keys, MCP tools,
+`--format json` fields, exit codes and on-disk formats are covered; table output, board prose and
+error text are not, and there is no JS API. The full policy is in
+[CONTRIBUTING](CONTRIBUTING.md#compatibility-semver), and [CHANGELOG.md](CHANGELOG.md) lists the
+changes in each release.
+
 ## Development
 
+From source:
+
 ```bash
-npm install
-npm run test:run   # run the test suite once
+git clone https://github.com/AJMarquez99/laines.git
+cd laines && npm install
+npm install -g .   # optional: put this checkout's laines and laines-mcp on your PATH
+npm run test:run   # run the test suite once (npm test runs vitest in watch mode)
 npm run lint
 ```
+
+`prepublishOnly` runs the test suite but not the linter; CI and the release workflow run both.
 
 Design documents live in [`.ai/plans/`](.ai/plans/): the
 [v1 specification](.ai/plans/2026-09-29-laines-spec.md) and the
