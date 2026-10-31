@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { writeFileSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { readJson, writeJson, writeFileAtomic, getPath } from '../src/lib/jsonfile.js';
@@ -62,6 +62,14 @@ describe('writeFileAtomic', () => {
     writeFileAtomic(file, 'one\n');
     writeFileAtomic(file, 'two\n');
     expect(readFileSync(file, 'utf8')).toBe('two\n');
+    expect(readdirSync(dir)).toEqual(['board.md']);
+  });
+
+  it('removes its temp file when the rename fails', () => {
+    const dir = tmp();
+    mkdirSync(join(dir, 'board.md'));
+    writeFileSync(join(dir, 'board.md', 'x'), '');
+    expect(() => writeFileAtomic(join(dir, 'board.md'), 'one\n')).toThrow();
     expect(readdirSync(dir)).toEqual(['board.md']);
   });
 });
