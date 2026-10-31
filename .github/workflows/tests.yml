@@ -34,16 +34,36 @@ jobs:
       - run: npm ci
       - run: npm run test:run
 
+  # Pack round-trip (test/pack-roundtrip.mjs): pack the tree, install the tarball into a clean
+  # prefix and drive both bins. Not part of the vitest suite, since the install reads the registry.
+  # Node 22 is the floor line (bundled npm 10.9.x); release.yml runs it on Node 24.
+  pack:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:pack
+
   # Aggregator → the single required "ci" status check (green only if every matrix job passed).
   # `if: always()` keeps it from being skipped, since a skipped required check counts as passing.
   ci:
-    needs: [test]
+    needs: [test, pack]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - if: needs.test.result != 'success'
+      - if: needs.test.result != 'success' || needs.pack.result != 'success'
         run: |
           echo "test matrix result: ${{ needs.test.result }}"
+          echo "pack round-trip result: ${{ needs.pack.result }}"
           exit 1
-      - run: echo "all tests passed on every OS and Node version"
+      - run: echo "all tests and the pack round-trip passed on every OS and Node version"

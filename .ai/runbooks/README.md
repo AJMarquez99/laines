@@ -14,4 +14,4 @@ A runbook commonly references a script for its automatable steps.
 
 | File | Answers |
 |---|---|
-| [releasing.md](releasing.md) | How to cut a laines release: staging → main promotion, the annotated `vX.Y.Z` tag, the Dependabot security-PR catch-up, the audit gate and the pre-release reference checks |
+| [releasing.md](releasing.md) | How to cut a laines release: staging → main promotion, the annotated `vX.Y.Z` tag that publishes to npm through `release.yml` (Trusted Publisher, `npm` environment approval, provenance), post-publish verification, the manual fallback, the Dependabot security-PR catch-up, the audit gate and the pre-release checks |
