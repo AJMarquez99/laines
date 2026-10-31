@@ -20,6 +20,12 @@ here.
 |---|---|
 | `hooks approve --expect <checksum>` (m2) | Binds an approval to the version the human reviewed. A new flag, so a minor. The gap is documented in `SECURITY.md`. |
 
+## Breaking changes for 2.0
+
+| Item (source) | Notes |
+|---|---|
+| Remove `--remove-dir` / `remove_dir` in 2.0 (lead decision, 2026-10-30) | Deprecated and ignored since 0.4.9 (deleting the clone is the default). Kept through 1.x; removing a flag or tool parameter is a major under the compatibility policy. |
+
 ## Dependencies
 
 | Item (source) | Notes |

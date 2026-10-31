@@ -7,9 +7,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-To be released as 1.0.0, the first npm release. 1.0.0 is 0.4.13 plus a raised Node floor, a few
-fixes to surfaces that 1.0 freezes, and the documentation of what laines promises and what it
-doesn't. There are no new commands. Releases before 1.0.0 were tags only; the
+## [1.0.0] - 2026-10-31
+
+The first npm release. 1.0.0 was 0.4.13 plus a raised Node floor, a few fixes to surfaces that 1.0
+freezes, and the documentation of what laines promises and what it doesn't. It added no new
+commands. Releases before 1.0.0 were tags only; the
 [roadmap](.ai/plans/2026-09-29-laines-roadmap.md) records what each of them delivered.
 
 ### Added
@@ -28,6 +30,13 @@ doesn't. There are no new commands. Releases before 1.0.0 were tags only; the
 - **Deep imports fail.** `package.json` declares `exports`, so `import '@ajmarquez99/laines'` and
   imports of its `src/` files throw `ERR_PACKAGE_PATH_NOT_EXPORTED`. laines ships two commands and
   no JS API; the bins are unaffected.
+- **Teardown dry runs no longer include `fingerprint`** in `--format json` or the MCP result. It
+  was an internal field and has been removed.
+
+### Deprecated
+- `laines teardown --remove-dir` and the MCP `laines_teardown` parameter `remove_dir`. Deleting the
+  clone has been the default since 0.4.9, so both are accepted and ignored. They stay through 1.x
+  and will be removed no earlier than 2.0.
 
 ### Changed
 - The README no longer says that `laines doctor` prints a user setting for Codex and Gemini. They
@@ -43,10 +52,12 @@ doesn't. There are no new commands. Releases before 1.0.0 were tags only; the
 - A hand-edited `"adopted": false` in `.laines/lanes.json` no longer makes the file malformed.
 - On a case-insensitive disk, a lane-local `AGENTS.md` is no longer written over a tracked
   `Agents.md` (or any other case variant).
-- Teardown results (dry run and real run) report `isRepo`, and dry runs no longer include the
-  internal `fingerprint` (a removed JSON field). The `--format json` shape is settled for 1.0; the
-  README's Commands section lists the fields.
+- Teardown results (dry run and real run) report `isRepo`. The `--format json` shape is settled
+  for 1.0; the README's Commands section lists the fields.
 - Guidance strings that promised too much: `create`'s "sync base not recorded" warning now says to
   run `laines doctor`, then `laines ai sync <lane>`. The hint for a closed lane's leftover clone
   that isn't a git repository names `--force` and why ("unpushed work cannot be verified"), and a
   stray `lane_N` folder with no lane record is to be removed by hand.
+
+[Unreleased]: https://github.com/AJMarquez99/laines/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/AJMarquez99/laines/releases/tag/v1.0.0
