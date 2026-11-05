@@ -10,9 +10,8 @@
 # workflow FILENAME `release.yml` and the environment `npm`. Renaming this file or the environment
 # breaks publishing until the npm-side configuration is updated to match.
 #
-# Bootstrap (1.0.0 only): the package does not exist on npm yet, so no Trusted Publisher can be
-# configured. The publish step therefore also gets NODE_AUTH_TOKEN from the `npm` environment
-# secret NPM_TOKEN (a 1-day token). Remove that line in 1.0.1, once the Trusted Publisher exists.
+# No token: publishing uses OIDC only, and the package disallows tokens. (1.0.0 was bootstrapped
+# with a 1-day token, because no Trusted Publisher can exist before the package does.)
 #
 # A pushed v* tag is final (tag-protection): never move it. If the publish fails on the npm side,
 # fix that and re-run the failed job; if the code must change, release a new patch version.
@@ -121,5 +120,3 @@ jobs:
       - run: npm ci
       # prepublishOnly runs the test suite once more; kept on purpose, it also guards a manual publish.
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # bootstrap for 1.0.0 only; remove in 1.0.1
