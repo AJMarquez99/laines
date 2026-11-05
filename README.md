@@ -140,7 +140,7 @@ confirmation passes back is internal and appears in neither. A real teardown ret
 | `laines brief [lane]` | Print a lane's brief (identity, ports, rules). |
 | `laines keep [lane] --reason <why>` | Mark a lane to be kept, so it is not torn down as finished. |
 | `laines release <lane>` | Release a kept lane. Human-only: the lane name is required and agents are denied it. |
-| `laines teardown <lane> [--keep-dir] [--force] [--dry-run]` | Close a lane (human-only): archive its plans, delete its context, mark it closed and delete its clone. `--keep-dir` keeps the clone instead (and skips the unpushed-work checks); `--remove-dir` is the deprecated name for the default and is ignored, and the two together are an input error. Run on an already-closed lane it deletes the leftover clone, running `pre-teardown` again first (`LAINES_TEARDOWN_PHASE=remove-clone`; a first teardown sets `close`) and recording `cloneRemoved`/`branchAtRemoval` so the board's Closed line shows "clone removed <time> (on <branch>)" (or "clone remains"; lanes whose clone was removed before 0.4.9 also read "clone remains", `laines doctor` checks the disk). Unless `--keep-dir`, teardown refuses when the lane has uncommitted changes, stash entries, commits that exist on no remote (any ref: branches, tags, backup refs, detached HEAD), or is not a git repository. `--force` overrides those but never `keep`. The refusal also lists, for each unpushed ref, which other open lanes hold the same commits (informational only; it never makes removal safe). A branch with no upstream whose commits are on a remote is only a warning. Runs `pre-teardown` first (a failure aborts with nothing touched) and `post-teardown` last (a failure leaves a board request; running `teardown` again retries it). |
+| `laines teardown <lane> [--keep-dir] [--force] [--dry-run]` | Close a lane (human-only): archive its plans, delete its context, mark it closed and delete its clone. `--keep-dir` keeps the clone instead (and skips the unpushed-work checks); `--remove-dir` is the deprecated name for the default and is ignored (it will be removed no earlier than 2.0), and the two together are an input error. Run on an already-closed lane it deletes the leftover clone, running `pre-teardown` again first (`LAINES_TEARDOWN_PHASE=remove-clone`; a first teardown sets `close`) and recording `cloneRemoved`/`branchAtRemoval` so the board's Closed line shows "clone removed <time> (on <branch>)" (or "clone remains"; lanes whose clone was removed before 0.4.9 also read "clone remains", `laines doctor` checks the disk). Unless `--keep-dir`, teardown refuses when the lane has uncommitted changes, stash entries, commits that exist on no remote (any ref: branches, tags, backup refs, detached HEAD), or is not a git repository. `--force` overrides those but never `keep`. The refusal also lists, for each unpushed ref, which other open lanes hold the same commits (informational only; it never makes removal safe). A branch with no upstream whose commits are on a remote is only a warning. Runs `pre-teardown` first (a failure aborts with nothing touched) and `post-teardown` last (a failure leaves a board request; running `teardown` again retries it). |
 | `laines hooks status` | List each hook in `.laines/hooks/` as approved, changed or new, with a diff against the approved copy. |
 | `laines hooks approve [--lock] [--dry-run]` | Approve the current hooks (human-only). `--lock` also sets policy `approve`, so later changes are refused until a human approves them. It shows the diff of each hook it approves (with `--dry-run`, before approving). |
 | `laines hooks policy <approve\|notify\|open> [--dry-run]` | Set the hook policy (human-only). |
@@ -314,7 +314,7 @@ the agent did not pass `keep_dir`, the first confirmation has an optional "Keep 
 tick. Ticking it closes the lane and keeps the clone with no unpushed-work check. Left unticked, the
 check runs first: clean deletes the clone in that one confirmation, unpushed work continues into the
 typed prompt (or is refused with nothing torn down). An agent can pass `keep_dir` itself, which only
-makes teardown safer; `remove_dir` is accepted and ignored (deprecated).
+makes teardown safer; `remove_dir` is deprecated: it is accepted and ignored, and will be removed no earlier than 2.0.
 
 **Stale server.** A `laines-mcp` started before an upgrade keeps running the old code. When the installed
 version differs from the one the server loaded, `laines_status` and `laines_doctor` show
@@ -352,7 +352,7 @@ hooks run `teardown` and `release`; see [Trust model](#trust-model).
 | **0.4.11: Hook trust** | trust model documented, hooks refused human-only commands unless `hooks.manage` is on, doctor warns about unapproved hooks under `notify`/`open` | ✅ Done |
 | **0.4.12: Community readiness** | SECURITY, CONTRIBUTING and templates, CI on macOS/Linux × Node 20/22/24, Dependabot, zod security update, hooks with no `#!` line refused on every platform | ✅ Done |
 | **0.4.13: Dependency updates** | MCP SDK 1.32.2, dot-ai 1.2.0, ESLint 10, CI actions v7 | ✅ Done |
-| **M5: Release** | CI on macOS and Linux, security documentation, npm package | Planned |
+| **M5: Release** | CI on macOS and Linux, security documentation, npm package | ✅ Done (1.0.0) |
 
 Out of scope for v1: Windows and several repositories in one lane.
 

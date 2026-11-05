@@ -30,7 +30,9 @@ This is the steady state from 1.0.1 on. 1.0.0 was bootstrapped differently (last
   could be configured for it. For 1.0.0 only, the publish step also reads `NODE_AUTH_TOKEN` from
   the `npm` environment secret `NPM_TOKEN`:
   - The token is a **granular** token with **read and write** on **All packages** (a package that
-    doesn't exist yet can't be selected) and a **1-day** expiry.
+    doesn't exist yet can't be selected) and a **1-day** expiry. Create it right before pushing
+    the tag. If the `NPM_TOKEN` secret already exists, check that token's expiry on npmjs.com and
+    rotate it (new 1-day token, update the secret) rather than trust it.
   - Turn **"Bypass 2FA"** on if the account requires 2FA for writes. Without it, the publish
     fails with `EOTP` after the approval. That is recoverable: fix the secret, then re-run the
     failed job on the same tag.
@@ -41,8 +43,8 @@ This is the steady state from 1.0.1 on. 1.0.0 was bootstrapped differently (last
   - 1.0.1 removes the `NODE_AUTH_TOKEN` line. Configure the Trusted Publisher only when 1.0.1 is
     ready to tag, then tag it within 48 hours. Per npm's docs, treat an unused configuration as
     expiring after 2 days.
-  - The full sequence is in the M5 plan (`.ai/plans/2026-10-29-laines-1.0.0-m5-release-plan.md`,
-    §1.4).
+  - The full sequence is in the archived M5 plan
+    (`.ai/archive/2026-10-31_2026-10-29-laines-1.0.0-m5-release-plan.md`, §1.4).
 
 ## Branch model
 
@@ -63,7 +65,11 @@ This is the steady state from 1.0.1 on. 1.0.0 was bootstrapped differently (last
    - bump the version in `package.json` and `package-lock.json`
      (`npm version X.Y.Z --no-git-tag-version`; the tag comes later, on `main`);
    - add or update the release's row in `.ai/plans/2026-09-29-laines-roadmap.md`;
-   - add or update the matching row in the README roadmap table.
+   - add or update the matching row in the README roadmap table;
+   - in `CHANGELOG.md`, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` (the date the
+     release merges to `main`), start a fresh, empty `## [Unreleased]` above it, and update the link
+     refs at the bottom: point `[Unreleased]` at `compare/vX.Y.Z...HEAD` and add
+     `[X.Y.Z]: https://github.com/AJMarquez99/laines/releases/tag/vX.Y.Z`.
 
    Name any production-dependency bump in the roadmap row.
 3. Check locally:
@@ -224,6 +230,9 @@ It must report no leaks.
 - The publish step returns **403 or 404** → a Trusted Publisher or environment mismatch (wrong
   repository, filename or environment name, or an expired configuration). Fix the npm side, then
   **re-run the failed job** on the same tag. Don't retry blindly.
+- The publish step fails with **401 or `ENEEDAUTH`** during the 1.0.0 bootstrap → the bootstrap
+  token expired. Make a new 1-day token, update the `npm` environment secret `NPM_TOKEN`, then
+  **re-run the failed job** on the same tag.
 - The publish step says **"version already exists"** → that version is on npm already (a manual
   fallback, or an earlier run). Bump to a new version.
 - `npm trust list @ajmarquez99/laines` shows an **expired** configuration (per npm's docs, one with
