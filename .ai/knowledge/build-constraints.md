@@ -18,7 +18,7 @@ Durable facts and rules that shape how L.AI.nes is built. Established during des
   `isError` result; the server never crashes.
 - One JSON parse choke point for config; malformed JSON is a typed error (exit 2), never a raw
   `SyntaxError`.
-- Stack: ESM, Node >= 20, `commander`, `zod`, `@modelcontextprotocol/sdk`; `vitest` for tests.
+- Stack: ESM, Node >= 22.12, `commander`, `zod`, `@modelcontextprotocol/sdk`; `vitest` for tests.
 
 ## Exit codes (contract)
 

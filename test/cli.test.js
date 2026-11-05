@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { run } from '../src/cli.js';
+import { run, buildProgram } from '../src/cli.js';
 import { runDotAi } from '../src/lib/dotai.js';
 import { tmp, cleanupTmp, testDeps } from './helpers.js';
 
@@ -94,5 +94,43 @@ describe('cli', () => {
     expect(r.code).toBe(1);
     expect(r.stderr).toContain('Error: boom');
     expect(r.stderr).toMatch(/\n\s+at /);
+  });
+});
+
+// commander 13+ rejects excess command-arguments; run() maps them to exit 2 like any usage error.
+describe('excess command-arguments', () => {
+  it.each([
+    ['a command with no arguments', ['doctor', 'extra']],
+    ['a nested command with no arguments', ['hooks', 'status', 'x']],
+    ['an optional [lane]', ['brief', 'lane_1', 'extra']],
+    ['a required <lane>', ['release', 'lane_1', 'extra']],
+  ])('are a usage error for %s', async (_shape, args) => {
+    const r = await cli(args, testDeps(tmp()));
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('too many arguments');
+    expect(r.stdout).toBe('');
+  });
+});
+
+// commander 15 sets the default only for a lone --no-* option; init's --no-seed has no --seed.
+describe('init --no-seed', () => {
+  async function initOpts(extra) {
+    const { deps } = setup();
+    const program = buildProgram(deps);
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await program.parseAsync(['node', 'laines', 'init', 'lanes', '--remote', REMOTE, '--dry-run', ...extra]);
+    } finally {
+      out.mockRestore();
+    }
+    return program.commands.find((c) => c.name() === 'init').opts();
+  }
+
+  it('seeds by default', async () => {
+    expect((await initOpts([])).seed).toBe(true);
+  });
+
+  it('turns seeding off with the flag', async () => {
+    expect((await initOpts(['--no-seed'])).seed).toBe(false);
   });
 });

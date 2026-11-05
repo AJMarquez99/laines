@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { MalformedConfigError } from './errors.js';
 
@@ -25,7 +25,13 @@ export function writeFileAtomic(path, text) {
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tmp, text);
-  renameSync(tmp, path);
+  try {
+    renameSync(tmp, path);
+  } catch (err) {
+    // A stray temp file would sit next to the target (in .ai/, the synced set) until someone removes it.
+    rmSync(tmp, { force: true });
+    throw err;
+  }
 }
 
 export function writeJson(path, obj) {

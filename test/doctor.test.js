@@ -383,6 +383,13 @@ describe('doctor: closed lanes whose clone remains', () => {
     expect(formatDoctor(r)).toContain('  • closed, but its clone remains');
   });
 
+  it('adds --force and the reason when the remaining clone is not a git repository', async () => {
+    const { s, dir } = await closedLane();
+    rmSync(join(dir, '.git'), { recursive: true, force: true });
+    const r = await runDoctor({ container: s.container }, s.deps);
+    expect(byName(r)['closed:lane_1'].note).toBe("closed, but its clone remains: delete it with `laines teardown lane_1 --force` (not a git repository: unpushed work cannot be verified), or ignore");
+  });
+
   it('fails when a branch was committed after the close', async () => {
     const { s, dir } = await closedLane();
     gitIn(dir, 'checkout', '-q', '-b', 'late-work');

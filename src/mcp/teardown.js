@@ -1,5 +1,4 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { invoke } from '../commands/registry.js';
 import { loadContainer } from '../lib/container.js';
 import { getLane, readLanes, updateLanes } from '../lib/lanes-store.js';
@@ -116,9 +115,9 @@ export async function runTeardownMcp(opts, deps) {
   }
 
   // The dry run applies every check (capability, keep, closed, unpushed work) and touches nothing.
-  const planFor = (keepDir) => invoke('teardown', { ...args, keepDir, dryRun: true }, deps);
+  const planFor = (keepDir) => invoke('teardown', { ...args, keepDir, dryRun: true, fingerprint: true }, deps);
   // Only unpushed work can be forced, and only when a human can be asked and the container is not locked.
-  const forceable = (plan) => plan.blocked && existsSync(join(plan.path, '.git')) && ctx.config.teardown.mcpForce === 'confirm' && !ctx.config.locked && Boolean(deps.canElicit?.());
+  const forceable = (plan) => plan.blocked && plan.isRepo && ctx.config.teardown.mcpForce === 'confirm' && !ctx.config.locked && Boolean(deps.canElicit?.());
   let plan = await planFor(opts.keepDir);
   if (plan.blocked && !forceable(plan)) {
     // never re-run the real teardown without an accept

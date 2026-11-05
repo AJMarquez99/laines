@@ -119,7 +119,8 @@ export async function runTeardown(opts, deps) {
 
   if (opts.dryRun) {
     const hooks = [...(runPre ? [dryRunHooks(ctx, 'pre-teardown')] : []), ...(runPost ? [dryRunHooks(ctx, 'post-teardown')] : [])];
-    return { dryRun: true, lane: name, path: laneDir, blocked, removedDir: removeDir && Boolean(real), forced: risky && Boolean(opts.force), checks, fingerprint, warnings, hooks, refusal: blocked ? unpushedRefusal(laneDir, checks.problems, isRepo, checks.holdings) : null };
+    // `fingerprint` is internal: only the MCP typed confirmation asks for it (opts.fingerprint), to pass back as `expect`.
+    return { dryRun: true, lane: name, path: laneDir, isRepo, blocked, removedDir: removeDir && Boolean(real), forced: risky && Boolean(opts.force), checks, ...(opts.fingerprint ? { fingerprint } : {}), warnings, hooks, refusal: blocked ? unpushedRefusal(laneDir, checks.problems, isRepo, checks.holdings) : null };
   }
   if (blocked) {
     throw new BlockedError(unpushedRefusal(laneDir, checks.problems, isRepo, checks.holdings));
@@ -247,5 +248,5 @@ export async function runTeardown(opts, deps) {
     { ts: now, action: 'teardown', container: ctx.id, lane: name, phase, removedDir, forced, ...(viaMcp ? { ...(closed ? { closedLane: true } : {}), forcedVia: 'mcp-typed-confirmation', discarded: checks.problems } : {}), hooks: { pre: pre?.outcome ?? null, post: post?.outcome ?? null } },
     { warn: deps.warn },
   );
-  return { dryRun: false, lane: name, path: laneDir, archivedTo, contextDeleted, removedDir, forced, checks, warnings, hooks: [pre, post].filter(Boolean) };
+  return { dryRun: false, lane: name, path: laneDir, isRepo, archivedTo, contextDeleted, removedDir, forced, checks, warnings, hooks: [pre, post].filter(Boolean) };
 }

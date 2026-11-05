@@ -1,11 +1,10 @@
 # L.AI.nes
 
+[![npm](https://img.shields.io/npm/v/@ajmarquez99/laines.svg)](https://www.npmjs.com/package/@ajmarquez99/laines)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Isolated parallel work lanes for coding agents.** One shared knowledge base, many independent
 clones of your project, each with its own local environment.
-
-> **Status: pre-release.** Containers, lanes, hooks and the MCP server work today. See [Roadmap](#roadmap). The package is not on npm yet; install from source.
 
 ## Why
 
@@ -38,13 +37,17 @@ to.
 
 ## Install
 
-Requires Node.js 20 or later, and git.
+Requires Node.js 22.12 or later, and git.
 
 ```bash
-git clone https://github.com/AJMarquez99/laines.git
-cd laines && npm install && npm install -g .
+npm i -g @ajmarquez99/laines
 laines --version
 ```
+
+This installs both commands, `laines` and `laines-mcp`. For a one-off command without installing,
+use `npx @ajmarquez99/laines <command>`. The MCP server needs the global install, because your MCP
+client starts `laines-mcp` from your `PATH`. To work on laines itself, see
+[Development](#development).
 
 ## Quick start
 
@@ -110,29 +113,34 @@ laines init ~/work/other-lanes --remote git@github.com:your-org/other.git --dry-
 
 `init` only creates fresh containers. It refuses a directory that already has `.ai/` or
 `.laines/`, one inside another container or inside a git repository, the filesystem root, and
-your home directory itself.
+your home directory itself. So if your home directory is itself a git repository, no container can
+live under it; this is by design, so that lanes never end up inside another repository.
 
 ## Commands
 
 All commands print JSON by default, except `watch`, which streams new board lines. Add `--format table` (after the command name) for
-human-readable output.
+human-readable output. A `teardown --dry-run` result (CLI JSON and the `laines_teardown` MCP tool alike) has `dryRun`, `lane`,
+`path`, `isRepo` (whether the clone is a git repository), `blocked`, `removedDir`, `forced`, `checks` (the unpushed-work
+findings, or `null` when nothing is checked), `warnings`, `hooks` and `refusal`. The fingerprint that the MCP typed
+confirmation passes back is internal and appears in neither. A real teardown returns `dryRun`, `lane`, `path`, `isRepo`,
+`archivedTo`, `contextDeleted`, `removedDir`, `forced`, `checks`, `warnings` and `hooks`.
 
 | Command | What it does |
 |---|---|
 | `laines init <dir> --remote <url>` | Create a container. Options: `--id <id>`, `--agents claude,codex,gemini`, `--branch <name>` (default `main`), `--dry-run`. |
-| `laines adopt <dir> [--id] [--agents] [--dry-run]` | Turn an existing git checkout into a container (human-only). The folder becomes the container and its contents become `lane_1` unchanged (uncommitted work, stashes and ignored files included); the project's `.ai/` becomes the shared layer. Needs a reachable `origin`. The checkout moves, so recreate anything that stored its old absolute path afterwards (examples: a language virtualenv, a build cache). `lane_1` keeps the project's Docker Compose project name, so existing volumes and containers stay attached; other lanes get their own (`<id>-l<n>`). Containers made before M4.5 get its deny rule from `laines refresh <lane>`. |
+| `laines adopt <dir> [--id] [--agents] [--dry-run]` | Turn an existing git checkout into a container (human-only). The folder becomes the container and its contents become `lane_1` unchanged (uncommitted work, stashes and ignored files included); the project's `.ai/` becomes the shared layer. Needs a reachable `origin`. The checkout moves, so recreate anything that stored its old absolute path afterwards (examples: a language virtualenv, a build cache). `lane_1` keeps the project's Docker Compose project name, so existing volumes and containers stay attached; other lanes get their own (`<id>-l<n>`). Containers made before `adopt` existed get its deny rule from `laines refresh <lane>`. |
 | `laines config get [key]` | Print the container's settings, or one dotted key such as `hooks.policy`. |
 | `laines config set <key> <value> [--dry-run]` | Change one setting (human-only). The value is JSON when it parses (`true`, `20`, `["claude"]`), else a string. Only that key changes in the file; the whole config is validated first. |
-| `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board, locks, the `.ai/` sync base (`ai-sync`), every open lane (noting when a committed `.ai/` differs from the container's: reported as an informational `note` on the check, shown as a `•` line in the table, never a failure), and how each agent reaches the lanes. It warns (`!`, never a failure) when a new or changed hook will run unapproved under policy `notify` or `open`. For each closed lane whose clone remains it adds a `closed:<lane>` check: a `•` note (delete with `laines teardown <lane>`, or ignore) when nothing changed since the close, and a failure when a branch or tag tip was committed after the close or the clone has uncommitted files, since that work belongs to no open lane (committer dates are a heuristic: they can be rewritten). It flags a pre-M4.6 container whose laines files still need moving to `_` names (`laines refresh` does it). `--prune` removes machine-index entries for containers that no longer exist. |
-| `laines create [name] [--branch <b>] [--dry-run]` | Create a lane: clone the repository, allocate ports, write the lane's env file, identity and deny rules, run the `post-create` hook, and print its brief. If the hook fails the lane is kept, marked `setup-failed`, and `refresh` retries it. With no name it takes the lowest number that is neither an open lane nor already a directory, so a closed lane's leftover clone (or any stray `lane_N` folder) is skipped rather than failing with "already exists"; delete a leftover with `laines teardown <lane>`. |
-| `laines refresh [lane] [--dry-run]` | Rewrite a lane's local files and `.laines.env` from scratch, then run `post-create` again. Recovers a `setup-failed` lane. Also finishes laines' own container migrations: moves a pre-M4.6 container's laines files to their `_` names, rewrites laines' old `runbooks/lane-management.md` / `templates/lane-*.md` paths inside those files, and re-renders the lanes block in the container's `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` (text outside the block is untouched). `--dry-run` lists every write: migrations, `.laines.env` key changes, exclude-block entries, agent-file blocks, and the lane files it would write or skip. |
+| `laines doctor [--prune]` | Check the container marker, config, machine index, `.ai/` layer, agent files, deny rules, board, locks, the `.ai/` sync base (`ai-sync`), every open lane (noting when a committed `.ai/` differs from the container's: reported as an informational `note` on the check, shown as a `•` line in the table, never a failure), and how each agent reaches the lanes. It warns (`!`, never a failure) when a new or changed hook will run unapproved under policy `notify` or `open`. For each closed lane whose clone remains it adds a `closed:<lane>` check: a `•` note (delete with `laines teardown <lane>`, plus `--force` when the clone is not a git repository, or ignore) when nothing changed since the close, and a failure when a branch or tag tip was committed after the close or the clone has uncommitted files, since that work belongs to no open lane (committer dates are a heuristic: they can be rewritten). It flags an older container whose laines files still need moving to their `_` names (`laines refresh` does it). `--prune` removes machine-index entries for containers that no longer exist. |
+| `laines create [name] [--branch <b>] [--dry-run]` | Create a lane: clone the repository, allocate ports, write the lane's env file, identity and deny rules, run the `post-create` hook, and print its brief. If the hook fails the lane is kept, marked `setup-failed`, and `refresh` retries it. With no name it takes the lowest number that is neither an open lane nor already a directory, so a closed lane's leftover clone (or any stray `lane_N` folder) is skipped rather than failing with "already exists"; delete a closed lane's leftover clone with `laines teardown <lane>` (add `--force` for one that is not a git repository: its unpushed work cannot be verified), and remove a stray `lane_N` folder with no lane record by hand. |
+| `laines refresh [lane] [--dry-run]` | Rewrite a lane's local files and `.laines.env` from scratch, then run `post-create` again. Recovers a `setup-failed` lane. Also finishes laines' own container migrations: moves an older container's laines files to their `_` names, rewrites laines' old `runbooks/lane-management.md` / `templates/lane-*.md` paths inside those files, and re-renders the lanes block in the container's `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` (text outside the block is untouched). `--dry-run` lists every write: migrations, `.laines.env` key changes, exclude-block entries, agent-file blocks, and the lane files it would write or skip. |
 | `laines list [--all]` | List open lanes (`--all` includes closed ones). |
 | `laines status [lane]` | Show one lane's state, task, branch and ports. With no lane named and outside a lane, shows the container overview. |
 | `laines report [lane] [--status <s>] [--task <t>] [--blocked <why>] [--note <n>]` | Update a lane's status on the board; at least one option is required. `-` clears `--task` or `--blocked`. |
 | `laines brief [lane]` | Print a lane's brief (identity, ports, rules). |
 | `laines keep [lane] --reason <why>` | Mark a lane to be kept, so it is not torn down as finished. |
 | `laines release <lane>` | Release a kept lane. Human-only: the lane name is required and agents are denied it. |
-| `laines teardown <lane> [--keep-dir] [--force] [--dry-run]` | Close a lane (human-only): archive its plans, delete its context, mark it closed and delete its clone. `--keep-dir` keeps the clone instead (and skips the unpushed-work checks); `--remove-dir` is the deprecated name for the default and is ignored, and the two together are an input error. Run on an already-closed lane it deletes the leftover clone, running `pre-teardown` again first (`LAINES_TEARDOWN_PHASE=remove-clone`; a first teardown sets `close`) and recording `cloneRemoved`/`branchAtRemoval` so the board's Closed line shows "clone removed <time> (on <branch>)" (or "clone remains"; lanes whose clone was removed before 0.4.9 also read "clone remains", `laines doctor` checks the disk). Unless `--keep-dir`, teardown refuses when the lane has uncommitted changes, stash entries, commits that exist on no remote (any ref: branches, tags, backup refs, detached HEAD), or is not a git repository. `--force` overrides those but never `keep`. The refusal also lists, for each unpushed ref, which other open lanes hold the same commits (informational only; it never makes removal safe). A branch with no upstream whose commits are on a remote is only a warning. Runs `pre-teardown` first (a failure aborts with nothing touched) and `post-teardown` last (a failure leaves a board request; running `teardown` again retries it). |
+| `laines teardown <lane> [--keep-dir] [--force] [--dry-run]` | Close a lane (human-only): archive its plans, delete its context, mark it closed and delete its clone. `--keep-dir` keeps the clone instead (and skips the unpushed-work checks); `--remove-dir` is the deprecated name for the default and is ignored (it will be removed no earlier than 2.0), and the two together are an input error. Run on an already-closed lane it deletes the leftover clone, running `pre-teardown` again first (`LAINES_TEARDOWN_PHASE=remove-clone`; a first teardown sets `close`) and recording `cloneRemoved`/`branchAtRemoval` so the board's Closed line shows "clone removed <time> (on <branch>)" (or "clone remains"; lanes whose clone was removed before 0.4.9 also read "clone remains", `laines doctor` checks the disk). Unless `--keep-dir`, teardown refuses when the lane has uncommitted changes, stash entries, commits that exist on no remote (any ref: branches, tags, backup refs, detached HEAD), or is not a git repository. `--force` overrides those but never `keep`. The refusal also lists, for each unpushed ref, which other open lanes hold the same commits (informational only; it never makes removal safe). A branch with no upstream whose commits are on a remote is only a warning. Runs `pre-teardown` first (a failure aborts with nothing touched) and `post-teardown` last (a failure leaves a board request; running `teardown` again retries it). |
 | `laines hooks status` | List each hook in `.laines/hooks/` as approved, changed or new, with a diff against the approved copy. |
 | `laines hooks approve [--lock] [--dry-run]` | Approve the current hooks (human-only). `--lock` also sets policy `approve`, so later changes are refused until a human approves them. It shows the diff of each hook it approves (with `--dry-run`, before approving). |
 | `laines hooks policy <approve\|notify\|open> [--dry-run]` | Set the hook policy (human-only). |
@@ -141,13 +149,20 @@ human-readable output.
 
 Run commands from the container directory, or pass `--container <dir>`. A bare `--` argument is rejected (exit 2), so options can't be used to slip past the agent deny rules for human-only commands.
 
+**`ai sync` edge cases.** A lane with no recorded sync base (made before `ai sync` existed, or
+after a warning from `create`) merges on its first sync, so a file the container has since deleted
+comes back from the lane. Deleting the last committed `.ai/` file makes laines treat the repository as one that
+doesn't commit `.ai/`, so `ai sync` stops rather than passing that deletion on. A lock timeout at
+the end of a sync leaves the base unrecorded; the next run records it. In each case the files can
+be recovered from git or from the container.
+
 ### Exit codes
 
 | Code | Meaning |
 |---|---|
 | `0` | Success (including `--dry-run`) |
 | `1` | Unexpected or external failure |
-| `2` | Fixable input or config problem (bad option, not a container, malformed file) |
+| `2` | Fixable input or config problem (bad option, not a container, malformed file, too-old Node) |
 | `3` | Blocked by a safety boundary, or a human needs to act |
 | `4` | Capability denied: a `capabilities.*` switch in `.laines/config.json` is off |
 
@@ -246,9 +261,10 @@ the preferred agent and gets the deepest integration:
   from parent directories. A plain clone of the same repo outside the container never sees it.
 - Each lane gets a git-ignored `CLAUDE.local.md` with its identity, and its own deny rules.
 
-Codex and Gemini stop reading instruction files at the git root, so they get the rules from the
-lane's `.ai/README.md`. `laines doctor` will tell you the one-line user setting that makes them
-read the container's instructions too.
+Codex and Gemini read the lane-local `AGENTS.md` / `GEMINI.md`; the container's instructions don't
+reach them, because both stop reading instruction files at the git root. When the repository
+commits its own `AGENTS.md` or `GEMINI.md`, laines leaves it alone, and they get the lane rules
+from the lane's `.ai/README.md`.
 
 ## MCP server
 
@@ -298,12 +314,15 @@ the agent did not pass `keep_dir`, the first confirmation has an optional "Keep 
 tick. Ticking it closes the lane and keeps the clone with no unpushed-work check. Left unticked, the
 check runs first: clean deletes the clone in that one confirmation, unpushed work continues into the
 typed prompt (or is refused with nothing torn down). An agent can pass `keep_dir` itself, which only
-makes teardown safer; `remove_dir` is accepted and ignored (deprecated).
+makes teardown safer; `remove_dir` is deprecated: it is accepted and ignored, and will be removed no earlier than 2.0.
 
 **Stale server.** A `laines-mcp` started before an upgrade keeps running the old code. When the installed
 version differs from the one the server loaded, `laines_status` and `laines_doctor` show
 `server: { running, installed, stale: true }`, doctor fails an `mcp-server` check, and every refusal gets a
 line telling you to reconnect laines in your MCP client (for example `/mcp` in Claude Code).
+**Restart your MCP client (or reconnect laines) after every upgrade.** Under installs that put
+each version at its own path (for example pnpm or volta), the installed version the server reads
+may never change, so it may never be flagged as stale.
 
 `laines doctor` checks the registration. Containers made before the MCP server existed don't have
 one: run the `claude mcp add` command above in the container, and `laines refresh <lane>` for each
@@ -333,17 +352,31 @@ hooks run `teardown` and `release`; see [Trust model](#trust-model).
 | **0.4.11: Hook trust** | trust model documented, hooks refused human-only commands unless `hooks.manage` is on, doctor warns about unapproved hooks under `notify`/`open` | ✅ Done |
 | **0.4.12: Community readiness** | SECURITY, CONTRIBUTING and templates, CI on macOS/Linux × Node 20/22/24, Dependabot, zod security update, hooks with no `#!` line refused on every platform | ✅ Done |
 | **0.4.13: Dependency updates** | MCP SDK 1.32.2, dot-ai 1.2.0, ESLint 10, CI actions v7 | ✅ Done |
-| **M5: Release** | CI on macOS and Linux, security documentation, npm package | Planned |
+| **M5: Release** | CI on macOS and Linux, security documentation, npm package | ✅ Done (1.0.0) |
 
 Out of scope for v1: Windows and several repositories in one lane.
 
+## Compatibility
+
+laines follows semantic versioning from 1.0.0. The commands, flags, config keys, MCP tools,
+`--format json` fields, exit codes and on-disk formats are covered; table output, board prose and
+error text are not, and there is no JS API. The full policy is in
+[CONTRIBUTING](CONTRIBUTING.md#compatibility-semver), and [CHANGELOG.md](CHANGELOG.md) lists the
+changes in each release.
+
 ## Development
 
+From source:
+
 ```bash
-npm install
-npm run test:run   # run the test suite once
+git clone https://github.com/AJMarquez99/laines.git
+cd laines && npm install
+npm install -g .   # optional: put this checkout's laines and laines-mcp on your PATH
+npm run test:run   # run the test suite once (npm test runs vitest in watch mode)
 npm run lint
 ```
+
+`prepublishOnly` runs the test suite but not the linter; CI and the release workflow run both.
 
 Design documents live in [`.ai/plans/`](.ai/plans/): the
 [v1 specification](.ai/plans/2026-09-29-laines-spec.md) and the

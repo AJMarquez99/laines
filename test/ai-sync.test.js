@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { invoke } from '../src/commands/registry.js';
 import { loadContainer } from '../src/lib/container.js';
@@ -130,6 +130,33 @@ describe('ai sync', () => {
     const r = await s.sync();
     expect(r.refused).toEqual(['knowledge/link']);
     for (const rel of ['knowledge/_draft.md', 'plans/x.md', 'knowledge/link']) expect(existsSync(join(s.lAi, rel)), rel).toBe(false);
+  });
+
+  it('never follows a symlink on the lane side', async () => {
+    const s = await synced();
+    put(s.root, 'outside/x.md', 'X\n');
+    symlinkSync(join(s.root, 'outside'), join(s.lAi, 'knowledge', 'linked'));
+    symlinkSync(join(s.root, 'outside', 'x.md'), join(s.lAi, 'knowledge', 'file.md'));
+    const r = await s.sync();
+    expect(r.refused).toEqual(['knowledge/file.md', 'knowledge/linked']);
+    expect(r.toContainer).toEqual([]);
+    for (const rel of ['knowledge/linked', 'knowledge/file.md']) expect(existsSync(join(s.cAi, rel)), rel).toBe(false);
+  });
+
+  it('treats an NFD lane name and its NFC container twin as one file', async () => {
+    const s = await synced();
+    const NFC = 'knowledge/caf\u00e9.md';
+    put(s.cAi, NFC, 'X\n');
+    put(s.lAi, 'knowledge/cafe\u0301.md', 'X\n');
+    expect(await s.sync()).toMatchObject({ toLane: [], toContainer: [], conflicts: [] });
+    put(s.lAi, 'knowledge/cafe\u0301.md', 'Y\n');
+    const r = await s.sync();
+    expect(r).toMatchObject({ toLane: [], toContainer: [NFC], conflicts: [] });
+    expect(r.why).toEqual({ [NFC]: 'changed' });
+    const names = readdirSync(join(s.cAi, 'knowledge')).filter((n) => n.normalize('NFC') === 'caf\u00e9.md');
+    expect(names).toHaveLength(1);
+    expect(read(join(s.cAi, 'knowledge', names[0]))).toBe('Y\n');
+    expect(await s.sync()).toMatchObject({ toLane: [], toContainer: [], conflicts: [] });
   });
 
   it('does nothing for a repository that does not commit .ai/', async () => {

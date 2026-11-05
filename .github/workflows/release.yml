@@ -1,0 +1,125 @@
+# Publish @ajmarquez99/laines to npm when a v* tag is pushed.
+#
+# Two jobs. `checks` runs on the tagged tree: the tag must equal package.json's version and point
+# at a commit on main, then lint, the production audit, the test suite and the pack round-trip.
+# `publish` waits for `checks`, then for a human approval of the `npm` environment, then runs
+# `npm publish --provenance`. The provenance statement is signed with this job's OIDC token
+# (id-token: write), so it needs a GitHub-hosted runner.
+#
+# Trust: npm's Trusted Publisher for this package is keyed to repository AJMarquez99/laines, the
+# workflow FILENAME `release.yml` and the environment `npm`. Renaming this file or the environment
+# breaks publishing until the npm-side configuration is updated to match.
+#
+# Bootstrap (1.0.0 only): the package does not exist on npm yet, so no Trusted Publisher can be
+# configured. The publish step therefore also gets NODE_AUTH_TOKEN from the `npm` environment
+# secret NPM_TOKEN (a 1-day token). Remove that line in 1.0.1, once the Trusted Publisher exists.
+#
+# A pushed v* tag is final (tag-protection): never move it. If the publish fails on the npm side,
+# fix that and re-run the failed job; if the code must change, release a new patch version.
+# Full procedure: .ai/runbooks/releasing.md.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false # never cancel a publish part-way
+
+env:
+  # Exact npm version (OIDC trusted publishing needs >= 11.5.1). Bump deliberately; never @latest.
+  NPM_VERSION: 11.21.1
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }} # the commit these checks verified; publish must match it
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # No `cache:` in this workflow, so a release never restores a cache another workflow wrote.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Tag matches package.json version
+        run: |
+          want="v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$want" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version ($want)"
+            exit 1
+          fi
+
+      # HEAD, not $GITHUB_SHA: on an annotated-tag push that is the tag object (actions/checkout#290).
+      - name: Tagged commit is on main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$GITHUB_REF_NAME points at $(git rev-parse HEAD), which is not on main"
+            exit 1
+          fi
+
+      - name: Record the verified commit
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Pinned npm
+        run: |
+          npm install -g "npm@$NPM_VERSION"
+          v="$(npm --version)"
+          node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); process.exit(a>11||(a===11&&(b>5||(b===5&&c>=1)))?0:1)' "$v" \
+            || { echo "::error::npm $v is older than 11.5.1"; exit 1; }
+          echo "npm $v"
+
+      - run: npm ci
+      - run: npm run lint
+      # Never lower the level. A new advisory here cannot be fixed on this tag: release a patch.
+      - run: npm audit --omit=dev --audit-level=moderate
+      - run: npm run test:run
+      - run: npm run test:pack
+
+  publish:
+    needs: [checks]
+    runs-on: ubuntu-latest # OIDC needs a GitHub-hosted runner
+    timeout-minutes: 20
+    environment: npm # a required reviewer approves each deployment
+    permissions:
+      contents: read
+      id-token: write # signs the provenance statement (and, from 1.0.1, the trusted publish)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # The checkout re-resolves the tag by name: prove it is still the commit `checks` verified.
+      - name: Same commit as checks
+        env:
+          VERIFIED_SHA: ${{ needs.checks.outputs.sha }}
+        run: |
+          head="$(git rev-parse HEAD)"
+          if [ -z "$VERIFIED_SHA" ] || [ "$head" != "$VERIFIED_SHA" ]; then
+            echo "::error::publish checked out $head, but checks verified '$VERIFIED_SHA'"
+            exit 1
+          fi
+
+      - name: Pinned npm
+        run: |
+          npm install -g "npm@$NPM_VERSION"
+          v="$(npm --version)"
+          node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); process.exit(a>11||(a===11&&(b>5||(b===5&&c>=1)))?0:1)' "$v" \
+            || { echo "::error::npm $v is older than 11.5.1"; exit 1; }
+          echo "npm $v"
+
+      - run: npm ci
+      # prepublishOnly runs the test suite once more; kept on purpose, it also guards a manual publish.
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # bootstrap for 1.0.0 only; remove in 1.0.1
