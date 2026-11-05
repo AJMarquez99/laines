@@ -13,6 +13,7 @@ here.
 | Item (source) | Notes |
 |---|---|
 | Codex `project_root_markers` with a marker above a nested `.git` (spec §15; M5 check C10) | Run in a temp Codex home, with a marker that exists only at the container root (for example `.laines`), then `codex exec` in a lane. If Codex honours it, a minor release brings back a doctor hint with the one-line setting (M5 decision D9). |
+| Interactive teardown elicitation: Claude Code CLI, a subagent, the VS Code extension (M5 checks C5, C6, C8; deferred by the user, 2026-11-04) | Steps in the 1.0.0 pre-release audit. Confirm the form appears, decline refuses, accept tears down, the typed form needs the exact lane name, and a subagent call reaches the human or falls back to the board. Any teardown without a confirmed form is a security bug: patch release. |
 
 ## Features
 

@@ -7,7 +7,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-10-31
+## [1.0.0] - 2026-11-04
 
 The first npm release. 1.0.0 was 0.4.13 plus a raised Node floor, a few fixes to surfaces that 1.0
 freezes, and the documentation of what laines promises and what it doesn't. It added no new
