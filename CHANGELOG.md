@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-04
+
+### Changed
+- Releases publish to npm through OIDC trusted publishing only. The release workflow no longer
+  reads an npm token (1.0.0 needed one, because a Trusted Publisher can't be set up before the
+  package exists). No change to the CLI or the MCP server.
+
 ## [1.0.0] - 2026-11-04
 
 The first npm release. 1.0.0 was 0.4.13 plus a raised Node floor, a few fixes to surfaces that 1.0
@@ -59,5 +66,6 @@ commands. Releases before 1.0.0 were tags only; the
   that isn't a git repository names `--force` and why ("unpushed work cannot be verified"), and a
   stray `lane_N` folder with no lane record is to be removed by hand.
 
-[Unreleased]: https://github.com/AJMarquez99/laines/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/AJMarquez99/laines/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/AJMarquez99/laines/releases/tag/v1.0.1
 [1.0.0]: https://github.com/AJMarquez99/laines/releases/tag/v1.0.0

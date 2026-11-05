@@ -26,25 +26,11 @@ This is the steady state from 1.0.1 on. 1.0.0 was bootstrapped differently (last
 - **No long-lived token.** Right after 1.0.0 publishes (plan step A8), the package's publishing
   access is set to "Require two-factor authentication and disallow tokens". From then on only the
   OIDC path (and an interactive 2FA login, for the manual fallback) can publish.
-- **1.0.0 bootstrap (Path A).** The package didn't exist before 1.0.0, so no Trusted Publisher
-  could be configured for it. For 1.0.0 only, the publish step also reads `NODE_AUTH_TOKEN` from
-  the `npm` environment secret `NPM_TOKEN`:
-  - The token is a **granular** token with **read and write** on **All packages** (a package that
-    doesn't exist yet can't be selected) and a **1-day** expiry. Create it right before pushing
-    the tag. If the `NPM_TOKEN` secret already exists, check that token's expiry on npmjs.com and
-    rotate it (new 1-day token, update the secret) rather than trust it.
-  - Turn **"Bypass 2FA"** on if the account requires 2FA for writes. Without it, the publish
-    fails with `EOTP` after the approval. That is recoverable: fix the secret, then re-run the
-    failed job on the same tag.
-  - npm tries OIDC first and silently falls back to the token (nothing shows at the default log
-    level).
-  - Straight after 1.0.0 publishes: revoke the token, delete the secret, and disallow tokens on
-    the package.
-  - 1.0.1 removes the `NODE_AUTH_TOKEN` line. Configure the Trusted Publisher only when 1.0.1 is
-    ready to tag, then tag it within 48 hours. Per npm's docs, treat an unused configuration as
-    expiring after 2 days.
-  - The full sequence is in the archived M5 plan
-    (`.ai/archive/2026-10-31_2026-10-29-laines-1.0.0-m5-release-plan.md`, §1.4).
+- **1.0.0 bootstrap (history).** The package didn't exist before 1.0.0, so no Trusted Publisher
+  could be configured for it; 1.0.0 was published with a 1-day token from the `npm` environment
+  secret `NPM_TOKEN`, which was then revoked. 1.0.1 removed the token from the workflow and was the
+  first OIDC publish. The full sequence is in the archived M5 plan
+  (`.ai/archive/2026-10-31_2026-10-29-laines-1.0.0-m5-release-plan.md`, §1.4).
 
 ## Branch model
 
@@ -230,9 +216,8 @@ It must report no leaks.
 - The publish step returns **403 or 404** → a Trusted Publisher or environment mismatch (wrong
   repository, filename or environment name, or an expired configuration). Fix the npm side, then
   **re-run the failed job** on the same tag. Don't retry blindly.
-- The publish step fails with **401 or `ENEEDAUTH`** during the 1.0.0 bootstrap → the bootstrap
-  token expired. Make a new 1-day token, update the `npm` environment secret `NPM_TOKEN`, then
-  **re-run the failed job** on the same tag.
+- The publish step fails with **401 or `ENEEDAUTH`** → npm didn't accept the OIDC token: check the
+  pinned npm is ≥ 11.5.1 and the job has `id-token: write`, then treat it as the 403/404 case.
 - The publish step says **"version already exists"** → that version is on npm already (a manual
   fallback, or an earlier run). Bump to a new version.
 - `npm trust list @ajmarquez99/laines` shows an **expired** configuration (per npm's docs, one with
